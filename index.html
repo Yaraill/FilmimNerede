@@ -1,0 +1,312 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="FilmimNerede ile Türkiye'de vizyona girecek filmleri, popüler dizileri takip edin. Hangi platformda yayınlandıklarını öğrenin, fragman izleyin ve kendi izleme listenizi oluşturun.">
+    <meta name="keywords" content="film izle, dizi izle, vizyondaki filmler, netflix türkiye, blu tv dizileri, filmimnerede, fragman izle">
+    <title>FilmimNerede - Türkiye Film & Dizi Rehberi</title>
+    <!-- Google Fonts: Modern ve okunaklı bir font (Inter) -->
+    <!-- Kendi CSS dosyamız -->
+    <link rel="stylesheet" href="style.css?v=4">
+    <!-- Font Awesome (İkonlar için) -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <!-- Pratik Favicon (Tarayıcı Sekmesi İkonu) -->
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🎬</text></svg>">
+</head>
+<body>
+
+    <!-- Üst Menü (Navbar) -->
+    <nav class="navbar glass">
+        <div class="logo" style="cursor: pointer;" onclick="window.location.reload()" title="Anasayfaya Dön">
+            <span class="highlight">Filmim</span>Nerede
+        </div>
+        <ul class="nav-links">
+            <li><a href="#" class="active" onclick="switchTab(event, 'now-playing')">Şu An Vizyonda</a></li>
+            <li><a href="#" onclick="switchTab(event, 'vizyon')">Yakında Vizyonda</a></li>
+            <li><a href="#" onclick="switchTab(event, 'platform')">Nerede İzlerim?</a></li>
+            <li><a href="#" onclick="switchTab(event, 'watchlist')">Listem</a></li>
+            <li><a href="#" onclick="switchTab(event, 'imax')" class="imax-badge">IMAX</a></li>
+            <li><button onclick="toggleTheme()" id="themeToggleBtn" title="Tema Değiştir" style="background:transparent; border:none; color:var(--text-color); font-size:1.2rem; cursor:pointer;"><i class="fas fa-sun"></i></button></li>
+        </ul>
+    </nav>
+
+    <!-- Ana İçerik -->
+    <main class="container">
+
+        <!-- SEKTME 1: Şu An Vizyonda (YENİ) -->
+        <section id="now-playing" class="tab-content active-tab">
+            <div class="section-header">
+                <h2>Şu An Vizyonda & Bilet Al</h2>
+                <p>Türkiye genelinde şu an vizyonda olan filmler. Şehrinizi seçerek bilet ekranına gidebilirsiniz.</p>
+                <div class="city-selector">
+                    <select id="citySelect" onchange="updateCity()">
+                        <option value="" disabled selected>Şehrinizi Seçin...</option>
+                        <option value="adana">Adana</option>
+                        <option value="adiyaman">Adıyaman</option>
+                        <option value="afyonkarahisar">Afyonkarahisar</option>
+                        <option value="agri">Ağrı</option>
+                        <option value="amasya">Amasya</option>
+                        <option value="ankara">Ankara</option>
+                        <option value="antalya">Antalya</option>
+                        <option value="artvin">Artvin</option>
+                        <option value="aydin">Aydın</option>
+                        <option value="balikesir">Balıkesir</option>
+                        <option value="bilecik">Bilecik</option>
+                        <option value="bingol">Bingöl</option>
+                        <option value="bitlis">Bitlis</option>
+                        <option value="bolu">Bolu</option>
+                        <option value="burdur">Burdur</option>
+                        <option value="bursa">Bursa</option>
+                        <option value="canakkale">Çanakkale</option>
+                        <option value="cankiri">Çankırı</option>
+                        <option value="corum">Çorum</option>
+                        <option value="denizli">Denizli</option>
+                        <option value="diyarbakir">Diyarbakır</option>
+                        <option value="edirne">Edirne</option>
+                        <option value="elazig">Elazığ</option>
+                        <option value="erzincan">Erzincan</option>
+                        <option value="erzurum">Erzurum</option>
+                        <option value="eskisehir">Eskişehir</option>
+                        <option value="gaziantep">Gaziantep</option>
+                        <option value="giresun">Giresun</option>
+                        <option value="gumushane">Gümüşhane</option>
+                        <option value="hakkari">Hakkari</option>
+                        <option value="hatay">Hatay</option>
+                        <option value="isparta">Isparta</option>
+                        <option value="mersin">Mersin</option>
+                        <option value="istanbul">İstanbul</option>
+                        <option value="izmir">İzmir</option>
+                        <option value="kars">Kars</option>
+                        <option value="kastamonu">Kastamonu</option>
+                        <option value="kayseri">Kayseri</option>
+                        <option value="kirklareli">Kırklareli</option>
+                        <option value="kirsehir">Kırşehir</option>
+                        <option value="kocaeli">Kocaeli</option>
+                        <option value="konya">Konya</option>
+                        <option value="kutahya">Kütahya</option>
+                        <option value="malatya">Malatya</option>
+                        <option value="manisa">Manisa</option>
+                        <option value="kahramanmaras">Kahramanmaraş</option>
+                        <option value="mardin">Mardin</option>
+                        <option value="mugla">Muğla</option>
+                        <option value="mus">Muş</option>
+                        <option value="nevsehir">Nevşehir</option>
+                        <option value="nigde">Niğde</option>
+                        <option value="ordu">Ordu</option>
+                        <option value="rize">Rize</option>
+                        <option value="sakarya">Sakarya</option>
+                        <option value="samsun">Samsun</option>
+                        <option value="siirt">Siirt</option>
+                        <option value="sinop">Sinop</option>
+                        <option value="sivas">Sivas</option>
+                        <option value="tekirdag">Tekirdağ</option>
+                        <option value="tokat">Tokat</option>
+                        <option value="trabzon">Trabzon</option>
+                        <option value="tunceli">Tunceli</option>
+                        <option value="sanliurfa">Şanlıurfa</option>
+                        <option value="usak">Uşak</option>
+                        <option value="van">Van</option>
+                        <option value="yozgat">Yozgat</option>
+                        <option value="zonguldak">Zonguldak</option>
+                        <option value="aksaray">Aksaray</option>
+                        <option value="bayburt">Bayburt</option>
+                        <option value="karaman">Karaman</option>
+                        <option value="kirikkale">Kırıkkale</option>
+                        <option value="batman">Batman</option>
+                        <option value="sirnak">Şırnak</option>
+                        <option value="bartin">Bartın</option>
+                        <option value="ardahan">Ardahan</option>
+                        <option value="igdir">Iğdır</option>
+                        <option value="yalova">Yalova</option>
+                        <option value="karabuk">Karabük</option>
+                        <option value="kilis">Kilis</option>
+                        <option value="osmaniye">Osmaniye</option>
+                        <option value="duzce">Düzce</option>
+                    </select>
+                </div>
+            </div>
+            
+            <div id="now-playing-grid" class="movie-grid" style="display:none;">
+                <!-- Javascript ile vizyondakiler buraya gelecek -->
+            </div>
+        </section>
+
+        <!-- SEKTME 2: Yakında Vizyonda -->
+        <section id="vizyon" class="tab-content">
+            <div class="section-header">
+                <h2>Yakında Türkiye'de Vizyona Girecek Filmler</h2>
+                <p>Sinemalara gelmesi beklenen en güncel yapımlar.</p>
+            </div>
+            
+            <div id="upcoming-movies" class="movie-grid">
+                <!-- Javascript ile filmler buraya otomatik dolacak -->
+                <div class="loading">Filmler yükleniyor... (Lütfen app.js içine API Key giriniz)</div>
+            </div>
+        </section>
+
+        <!-- SEKTME 3: Nerede İzlerim (Yayıncılar) -->
+        <section id="platform" class="tab-content">
+            <div class="section-header">
+                <h2>Film & Dizi Arama Motoru</h2>
+                <p>Türkiye'de (Netflix, Amazon, BluTV vb.) nerede yayınlandığını bulun.</p>
+            </div>
+            
+            <div class="search-box glass" style="position: relative; display: flex; align-items: stretch;">
+                <input type="text" id="searchInput" placeholder="Film, Dizi veya Oyuncu adı girin (Örn: timothée chalamet)..." onkeyup="handleSearchInput(event)" onkeypress="if(event.key === 'Enter') searchMovie(true)" autocomplete="off">
+                <div id="autocomplete-box" class="autocomplete-suggestions"></div>
+                <button onclick="searchMovie(true)" style="border-radius: 0;">Ara</button>
+                <button onclick="surpriseMe()" title="Rastgele Film Öner (Sürpriz Yap!)" style="background: var(--accent-color); border-radius: 0 25px 25px 0; border-left: 1px solid rgba(255,255,255,0.2); padding: 0 20px;"><i class="fas fa-dice"></i></button>
+            </div>
+
+            <div class="platform-filters glass">
+                <h3 style="text-align:center; margin-bottom: 15px; color: var(--text-muted);">Veya Doğrudan Platform Seçin</h3>
+                <div class="provider-logos-filter">
+                    <button class="provider-filter-btn" id="btn-prov-8" onclick="loadPlatformMovies(8)" title="Netflix">
+                        <img src="https://image.tmdb.org/t/p/original/pbpMk2JmcoNnQwx5JGpXngfoWtp.jpg" alt="Netflix">
+                    </button>
+                    <button class="provider-filter-btn" id="btn-prov-119" onclick="loadPlatformMovies(119)" title="Amazon Prime">
+                        <img src="https://image.tmdb.org/t/p/original/pvske1MyAoymrs5bguRfVqYiM9a.jpg" alt="Amazon Prime">
+                    </button>
+                    <button class="provider-filter-btn" id="btn-prov-337" onclick="loadPlatformMovies(337)" title="Disney+">
+                        <img src="https://image.tmdb.org/t/p/original/97yvRBw1GzX7fXprcF80er19ot.jpg" alt="Disney+">
+                    </button>
+                    <button class="provider-filter-btn" id="btn-prov-11" onclick="loadPlatformMovies(11)" title="MUBI">
+                        <img src="https://image.tmdb.org/t/p/original/x570VpH2C9EKDf1riP83rYc5dnL.jpg" alt="MUBI">
+                    </button>
+                </div>
+                
+                <div class="filter-controls" style="margin-top: 15px; display: flex; gap: 10px; justify-content: center; flex-wrap: wrap;">
+                    <select id="mediaTypeFilter" class="modern-select" onchange="applyPlatformFilters()">
+                        <option value="all">Tümü (Film + Dizi)</option>
+                        <option value="movie">Sadece Filmler</option>
+                        <option value="tv">Sadece Diziler</option>
+                    </select>
+                    
+                    <select id="genreFilter" class="modern-select" onchange="applyPlatformFilters()">
+                        <option value="">Tüm Türler</option>
+                        <option value="28|12|10759">Aksiyon & Macera</option>
+                        <option value="878|14|10765">Bilim Kurgu & Fantazi</option>
+                        <option value="35">Komedi</option>
+                        <option value="18">Dram</option>
+                        <option value="80">Suç</option>
+                        <option value="9648">Gizem</option>
+                        <option value="27">Korku</option>
+                        <option value="53">Gerilim</option>
+                        <option value="10749">Romantik</option>
+                        <option value="10751">Aile</option>
+                        <option value="10402">Müzik</option>
+                        <option value="16">Animasyon</option>
+                    </select>
+                    
+                    <select id="ratingFilter" class="modern-select" onchange="applyPlatformFilters()">
+                        <option value="0">Tüm Puanlar</option>
+                        <option value="7">IMDb 7.0+</option>
+                        <option value="8">IMDb 8.0+</option>
+                        <option value="9">IMDb 9.0+</option>
+                    </select>
+
+                    <select id="sortByFilter" class="modern-select" onchange="applyPlatformFilters()">
+                        <option value="popularity.desc">Sıralama: En Popülerler</option>
+                        <option value="order.asc">Sıralama: Başrole Göre</option>
+                        <option value="vote_average.desc">Sıralama: En Yüksek Puan</option>
+                        <option value="primary_release_date.desc">Sıralama: En Yeniler</option>
+                        <option value="primary_release_date.asc">Sıralama: En Eskiler</option>
+                    </select>
+                    
+                    <div class="view-mode-controls" style="display: flex; gap: 5px; margin-left: 10px;">
+                        <button onclick="switchViewMode('grid')" id="viewGridBtn" class="action-btn active" style="padding: 8px 15px; border-radius: 20px; background: rgba(0,0,0,0.5); color: white;"><i class="fas fa-th"></i></button>
+                        <button onclick="switchViewMode('list')" id="viewListBtn" class="action-btn" style="padding: 8px 15px; border-radius: 20px; background: rgba(0,0,0,0.5); color: white;"><i class="fas fa-list"></i></button>
+                    </div>
+                </div>
+            </div>
+
+            <div id="search-results" class="movie-grid">
+                <!-- Arama sonuçları buraya gelecek -->
+            </div>
+            
+            <div style="text-align: center; margin-top: 30px;">
+                <button id="loadMoreBtn" onclick="loadMoreResults()" class="action-btn btn-trailer" style="display: none; padding: 10px 30px; font-size: 1.1rem; border-radius: 30px; box-shadow: 0 5px 15px rgba(229, 9, 20, 0.4);">Daha Fazla Göster</button>
+            </div>
+        </section>
+
+        <!-- SEKTME 5: Listem -->
+        <section id="watchlist" class="tab-content">
+            <div class="section-header">
+                <h2>Listem</h2>
+                <p>Kaydettiğiniz tüm dizi ve filmler.</p>
+            </div>
+            
+            <div id="watchlist-grid" class="movie-grid">
+                <!-- Local Storage verileri buraya gelecek -->
+            </div>
+        </section>
+
+        <!-- SEKTME 6: IMAX Rehberi -->
+        <section id="imax" class="tab-content">
+            <div class="section-header">
+                <h2>Türkiye IMAX Salonları</h2>
+                <p>Türkiye'deki gerçek ve devasa IMAX perdelerinin bulunduğu iller. Harita üzerindeki noktalara tıklayınız.</p>
+            </div>
+            
+            <div class="map-wrapper">
+                <object data="./turkey-inline.svg" type="image/svg+xml" class="turkey-svg-obj">
+                    Harita yüklenemedi
+                </object>
+            </div>
+        </section>
+
+    </main>
+
+    <!-- Footer (Alt Bilgi) -->
+    <footer class="site-footer glass">
+        <p>&copy; 2026 FilmimNerede - Geliştirici: Yaraill</p>
+        <p class="tmdb-credit">This product uses the TMDB API but is not endorsed or certified by TMDB.</p>
+    </footer>
+
+    <!-- Fragman Penceresi (Modal) -->
+    <div id="trailer-modal" class="modal" onclick="closeTrailer(event)">
+        <div class="modal-content">
+            <span class="close-btn" onclick="closeTrailer(null, true)">&times;</span>
+            <div class="video-container" id="video-container">
+                <!-- YouTube iFrame buraya gelecek -->
+            </div>
+        </div>
+    </div>
+
+    <!-- Detaylar Penceresi (Modal) -->
+    <div id="details-modal" class="modal details-modal-wrapper" onclick="closeDetails(event)">
+        <div id="ambilight-bg" class="ambilight-bg"></div>
+        <div class="details-content glass">
+            <span class="close-btn" onclick="closeDetails(null, true)">&times;</span>
+            <div id="details-backdrop" class="details-backdrop"></div>
+            <div class="details-body">
+                <div class="details-left">
+                    <img id="details-poster" src="" alt="">
+                </div>
+                <div class="details-right">
+                    <h2 id="details-title"></h2>
+                    <div id="details-meta" class="details-meta"></div>
+                    <p id="details-overview" class="details-overview"></p>
+                    <h3 class="cast-title">Başrol Oyuncuları</h3>
+                    <div id="details-cast" class="cast-list">
+                        <!-- Javascript ile oyuncular gelecek -->
+                    </div>
+                    
+                    <h3 class="cast-title" style="margin-top: 25px;">Önerilen Benzer Yapımlar</h3>
+                    <div id="details-recommendations" class="recommendations-list">
+                        <!-- Javascript ile benzer filmler gelecek -->
+                    </div>
+
+                    <div id="details-actions" class="details-actions">
+                        <!-- Bilet Al butonu artık kartların üzerine taşındı -->
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Kendi JS dosyamız -->
+    <script src="app.js?v=3"></script>
+</body>
+</html>
