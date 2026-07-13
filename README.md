@@ -5,7 +5,7 @@ FilmimNerede, **The Movie Database (TMDB) API** entegrasyonu ile çalışan; mod
 Uygulama, modern web tasarımı trendleri (glassmorphic UI, karanlık/aydınlık tema) ve pürüzsüz micro-animasyonlar ile tamamen **Vanilla JS (Saf JavaScript)**, **HTML5** ve **CSS3** kullanılarak geliştirilmiştir.
 
 ## 🚀 Canlı Demo
-> Web uygulamasını canlı olarak deneyimlemek için buraya tıklayabilirsiniz: [GitHub Pages Linkiniz] *(GitHub Pages aktif edildikten sonra linki buraya ekleyebilirsiniz)*
+> Web uygulamasını canlı olarak deneyimlemek için buraya tıklayabilirsiniz: https://filmimnerede.netlify.app/
 
 ---
 
