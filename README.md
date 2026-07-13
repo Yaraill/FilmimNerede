@@ -5,7 +5,7 @@ FilmimNerede, **The Movie Database (TMDB) API** entegrasyonu ile çalışan; mod
 Uygulama, modern web tasarımı trendleri (glassmorphic UI, karanlık/aydınlık tema) ve pürüzsüz micro-animasyonlar ile tamamen **Vanilla JS (Saf JavaScript)**, **HTML5** ve **CSS3** kullanılarak geliştirilmiştir.
 
 ## 🚀 Canlı Demo
-> Web uygulamasını canlı olarak deneyimlemek için buraya tıklayabilirsiniz: [GitHub Pages Linkiniz] *(GitHub Pages aktif edildikten sonra linki buraya ekleyebilirsiniz)*
+> Web uygulamasını canlı olarak deneyimlemek için buraya tıklayabilirsiniz: [https://filmimnerede.netlify.app/](https://filmimnerede.netlify.app/)
 
 ---
 
@@ -33,13 +33,28 @@ Uygulama, herhangi bir ağır framework (React, Vue vb.) kullanılmadan, perform
 
 ---
 
+---
+
+## 📸 Ekran Görüntüleri
+
+### 🌓 Karanlık Tema (Anasayfa)
+![Karanlık Tema](screenshots/homepage-dark.png)
+
+### ☀️ Aydınlık Tema (Anasayfa)
+![Aydınlık Tema](screenshots/homepage-light.png)
+
+### 🎭 Oyuncu Detayları & Film Sıralama
+![Oyuncu Detayları](screenshots/actor-details.png)
+
+---
+
 ## 💻 Kurulum ve Çalıştırma
 
 Proje tamamen istemci tarafında çalıştığı için çalıştırmak son derece basittir:
 
 1. Bu depoyu bilgisayarınıza klonlayın:
    ```bash
-   git clone https://github.com/KULLANICI_ADINIZ/FilmimNerede.git
+   git clone https://github.com/Yaraill/FilmimNerede.git
    ```
 2. Proje klasörüne girin:
    ```bash
@@ -51,3 +66,4 @@ Proje tamamen istemci tarafında çalıştığı için çalıştırmak son derec
 
 ## 🔑 API Anahtarları Hakkında
 *Not: Proje içerisindeki TMDB API anahtarı demo amaçlı yer almaktadır. Kendi kullanımınız için [TMDB](https://www.themoviedb.org/) üzerinden bir API anahtarı alıp `app.js` içerisindeki `API_KEY` değişkenine tanımlamanız önerilir.*
+
