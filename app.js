@@ -12,7 +12,7 @@ window.movieCache = {}; // Hata Çözümü: Filmleri hafızada tutarız (Tırnak
 
 let currentProvider = 0; // 0 = Hepsi
 let currentPage = 1;
-let currentMode = "platform"; // "platform", "search", "actor"
+let currentMode = "platform"; // "platform", "search", "actor", "mother"
 let currentSearchQuery = "";
 let currentActorId = 0;
 
