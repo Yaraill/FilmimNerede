@@ -1,6 +1,6 @@
 # 🎬 FilmimNerede - Premium Film & Dizi Rehberi
 
-FilmimNerede, **The Movie Database (TMDB) API** entegrasyonu ile çalışan; modern, dinamik ve kullanıcı dostu bir film/dizi keşif uygulamasıdır. Kullanıcıların aradıkları yapımların Türkiye'de hangi yasal platformlarda (Netflix, Prime Video, Disney+, BluTV vb.) yayınlandığını bulmalarını kolaylaştırır.
+FilmimNerede, **The Movie Database (TMDB) API** entegrasyonu ile çalışan; modern, dinamik ve kullanıcı dostu bir film/dizi keşif uygulamasıdır. Kullanıcıların aradıkları yapımların Türkiye'de hangi yasal platformlarda (Netflix, Prime Video, Disney+, HBOMax vb.) yayınlandığını bulmalarını kolaylaştırır.
 
 Uygulama, modern web tasarımı trendleri (glassmorphic UI, karanlık/aydınlık tema) ve pürüzsüz micro-animasyonlar ile tamamen **Vanilla JS (Saf JavaScript)**, **HTML5** ve **CSS3** kullanılarak geliştirilmiştir.
 
