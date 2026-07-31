@@ -19,6 +19,7 @@ let currentPage = 1;
 let currentMode = "platform"; // "platform", "search", "actor", "mother"
 let currentSearchQuery = "";
 let currentActorId = 0;
+let currentJobType = "cast";
 
 document.addEventListener('DOMContentLoaded', () => {
     // Sayfa yenilendiğinde en üste scroll at
@@ -578,7 +579,7 @@ async function loadUpcomingMovies() {
 
 function applyPlatformFilters() {
     if (currentMode === "actor") {
-        openActorDetails(currentActorId, document.getElementById('searchInput').value, true);
+        openActorDetails(currentActorId, document.getElementById('searchInput').value, true, currentJobType);
     } else if (currentMode === "search") {
         searchMovie(true);
     } else {
@@ -625,6 +626,7 @@ async function loadPlatformMovies(providerId = 0, reset = true, isFilterChange =
     const genre = document.getElementById('genreFilter')?.value || "";
     const rating = document.getElementById('ratingFilter')?.value || "0";
     const mediaType = document.getElementById('mediaTypeFilter')?.value || "all";
+    const yearVal = document.getElementById('yearFilter')?.value || "";
     
     let typesToFetch = mediaType === "all" ? ["movie", "tv"] : [mediaType];
     let allResults = [];
@@ -646,6 +648,23 @@ async function loadPlatformMovies(providerId = 0, reset = true, isFilterChange =
             }
             if (genre) url += `&with_genres=${encodeURIComponent(genre)}`;
             if (rating > 0) url += `&vote_average.gte=${rating}`;
+            
+            if (yearVal) {
+                if (yearVal.length === 4 && !yearVal.endsWith("0")) {
+                    // Exact year like 2024, 2023, 2022
+                    if (type === "movie") url += `&primary_release_year=${yearVal}`;
+                    else url += `&first_air_date_year=${yearVal}`;
+                } else if (yearVal.endsWith("0")) {
+                    // Decade like 2020, 2010, 2000
+                    const startYear = yearVal;
+                    const endYear = parseInt(yearVal) + 9;
+                    if (type === "movie") {
+                        url += `&primary_release_date.gte=${startYear}-01-01&primary_release_date.lte=${endYear}-12-31`;
+                    } else {
+                        url += `&first_air_date.gte=${startYear}-01-01&first_air_date.lte=${endYear}-12-31`;
+                    }
+                }
+            }
             
             const sortBy = document.getElementById('sortByFilter') ? document.getElementById('sortByFilter').value : 'popularity.desc';
             url += `&sort_by=${sortBy}`;
@@ -830,7 +849,7 @@ function loadMoreResults() {
     } else if (currentMode === "search") {
         searchMovie(false);
     } else if (currentMode === "actor") {
-        openActorDetails(currentActorId, document.getElementById('searchInput').value, false);
+        openActorDetails(currentActorId, document.getElementById('searchInput').value, false, currentJobType);
     }
 }
 
@@ -972,13 +991,13 @@ function switchProfileTab(tabId, btnElem) {
     
     document.querySelectorAll('.profile-tab-btn').forEach(btn => {
         btn.classList.remove('active');
-        btn.style.background = 'rgba(0,0,0,0.5)';
-        btn.style.border = '1px solid rgba(255,255,255,0.1)';
+        btn.style.background = '';
+        btn.style.border = '';
     });
     if (btnElem) {
         btnElem.classList.add('active');
-        btnElem.style.background = 'var(--accent-color)';
-        btnElem.style.border = 'none';
+        btnElem.style.background = '';
+        btnElem.style.borderColor = '';
     }
 }
 
@@ -1037,23 +1056,23 @@ function loadProfile() {
     const avgRating = ratingsArray.length > 0 ? (ratingsArray.reduce((a,b)=>a+b,0) / ratingsArray.length).toFixed(1) : 0;
     
     statsContainer.innerHTML = `
-        <div class="stat-card" style="background: linear-gradient(135deg, rgba(20,20,20,0.8), rgba(30,30,30,0.8)); border-top: 2px solid var(--primary-color); position:relative; overflow:hidden;">
-            <i class="fas fa-film" style="position:absolute; right:-10px; bottom:-10px; font-size:4rem; color:rgba(255,255,255,0.05);"></i>
+        <div class="stat-card" style="border-top: 2px solid var(--primary-color); position:relative; overflow:hidden;">
+            <i class="fas fa-film" style="position:absolute; right:-10px; bottom:-10px; font-size:4rem; color:rgba(128,128,128,0.1);"></i>
             <div class="stat-value" style="background: -webkit-linear-gradient(45deg, var(--primary-color), var(--accent-color)); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">${watchlist.length + ratedMovies.length}</div>
             <div class="stat-label" style="font-weight:600; letter-spacing:1px; font-size:0.9rem;">Toplam İçerik</div>
         </div>
-        <div class="stat-card" style="background: linear-gradient(135deg, rgba(20,20,20,0.8), rgba(30,30,30,0.8)); border-top: 2px solid #00c6ff; position:relative; overflow:hidden;">
-            <i class="fas fa-clock" style="position:absolute; right:-10px; bottom:-10px; font-size:4rem; color:rgba(255,255,255,0.05);"></i>
+        <div class="stat-card" style="border-top: 2px solid #00c6ff; position:relative; overflow:hidden;">
+            <i class="fas fa-clock" style="position:absolute; right:-10px; bottom:-10px; font-size:4rem; color:rgba(128,128,128,0.1);"></i>
             <div class="stat-value" id="profile-watch-time" style="background: -webkit-linear-gradient(45deg, #00c6ff, #0072ff); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">${timeText}</div>
             <div class="stat-label" style="font-weight:600; letter-spacing:1px; font-size:0.9rem;">İzleme Süresi</div>
         </div>
-        <div class="stat-card" style="background: linear-gradient(135deg, rgba(20,20,20,0.8), rgba(30,30,30,0.8)); border-top: 2px solid #f1c40f; position:relative; overflow:hidden;">
-            <i class="fas fa-star" style="position:absolute; right:-10px; bottom:-10px; font-size:4rem; color:rgba(255,255,255,0.05);"></i>
+        <div class="stat-card" style="border-top: 2px solid #f1c40f; position:relative; overflow:hidden;">
+            <i class="fas fa-star" style="position:absolute; right:-10px; bottom:-10px; font-size:4rem; color:rgba(128,128,128,0.1);"></i>
             <div class="stat-value" style="background: -webkit-linear-gradient(45deg, #f1c40f, #e67e22); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">${avgRating}</div>
             <div class="stat-label" style="font-weight:600; letter-spacing:1px; font-size:0.9rem;">Ortalama Puan</div>
         </div>
-        <div class="stat-card" style="background: linear-gradient(135deg, rgba(20,20,20,0.8), rgba(30,30,30,0.8)); border-top: 2px solid #9b59b6; position:relative; overflow:hidden;">
-            <i class="fas fa-heart" style="position:absolute; right:-10px; bottom:-10px; font-size:4rem; color:rgba(255,255,255,0.05);"></i>
+        <div class="stat-card" style="border-top: 2px solid #9b59b6; position:relative; overflow:hidden;">
+            <i class="fas fa-heart" style="position:absolute; right:-10px; bottom:-10px; font-size:4rem; color:rgba(128,128,128,0.1);"></i>
             <div class="stat-value" style="font-size:1.5rem; line-height:2.5rem; background: -webkit-linear-gradient(45deg, #9b59b6, #8e44ad); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">${favoriteGenre}</div>
             <div class="stat-label" style="font-weight:600; letter-spacing:1px; font-size:0.9rem;">Favori Tür</div>
         </div>
@@ -1301,7 +1320,32 @@ async function openDetails(movieId) {
     document.getElementById('details-overview').innerText = item.overview || "Bu yapım için konu özeti bulunmuyor.";
     
     const posterUrl = item.poster_path ? IMAGE_BASE + item.poster_path : 'https://via.placeholder.com/500x750?text=Afiş+Yok';
-    document.getElementById('details-poster').src = posterUrl;
+    const posterImgElem = document.getElementById('details-poster');
+    posterImgElem.crossOrigin = "Anonymous";
+    
+    // Dynamic Theme (ColorThief)
+    posterImgElem.onload = function() {
+        try {
+            if (typeof ColorThief !== 'undefined') {
+                const colorThief = new ColorThief();
+                const color = colorThief.getColor(posterImgElem);
+                if (color) {
+                    document.documentElement.style.setProperty('--primary-color', `rgb(${color[0]}, ${color[1]}, ${color[2]})`);
+                    
+                    // Lighter accent
+                    const accentR = Math.min(255, color[0] + 50);
+                    const accentG = Math.min(255, color[1] + 50);
+                    const accentB = Math.min(255, color[2] + 50);
+                    document.documentElement.style.setProperty('--accent-color', `rgb(${accentR}, ${accentG}, ${accentB})`);
+                }
+            }
+        } catch(e) {
+            console.log("ColorThief couldn't extract color:", e);
+        }
+    };
+    
+    // Cache buster to force CORS reload if already cached without CORS
+    posterImgElem.src = posterUrl.includes('?') ? posterUrl + '&cb=' + new Date().getTime() : posterUrl + '?cb=' + new Date().getTime();
     
     const backdropUrl = item.backdrop_path ? BACKDROP_BASE + item.backdrop_path : posterUrl;
     document.getElementById('details-backdrop').style.backgroundImage = `url(${backdropUrl})`;
@@ -1434,7 +1478,8 @@ async function openDetails(movieId) {
             if (fullData.credits && fullData.credits.crew) {
                 const director = fullData.credits.crew.find(c => c.job === 'Director');
                 if (director) {
-                    const directorHtml = `<div style="margin-top: 8px; display: inline-block; background: rgba(229, 9, 20, 0.1); padding: 4px 10px; border-radius: 12px; border: 1px solid rgba(229, 9, 20, 0.2);"><span style="cursor:pointer; color:var(--accent-color); font-weight:bold;" onclick="openActorDetails(${director.id}, '${director.name.replace(/'/g, "\\'")}', true, 'Director')" title="${director.name} filmleri"><i class="fas fa-bullhorn"></i> Yönetmen: ${director.name}</span></div>`;
+                    const safeName = director.name.replace(/'/g, "\\'").replace(/"/g, '&quot;');
+                    const directorHtml = `<div style="margin-top: 8px; display: inline-block; background: rgba(229, 9, 20, 0.1); padding: 4px 10px; border-radius: 12px; border: 1px solid rgba(229, 9, 20, 0.2);"><span style="cursor:pointer; color:var(--accent-color); font-weight:bold;" onclick="openActorDetails(${director.id}, '${safeName}', true, 'Director')" title="${director.name.replace(/"/g, '&quot;')} filmleri"><i class="fas fa-bullhorn"></i> Yönetmen: ${director.name}</span></div>`;
                     const metaContainer = document.getElementById('details-meta');
                     if (metaContainer) {
                         metaContainer.innerHTML += directorHtml;
@@ -1449,8 +1494,9 @@ async function openDetails(movieId) {
                     let castHtml = "";
                     cast.forEach(actor => {
                         const actorImg = actor.profile_path ? IMAGE_BASE + actor.profile_path : 'https://via.placeholder.com/150x150?text=Foto';
+                        const safeActorName = actor.name.replace(/'/g, "\\'").replace(/"/g, '&quot;');
                         castHtml += `
-                            <div class="actor-card" style="cursor:pointer" onclick="openActorDetails(${actor.id}, '${actor.name.replace(/'/g, "\\'")}')" onmouseenter="showActorTooltip(this, ${actor.id})" onmouseleave="hideActorTooltip(this)">
+                            <div class="actor-card" style="cursor:pointer" onclick="openActorDetails(${actor.id}, '${safeActorName}')" onmouseenter="showActorTooltip(this, ${actor.id})" onmouseleave="hideActorTooltip(this)">
                                 <img src="${actorImg}" alt="${actor.name}">
                                 <div class="actor-name" title="${actor.name}">${actor.name}</div>
                                 <div class="actor-tooltip">Yükleniyor...</div>
@@ -1623,6 +1669,7 @@ async function openActorDetails(actorId, actorName, reset = true, jobType = 'cas
         closeDetails(null, true);
         currentMode = "actor";
         currentActorId = actorId;
+        currentJobType = jobType;
         currentPage = 1;
         
         document.querySelectorAll('.tab-content').forEach(tab => tab.classList.remove('active-tab'));
@@ -1641,6 +1688,11 @@ async function openActorDetails(actorId, actorName, reset = true, jobType = 'cas
         document.getElementById('loadMoreBtn').style.display = 'none';
         
         document.getElementById('top10-section').style.display = 'none';
+        const nowPlaying = document.getElementById('now-playing-section');
+        if (nowPlaying) nowPlaying.style.display = 'none';
+        const vizyon = document.getElementById('vizyon-section');
+        if (vizyon) vizyon.style.display = 'none';
+        
         const platformFilters = document.querySelector('.platform-filters');
         if (platformFilters) platformFilters.style.display = 'none';
         
@@ -1740,7 +1792,7 @@ async function openActorDetails(actorId, actorName, reset = true, jobType = 'cas
             container.innerHTML = "";
             if (bioText || birthDate || true) { // Always show bio card even if empty bio, to show favorite button
                 container.innerHTML = `
-                    <div class="actor-bio-card" style="grid-column: 1 / -1; width: 100%; max-width: 800px; margin: 0 auto 20px auto; padding: 20px; background: var(--card-bg); border-radius: 15px; border: 1px solid var(--glass-border); color: var(--text-muted); font-size: 0.95rem;">
+                    <div id="actor-bio-card-container" class="actor-bio-card" style="grid-column: 1 / -1; width: 100%; max-width: 800px; margin: 0 auto 20px auto; padding: 20px; background: var(--card-bg); border-radius: 15px; border: 1px solid var(--glass-border); color: var(--text-muted); font-size: 0.95rem;">
                         <div style="display:flex; align-items:flex-start; gap: 20px; margin-bottom: 10px;">
                             <img src="${personData.profile_path ? IMAGE_BASE + personData.profile_path : 'https://via.placeholder.com/60x90'}" style="width: 80px; height: 120px; border-radius: 10px; object-fit: cover; flex-shrink: 0; user-select: none; -webkit-user-drag: none;">
                             <div style="flex: 1; min-width: 0;">
@@ -1782,6 +1834,14 @@ async function openActorDetails(actorId, actorName, reset = true, jobType = 'cas
                     </div>
                 `;
             }
+            
+            // Bio kartına kaydırarak yenilenme illüzyonunu kır
+            setTimeout(() => {
+                const bioCard = document.getElementById('actor-bio-card-container');
+                if (bioCard) {
+                    bioCard.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                }
+            }, 300);
         }
         
         if (pagedMovies.length === 0 && reset) {
@@ -1811,7 +1871,14 @@ function closeDetails(event, force = false, isHistoryEvent = false) {
             modal.classList.remove('active');
             document.body.style.overflow = "auto";
             
+            // Dinamik Temayı Sıfırla
+            document.documentElement.style.setProperty('--primary-color', '');
+            document.documentElement.style.setProperty('--accent-color', '');
+            
             // Temizlik
+            document.getElementById('modal-providers').innerHTML = "";
+            const trailerContainer = document.getElementById('details-trailer-container');
+            if (trailerContainer) trailerContainer.innerHTML = "";
             document.getElementById('details-poster').src = "";
             document.getElementById('details-cast').innerHTML = "";
             const vContainer = document.getElementById('video-bg-container');
@@ -2330,4 +2397,157 @@ async function executeDiscover() {
             container.innerHTML = `<div class='no-provider' style='color:red;'>Keşfet Hatası: ${e.message}</div>`;
         }
     }
+}
+
+// --- MINI OYUN (AFİŞTEN TAHMİN) ---
+let currentGameMovie = null;
+let currentGameOptions = [];
+let gameAttempts = 0;
+let gameScoreCorrect = 0;
+let gameScoreWrong = 0;
+
+async function startNewGame() {
+    document.getElementById('game-start-btn').style.display = 'none';
+    const nextBtn = document.getElementById('game-next-btn');
+    if(nextBtn) nextBtn.style.display = 'none';
+    document.getElementById('game-container').style.display = 'none';
+    document.getElementById('game-loading').style.display = 'block';
+    document.getElementById('game-result').innerHTML = '';
+    document.getElementById('clue-1').style.display = 'none';
+    document.getElementById('clue-2').style.display = 'none';
+    document.getElementById('game-poster').style.filter = 'blur(25px)';
+    document.getElementById('game-overlay-text').style.display = 'block';
+    gameAttempts = 0;
+
+    document.getElementById('game-score-board').style.display = 'flex';
+    document.getElementById('game-score-correct').innerText = gameScoreCorrect;
+    document.getElementById('game-score-wrong').innerText = gameScoreWrong;
+
+    try {
+        // Rastgele 1-10 arası popüler film sayfası
+        const randomPage = Math.floor(Math.random() * 20) + 1;
+        const res = await fetch(`${BASE_URL}/discover/movie?api_key=${API_KEY}&language=tr-TR&page=${randomPage}&vote_count.gte=500&with_original_language=en|tr&sort_by=popularity.desc`);
+        const data = await res.json();
+        
+        // Seçenekleri oluştur (1 doğru, 3 yanlış)
+        const shuffled = data.results.sort(() => 0.5 - Math.random());
+        currentGameMovie = shuffled[0];
+        currentGameOptions = shuffled.slice(0, 4).sort(() => 0.5 - Math.random());
+
+        // Posteri yükle
+        const posterUrl = currentGameMovie.backdrop_path ? BACKDROP_BASE + currentGameMovie.backdrop_path : (currentGameMovie.poster_path ? IMAGE_BASE + currentGameMovie.poster_path : '');
+        document.getElementById('game-poster').src = posterUrl;
+
+        // İpuçlarını hazırla
+        const releaseYear = currentGameMovie.release_date ? currentGameMovie.release_date.split('-')[0] : 'Bilinmiyor';
+        document.getElementById('clue-1').innerHTML = `<i class='far fa-calendar-alt'></i> Yıl: ${releaseYear}`;
+        
+        // Oyuncu ipucunu çek
+        const castRes = await fetch(`${BASE_URL}/movie/${currentGameMovie.id}/credits?api_key=${API_KEY}&language=tr-TR`);
+        const castData = await castRes.json();
+        if(castData.cast && castData.cast.length > 0) {
+            document.getElementById('clue-2').innerHTML = `<i class='fas fa-user'></i> Oyuncu: ${castData.cast[0].name}`;
+        } else {
+            document.getElementById('clue-2').innerHTML = `<i class='fas fa-star'></i> Puan: ${currentGameMovie.vote_average}`;
+        }
+
+        // Seçenekleri ekrana bas
+        const optionsContainer = document.getElementById('game-options');
+        optionsContainer.innerHTML = '';
+        currentGameOptions.forEach(opt => {
+            const btn = document.createElement('button');
+            btn.className = 'game-option-btn';
+            btn.innerText = opt.title;
+            btn.onclick = () => makeGameGuess(opt.id, btn);
+            optionsContainer.appendChild(btn);
+        });
+
+        document.getElementById('game-loading').style.display = 'none';
+        document.getElementById('game-container').style.display = 'block';
+
+        // Oyun yüklendikten sonra kaydırma yap (Başlığı gizle, afişe odakla)
+        setTimeout(() => {
+            const container = document.getElementById('game-container');
+            if(container) container.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }, 100);
+    } catch (err) {
+        console.error(err);
+        document.getElementById('game-loading').innerHTML = 'Oyun yüklenirken hata oluştu.';
+    }
+}
+
+function makeGameGuess(guessedId, btn) {
+    if(guessedId === currentGameMovie.id) {
+        // Doğru Bildi!
+        btn.style.background = '#4CAF50';
+        btn.style.borderColor = '#4CAF50';
+        document.getElementById('game-result').innerHTML = '<span style="color:#4CAF50"><i class="fas fa-check-circle"></i> Doğru Bildin!</span>';
+        document.getElementById('game-poster').style.filter = 'blur(0px)';
+        document.getElementById('game-overlay-text').style.display = 'none';
+        
+        gameScoreCorrect++;
+        document.getElementById('game-score-correct').innerText = gameScoreCorrect;
+
+        // Diğer butonları devre dışı bırak
+        Array.from(document.getElementById('game-options').children).forEach(b => b.disabled = true);
+        
+        // 2.5 saniye sonra otomatik yeni oyun
+        setTimeout(startNewGame, 2500);
+    } else {
+        // Yanlış Bildi
+        btn.style.background = '#f44336';
+        btn.style.borderColor = '#f44336';
+        btn.disabled = true;
+        gameAttempts++;
+        
+        if(gameAttempts === 1) {
+            document.getElementById('game-result').innerHTML = '<span style="color:#f44336"><i class="fas fa-times-circle"></i> Yanlış! 1. İpucu açıldı.</span>';
+            document.getElementById('clue-1').style.display = 'inline-block';
+        } else if(gameAttempts === 2) {
+            document.getElementById('game-result').innerHTML = '<span style="color:#f44336"><i class="fas fa-times-circle"></i> Yanlış! 2. İpucu açıldı.</span>';
+            document.getElementById('clue-2').style.display = 'inline-block';
+        } else {
+            // Kaybetti
+            document.getElementById('game-result').innerHTML = '<span style="color:#f44336"><i class="fas fa-skull-crossbones"></i> Bilemedin! Cevap: ' + currentGameMovie.title + '</span>';
+            document.getElementById('game-poster').style.filter = 'blur(0px)';
+            document.getElementById('game-overlay-text').style.display = 'none';
+            
+            gameScoreWrong++;
+            document.getElementById('game-score-wrong').innerText = gameScoreWrong;
+
+            // Doğru olanı yeşil yap
+            Array.from(document.getElementById('game-options').children).forEach(b => {
+                b.disabled = true;
+                if(b.innerText === currentGameMovie.title) {
+                    b.style.background = '#4CAF50';
+                }
+            });
+            
+            // 2.5 saniye sonra otomatik yeni oyun
+            setTimeout(startNewGame, 2500);
+        }
+    }
+}
+
+// --- PREMIUM FILTER UI LOGIC ---
+function setMediaType(val, btn) {
+    // Update hidden select
+    document.getElementById('mediaTypeFilter').value = val;
+    // Update UI
+    const siblings = btn.parentElement.querySelectorAll('.segment-btn');
+    siblings.forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    // Trigger filter
+    applyPlatformFilters();
+}
+
+function setGenre(val, btn) {
+    // Update hidden select
+    document.getElementById('genreFilter').value = val;
+    // Update UI
+    const siblings = btn.parentElement.querySelectorAll('.genre-pill-btn');
+    siblings.forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    // Trigger filter
+    applyPlatformFilters();
 }

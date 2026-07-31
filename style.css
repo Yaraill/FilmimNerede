@@ -1598,3 +1598,206 @@ select option {
     scrollbar-width: none; /* Firefox */
     -ms-overflow-style: none;  /* Internet Explorer 10+ */
 }
+
+/* --- UI REDESIGN OVERRIDES --- */
+.glass-nav {
+    display: flex;
+    justify-content: center;
+    gap: 15px;
+    margin-bottom: 30px;
+    position: sticky;
+    top: 70px;
+    z-index: 10;
+    padding: 10px;
+    background: var(--glass-bg);
+    backdrop-filter: blur(15px);
+    border-radius: 20px;
+    border: 1px solid var(--glass-border);
+    box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+}
+
+.profile-tab-btn {
+    padding: 10px 25px;
+    background: transparent;
+    color: var(--text-color);
+    border: 1px solid transparent;
+    border-radius: 20px;
+    cursor: pointer;
+    font-weight: 600;
+    transition: all 0.3s ease;
+}
+.profile-tab-btn:hover {
+    background: rgba(128,128,128,0.2);
+}
+.profile-tab-btn.active {
+    background: var(--accent-color);
+    color: white;
+    border-color: var(--accent-color);
+    box-shadow: 0 4px 15px rgba(229,9,20,0.3);
+}
+
+/* Light Theme overrides for stats */
+body.light-theme .stat-card {
+    background: var(--card-bg);
+    color: var(--text-color);
+    border: 1px solid var(--glass-border);
+    box-shadow: 0 5px 15px rgba(0,0,0,0.05);
+}
+body.light-theme .stat-value {
+    color: var(--primary-color);
+}
+body.light-theme .stat-label {
+    color: var(--text-muted);
+}
+
+/* --- PREMIUM FILTER CONTROLS --- */
+.premium-segmented-control {
+    display: inline-flex;
+    background: rgba(0,0,0,0.4);
+    padding: 5px;
+    border-radius: 30px;
+    border: 1px solid var(--glass-border);
+}
+body.light-theme .premium-segmented-control {
+    background: rgba(0,0,0,0.05);
+}
+.segment-btn {
+    padding: 10px 25px;
+    background: transparent;
+    border: none;
+    border-radius: 25px;
+    color: var(--text-color);
+    font-weight: 600;
+    cursor: pointer;
+    transition: 0.3s;
+}
+.segment-btn.active {
+    background: var(--card-bg);
+    color: var(--primary-color);
+    box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+}
+
+.premium-genre-pills {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 10px;
+    padding-bottom: 10px;
+    width: 100%;
+}
+.premium-genre-pills::-webkit-scrollbar {
+    display: none;
+}
+.genre-pill-btn {
+    white-space: nowrap;
+    padding: 8px 20px;
+    background: var(--glass-bg);
+    border: 1px solid var(--glass-border);
+    border-radius: 20px;
+    color: var(--text-color);
+    cursor: pointer;
+    font-weight: 500;
+    transition: 0.3s;
+}
+.genre-pill-btn:hover {
+    background: rgba(255,255,255,0.1);
+}
+body.light-theme .genre-pill-btn:hover {
+    background: rgba(0,0,0,0.05);
+}
+.genre-pill-btn.active {
+    background: linear-gradient(135deg, var(--primary-color), var(--accent-color));
+    color: white;
+    border: none;
+    box-shadow: 0 4px 15px rgba(37, 99, 235, 0.3);
+}
+
+.premium-dropdown {
+    background: var(--glass-bg);
+    color: var(--text-color);
+    border: 1px solid var(--glass-border);
+    padding: 8px 15px;
+    border-radius: 20px;
+    font-size: 0.9rem;
+    cursor: pointer;
+    outline: none;
+    font-weight: 500;
+}
+.premium-dropdown option {
+    background: var(--card-bg);
+    color: var(--text-color);
+}
+
+/* --- MINI GAME UI (COMPACT & PREMIUM) --- */
+#game-container {
+    scroll-margin-top: 160px; /* Accounts for fixed header and adds extra breathing room */
+}
+.game-poster-wrapper {
+    margin-bottom: 15px;
+    position: relative;
+    overflow: hidden;
+    border-radius: 15px;
+    box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+    width: 100%;
+    aspect-ratio: 16/9; /* Show full widescreen backdrop */
+    max-height: 350px;
+    background: #000;
+}
+.game-poster-img {
+    width: 100%;
+    height: 100%;
+    object-fit: contain; /* Ensure no cropping */
+    filter: blur(25px);
+    transition: filter 1s ease;
+}
+#game-overlay-text {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    font-size: 3.5rem;
+    color: white;
+    text-shadow: 0 0 20px rgba(0,0,0,0.8);
+    font-weight: 900;
+    pointer-events: none;
+}
+.game-clues-container {
+    margin-bottom: 15px;
+    font-size: 0.95rem;
+    color: var(--text-muted);
+    min-height: 35px;
+}
+.game-clue {
+    background: var(--glass-bg);
+    border: 1px solid var(--glass-border);
+    color: var(--text-color);
+    padding: 5px 12px;
+    border-radius: 15px;
+    margin: 3px;
+    display: inline-block;
+}
+.game-options-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+    margin-bottom: 15px;
+}
+.game-option-btn {
+    padding: 12px;
+    border-radius: 12px;
+    font-size: 0.95rem;
+    border: 1px solid var(--glass-border);
+    background: var(--card-bg);
+    color: var(--text-color);
+    cursor: pointer;
+    transition: 0.3s;
+    font-weight: 600;
+    box-shadow: 0 4px 10px rgba(0,0,0,0.1);
+}
+.game-option-btn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 15px rgba(0,0,0,0.2);
+}
+body.light-theme .game-poster-wrapper {
+    box-shadow: 0 10px 30px rgba(0,0,0,0.15);
+}
