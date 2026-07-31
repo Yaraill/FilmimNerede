@@ -8,11 +8,11 @@
     <title>FilmimNerede - Türkiye Film & Dizi Rehberi</title>
     <!-- Google Fonts: Modern ve okunaklı bir font (Inter) -->
     <!-- Kendi CSS dosyamız -->
-    <link rel="stylesheet" href="style.css?v=4">
+    <link rel="stylesheet" href="style.css?v=50">
     <!-- Font Awesome (İkonlar için) -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
-    <!-- Pratik Favicon (Tarayıcı Sekmesi İkonu) -->
     <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🎬</text></svg>">
+    <link rel="manifest" href="manifest.json">
 </head>
 <body>
 
@@ -25,7 +25,7 @@
             <li><a href="#" class="active" onclick="switchTab(event, 'now-playing')">Şu An Vizyonda</a></li>
             <li><a href="#" onclick="switchTab(event, 'vizyon')">Yakında Vizyonda</a></li>
             <li><a href="#" onclick="switchTab(event, 'platform')">Nerede İzlerim?</a></li>
-            <li><a href="#" onclick="switchTab(event, 'watchlist')">Listem</a></li>
+            <li><a href="#" onclick="switchTab(event, 'profile')">Profilim</a></li>
             <li><a href="#" onclick="switchTab(event, 'imax')" class="imax-badge">IMAX</a></li>
             <li><button onclick="toggleTheme()" id="themeToggleBtn" title="Tema Değiştir" style="background:transparent; border:none; color:var(--text-color); font-size:1.2rem; cursor:pointer;"><i class="fas fa-sun"></i></button></li>
         </ul>
@@ -36,6 +36,17 @@
 
         <!-- SEKTME 1: Şu An Vizyonda (YENİ) -->
         <section id="now-playing" class="tab-content active-tab">
+
+            <div id="trending-actors-section" style="margin-bottom:30px;">
+                <div class="section-header"><h2>Gündemdeki İsimler</h2></div>
+                <div id="trending-actors-list" class="actor-story-container" style="display:flex; overflow-x:auto; padding-bottom:20px; gap:15px;"></div>
+            </div>
+
+            <div id="collections-section" style="margin-bottom:30px;">
+                <div class="section-header"><h2>Özel Koleksiyonlar</h2></div>
+                <div id="curated-collections-list" class="movie-grid" style="display:flex; overflow-x:auto; padding-bottom:20px; gap:15px;"></div>
+            </div>
+
             <div class="section-header">
                 <h2>Şu An Vizyonda & Bilet Al</h2>
                 <p>Türkiye genelinde şu an vizyonda olan filmler. Şehrinizi seçerek bilet ekranına gidebilirsiniz.</p>
@@ -151,7 +162,11 @@
                 <h2>Film & Dizi Arama Motoru</h2>
                 <p>Türkiye'de (Netflix, Amazon, BluTV vb.) nerede yayınlandığını bulun.</p>
             </div>
-            
+            <div id="top10-section" style="display:none; margin-bottom: 30px;">
+                <h3 style="color: var(--text-color); margin-bottom: 10px; padding-left: 10px; border-left: 4px solid var(--accent-color);">🔥 Top 10 Bu Hafta</h3>
+                <div id="top10-grid" class="collection-list"></div>
+            </div>
+
             <div class="search-box glass" style="position: relative; display: flex; align-items: stretch;">
                 <input type="text" id="searchInput" placeholder="Film, Dizi veya Oyuncu adı girin (Örn: timothée chalamet)..." onkeyup="handleSearchInput(event)" onkeypress="if(event.key === 'Enter') searchMovie(true)" autocomplete="off">
                 <div id="autocomplete-box" class="autocomplete-suggestions"></div>
@@ -159,69 +174,101 @@
                 <button onclick="surpriseMe()" title="Rastgele Film Öner (Sürpriz Yap!)" style="background: var(--accent-color); border-radius: 0 25px 25px 0; border-left: 1px solid rgba(255,255,255,0.2); padding: 0 20px;"><i class="fas fa-dice"></i></button>
             </div>
 
-            <div class="platform-filters glass">
-                <h3 style="text-align:center; margin-bottom: 15px; color: var(--text-muted);">Veya Doğrudan Platform Seçin</h3>
-                <div class="provider-logos-filter">
-                    <button class="provider-filter-btn" id="btn-prov-8" onclick="loadPlatformMovies(8)" title="Netflix">
-                        <img src="https://image.tmdb.org/t/p/original/pbpMk2JmcoNnQwx5JGpXngfoWtp.jpg" alt="Netflix">
-                    </button>
-                    <button class="provider-filter-btn" id="btn-prov-119" onclick="loadPlatformMovies(119)" title="Amazon Prime">
-                        <img src="https://image.tmdb.org/t/p/original/pvske1MyAoymrs5bguRfVqYiM9a.jpg" alt="Amazon Prime">
-                    </button>
-                    <button class="provider-filter-btn" id="btn-prov-337" onclick="loadPlatformMovies(337)" title="Disney+">
-                        <img src="https://image.tmdb.org/t/p/original/97yvRBw1GzX7fXprcF80er19ot.jpg" alt="Disney+">
-                    </button>
-                    <button class="provider-filter-btn" id="btn-prov-11" onclick="loadPlatformMovies(11)" title="MUBI">
-                        <img src="https://image.tmdb.org/t/p/original/x570VpH2C9EKDf1riP83rYc5dnL.jpg" alt="MUBI">
-                    </button>
+            
+            <div style="display: flex; flex-wrap: wrap; gap: 20px; justify-content: center; margin-top: 20px;">
+                <div class="platform-filters glass" style="flex: 1; min-width: 300px; display: flex; flex-direction: column; justify-content: center; padding: 20px; border-radius: 20px; margin-bottom: 0;">
+                    <div id="platform-selection-area">
+                        <h3 style="text-align:center; margin-bottom: 15px; color: var(--text-muted);">Veya Doğrudan Platform Seçin</h3>
+                        <div class="provider-logos-filter">
+                            <button class="provider-filter-btn" id="btn-prov-8" onclick="loadPlatformMovies(8)" title="Netflix">
+                                <img src="https://image.tmdb.org/t/p/original/pbpMk2JmcoNnQwx5JGpXngfoWtp.jpg" alt="Netflix">
+                            </button>
+                            <button class="provider-filter-btn" id="btn-prov-119" onclick="loadPlatformMovies(119)" title="Amazon Prime">
+                                <img src="https://image.tmdb.org/t/p/original/pvske1MyAoymrs5bguRfVqYiM9a.jpg" alt="Amazon Prime">
+                            </button>
+                            <button class="provider-filter-btn" id="btn-prov-337" onclick="loadPlatformMovies(337)" title="Disney+">
+                                <img src="https://image.tmdb.org/t/p/original/97yvRBw1GzX7fXprcF80er19ot.jpg" alt="Disney+">
+                            </button>
+                            <button class="provider-filter-btn" id="btn-prov-1899" onclick="loadPlatformMovies(1899)" title="HBO Max">
+                                <img src="https://upload.wikimedia.org/wikipedia/commons/1/17/HBO_Max_Logo.svg" style="background:#000; object-fit:contain; padding:5px;" alt="HBO Max">
+                            </button>
+                        </div>
+                    </div>
                 </div>
                 
-                <div class="filter-controls" style="margin-top: 15px; display: flex; gap: 10px; justify-content: center; flex-wrap: wrap;">
-                    <select id="mediaTypeFilter" class="modern-select" onchange="applyPlatformFilters()">
-                        <option value="all">Tümü (Film + Dizi)</option>
-                        <option value="movie">Sadece Filmler</option>
-                        <option value="tv">Sadece Diziler</option>
-                    </select>
-                    
-                    <select id="genreFilter" class="modern-select" onchange="applyPlatformFilters()">
-                        <option value="">Tüm Türler</option>
-                        <option value="28|12|10759">Aksiyon & Macera</option>
-                        <option value="878|14|10765">Bilim Kurgu & Fantazi</option>
-                        <option value="35">Komedi</option>
-                        <option value="18">Dram</option>
-                        <option value="80">Suç</option>
-                        <option value="9648">Gizem</option>
-                        <option value="27">Korku</option>
-                        <option value="53">Gerilim</option>
-                        <option value="10749">Romantik</option>
-                        <option value="10751">Aile</option>
-                        <option value="10402">Müzik</option>
-                        <option value="16">Animasyon</option>
-                    </select>
-                    
-                    <select id="ratingFilter" class="modern-select" onchange="applyPlatformFilters()">
-                        <option value="0">Tüm Puanlar</option>
-                        <option value="7">IMDb 7.0+</option>
-                        <option value="8">IMDb 8.0+</option>
-                        <option value="9">IMDb 9.0+</option>
-                    </select>
-
-                    <select id="sortByFilter" class="modern-select" onchange="applyPlatformFilters()">
-                        <option value="popularity.desc">Sıralama: En Popülerler</option>
-                        <option value="order.asc">Sıralama: Başrole Göre</option>
-                        <option value="vote_average.desc">Sıralama: En Yüksek Puan</option>
-                        <option value="primary_release_date.desc">Sıralama: En Yeniler</option>
-                        <option value="primary_release_date.asc">Sıralama: En Eskiler</option>
-                    </select>
-                    
-                    <div class="view-mode-controls" style="display: flex; gap: 5px; margin-left: 10px;">
-                        <button onclick="switchViewMode('grid')" id="viewGridBtn" class="action-btn active" style="padding: 8px 15px; border-radius: 20px; background: rgba(0,0,0,0.5); color: white;"><i class="fas fa-th"></i></button>
-                        <button onclick="switchViewMode('list')" id="viewListBtn" class="action-btn" style="padding: 8px 15px; border-radius: 20px; background: rgba(0,0,0,0.5); color: white;"><i class="fas fa-list"></i></button>
+                <div class="filter-controls glass" style="flex: 1; min-width: 300px; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 20px; border-radius: 20px;">
+                    <h3 style="text-align:center; margin-bottom: 15px; color: var(--text-muted);">Arama & Filtreleme</h3>
+                    <div style="display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; width: 100%;">
+                        <div class="view-mode-controls" style="display: flex; gap: 5px;">
+                            <button onclick="switchViewMode('grid')" id="viewGridBtn" class="action-btn active" style="padding: 8px 15px; border-radius: 20px; background: rgba(0,0,0,0.5); color: white;"><i class="fas fa-th"></i></button>
+                            <button onclick="switchViewMode('list')" id="viewListBtn" class="action-btn" style="padding: 8px 15px; border-radius: 20px; background: rgba(0,0,0,0.5); color: white;"><i class="fas fa-list"></i></button>
+                        </div>
+                        <button onclick="toggleAdvancedSearch()" id="advanced-toggle-btn" class="premium-filter-btn"><i class="fas fa-sliders-h"></i> Filtrele & Keşfet</button>
                     </div>
                 </div>
             </div>
 
-            <div id="search-results" class="movie-grid">
+            <div style="display:flex; justify-content:center; width:100%;">
+                <div id="advanced-search-panel" class="glass" style="display: none; width: 100%; max-width: 700px; padding: 30px; border-radius: 20px; text-align: left; margin-top: 15px; border: 1px solid rgba(255,255,255,0.15); box-shadow: 0 15px 40px rgba(0,0,0,0.6); background: rgba(20,20,20,0.85); backdrop-filter: blur(15px);">
+                    
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 20px; margin-bottom: 25px;">
+                        <!-- Type -->
+                        <div>
+                            <label style="display:block; margin-bottom:8px; font-weight:600; color:var(--text-color); font-size: 0.95rem;"><i class="fas fa-film" style="color:var(--primary-color);"></i> Türü</label>
+                            <select id="discover-type" class="modern-select" style="width:100%; background:rgba(0,0,0,0.6); border:1px solid rgba(255,255,255,0.1); border-radius:10px; padding:10px;">
+                                <option value="movie">Sadece Filmler</option>
+                                <option value="tv">Sadece Diziler</option>
+                            </select>
+                        </div>
+                        
+                        <!-- Platform -->
+                        <div>
+                            <label style="display:block; margin-bottom:8px; font-weight:600; color:var(--text-color); font-size: 0.95rem;"><i class="fas fa-tv" style="color:var(--primary-color);"></i> Platform</label>
+                            <select id="discover-platform" class="modern-select" style="width:100%; background:rgba(0,0,0,0.6); border:1px solid rgba(255,255,255,0.1); border-radius:10px; padding:10px;" onchange="loadPlatformMovies(parseInt(this.value), true)">
+                                <option value="0">Tüm Platformlar</option>
+                                <option value="8">Netflix</option>
+                                <option value="119">Amazon Prime</option>
+                                <option value="337">Disney+</option>
+                                <option value="1899">HBO Max</option>
+                            </select>
+                        </div>
+                        
+                        <!-- Year -->
+                        <div>
+                            <label style="display:block; margin-bottom:8px; font-weight:600; color:var(--text-color); font-size: 0.95rem;"><i class="far fa-calendar-alt" style="color:var(--primary-color);"></i> Çıkış Yılı</label>
+                            <div style="display:flex; gap:10px;">
+                                <input type="number" id="discover-year-min" placeholder="1990" class="modern-input" style="width:50%; background:rgba(0,0,0,0.6); border:1px solid rgba(255,255,255,0.1); border-radius:10px; padding:10px; color:white;">
+                                <input type="number" id="discover-year-max" placeholder="2026" class="modern-input" style="width:50%; background:rgba(0,0,0,0.6); border:1px solid rgba(255,255,255,0.1); border-radius:10px; padding:10px; color:white;">
+                            </div>
+                        </div>
+
+                        <!-- Sort -->
+                        <div>
+                            <label style="display:block; margin-bottom:8px; font-weight:600; color:var(--text-color); font-size: 0.95rem;"><i class="fas fa-sort-amount-down" style="color:var(--primary-color);"></i> Sıralama</label>
+                            <select id="discover-sort" class="modern-select" style="width:100%; background:rgba(0,0,0,0.6); border:1px solid rgba(255,255,255,0.1); border-radius:10px; padding:10px;">
+                                <option value="popularity.desc">En Popülerler</option>
+                                <option value="vote_average.desc">En Yüksek Puan</option>
+                                <option value="primary_release_date.desc">En Yeniler</option>
+                                <option value="primary_release_date.asc">En Eskiler</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <!-- Genres as Pills -->
+                    <div style="margin-bottom: 25px;">
+                        <label style="display:block; margin-bottom:12px; font-weight:600; color:var(--text-color); font-size: 0.95rem;"><i class="fas fa-tags" style="color:var(--primary-color);"></i> Kategoriler</label>
+                        <div class="genre-pill-container" style="display: flex; flex-wrap: wrap; gap: 8px;" id="advanced-genre-pills">
+                            <!-- app.js will populate this -->
+                        </div>
+                    </div>
+                    
+                    <div style="text-align: right; border-top: 1px solid rgba(255,255,255,0.1); padding-top: 20px;">
+                        <button onclick="executeDiscover()" class="action-btn" style="width:100%; padding:12px; border-radius:10px; background:linear-gradient(135deg, var(--primary-color), var(--accent-color)); color:white; font-size:1.1rem; font-weight:bold; border:none; cursor:pointer;"><i class="fas fa-search"></i> Sonuçları Getir</button>
+                    </div>
+                </div>
+            </div>
+            
+            <div id="search-results" class="movie-grid" style="margin-top: 30px;">
                 <!-- Arama sonuçları buraya gelecek -->
             </div>
             
@@ -230,17 +277,45 @@
             </div>
         </section>
 
-        <!-- SEKTME 5: Listem -->
-        <section id="watchlist" class="tab-content">
+        <!-- SEKTME 5: Profilim -->
+        
+        <section id="profile" class="tab-content">
             <div class="section-header">
-                <h2>Listem</h2>
-                <p>Kaydettiğiniz tüm dizi ve filmler.</p>
+                <h2>Profilim</h2>
+                <p>Sinema istatistikleriniz, listeleriniz ve favori oyuncularınız.</p>
             </div>
             
-            <div id="watchlist-grid" class="movie-grid">
-                <!-- Local Storage verileri buraya gelecek -->
+
+
+            <div id="profile-stats-container" style="display:flex; justify-content:center; gap:20px; flex-wrap:wrap; margin-bottom:30px;"></div>
+            
+            <div id="recently-viewed-section" style="display:none; margin-bottom:40px;">
+                <div class="section-header"><h2>Son Baktıklarınız</h2></div>
+                <div id="recently-viewed-grid" class="movie-grid" style="display:flex; overflow-x:auto; padding-bottom:20px; gap:15px;"></div>
+            </div>
+
+            <div class="profile-tabs" style="display:flex; justify-content:center; gap:15px; margin-bottom:30px; position: sticky; top: 70px; z-index: 10; padding: 10px 0; background: rgba(10,10,10,0.8); backdrop-filter: blur(10px); border-radius: 20px;">
+                <button class="profile-tab-btn active" onclick="switchProfileTab('profile-watchlist', this)" style="padding:10px 20px; border-radius:20px; background:var(--accent-color); color:white; border:none; cursor:pointer; font-weight: 600; box-shadow: 0 4px 15px rgba(229,9,20,0.3);">Listeme Eklediklerim</button>
+                <button class="profile-tab-btn" onclick="switchProfileTab('profile-rated', this)" style="padding:10px 20px; border-radius:20px; background:rgba(0,0,0,0.5); color:white; border:1px solid rgba(255,255,255,0.1); cursor:pointer; font-weight: 600;">Puanladıklarım</button>
+                <button class="profile-tab-btn" onclick="switchProfileTab('profile-fav-actors', this)" style="padding:10px 20px; border-radius:20px; background:rgba(0,0,0,0.5); color:white; border:1px solid rgba(255,255,255,0.1); cursor:pointer; font-weight: 600;">Favori Oyuncularım</button>
+            </div>
+
+            <div id="profile-watchlist" class="profile-tab-content active-tab">
+                <div id="watchlist-grid" class="profile-movie-grid"></div>
+            </div>
+            
+            <div id="profile-rated" class="profile-tab-content" style="display:none;">
+                <h3 style="margin-top: 20px; color:var(--text-color);">Puanlanan Filmler</h3>
+                <div id="rated-movie-grid" class="profile-movie-grid"></div>
+                <h3 style="margin-top: 20px; color:var(--text-color);">Puanlanan Diziler</h3>
+                <div id="rated-tv-grid" class="profile-movie-grid"></div>
+            </div>
+            
+            <div id="profile-fav-actors" class="profile-tab-content" style="display:none;">
+                <div id="favorite-actors-grid" class="profile-movie-grid"></div>
             </div>
         </section>
+
 
         <!-- SEKTME 6: IMAX Rehberi -->
         <section id="imax" class="tab-content">
@@ -274,15 +349,40 @@
         </div>
     </div>
 
+    <!-- Rastgele (Surprise Me) Modalı -->
+    <div id="random-modal" class="modal" onclick="closeRandom(event)">
+        <div class="modal-content glass" style="max-width: 400px; text-align: center; padding: 40px 20px;">
+            <span class="close-btn" onclick="closeRandom(null, true)">&times;</span>
+            <h2 style="margin-bottom: 20px; font-size: 2rem;">🎲 Ne İzlesem?</h2>
+            <p style="margin-bottom: 20px; color: var(--text-muted);">Bir tür seç, sana rastgele efsane bir film önereyim!</p>
+            <select id="randomGenreSelect" class="modern-select" style="width: 100%; margin-bottom: 20px; font-size: 1.1rem; padding: 15px;">
+                <option value="">Harbiden Rastgele (Tüm Türler)</option>
+                <option value="28">Aksiyon</option>
+                <option value="878">Bilim Kurgu</option>
+                <option value="35">Komedi</option>
+                <option value="18">Dram</option>
+                <option value="80">Suç</option>
+                <option value="9648">Gizem</option>
+                <option value="27">Korku</option>
+                <option value="53">Gerilim</option>
+                <option value="10749">Romantik</option>
+                <option value="16">Animasyon</option>
+            </select>
+            <button onclick="fetchRandomMovie()" class="btn-buy-ticket" style="width: 100%; justify-content: center; font-size: 1.2rem; padding: 15px;"><i class="fas fa-magic"></i> Bana Öner!</button>
+        </div>
+    </div>
+
     <!-- Detaylar Penceresi (Modal) -->
     <div id="details-modal" class="modal details-modal-wrapper" onclick="closeDetails(event)">
         <div id="ambilight-bg" class="ambilight-bg"></div>
+        <div id="video-bg-container" class="video-bg-container"></div>
         <div class="details-content glass">
             <span class="close-btn" onclick="closeDetails(null, true)">&times;</span>
             <div id="details-backdrop" class="details-backdrop"></div>
             <div class="details-body">
                 <div class="details-left">
                     <img id="details-poster" src="" alt="">
+                    <div id="modal-providers" class="modal-providers"></div>
                 </div>
                 <div class="details-right">
                     <h2 id="details-title"></h2>
@@ -306,7 +406,45 @@
         </div>
     </div>
 
+
+
     <!-- Kendi JS dosyamız -->
-    <script src="app.js?v=3"></script>
+    <script src="app.js?v=50"></script>
+    <script>
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('/service-worker.js')
+                    .then(reg => console.log('Service Worker registered'))
+                    .catch(err => console.log('Service Worker error', err));
+            });
+        }
+    </script>
+
+    <!-- Oyuncu Detayları Penceresi (Modal) -->
+    <div id="actor-modal" class="modal" onclick="closeActor(event)" style="z-index: 3000;">
+        <div class="modal-content" style="max-width: 800px; padding: 0;">
+            <span class="close-btn" onclick="closeActor(null, true)">&times;</span>
+            <div class="actor-header" style="display: flex; gap: 20px; padding: 20px; background: rgba(0,0,0,0.5);">
+                <img id="actor-profile-img" src="" style="width: 150px; height: 225px; object-fit: cover; border-radius: 10px; box-shadow: 0 5px 15px rgba(0,0,0,0.5);">
+                <div style="flex:1;">
+                    <h2 id="actor-name" style="margin:0 0 10px 0; font-size: 2rem;"></h2>
+                    <p id="actor-bio" style="font-size: 0.95rem; line-height: 1.5; color: #ccc; max-height: 100px; overflow-y: auto; padding-right: 10px;"></p>
+                    <div style="margin-top: 15px; display: flex; gap: 10px;">
+                        <span id="actor-bday" style="font-size: 0.9rem; color: #aaa;"><i class="fas fa-birthday-cake"></i> </span>
+                        <span id="actor-place" style="font-size: 0.9rem; color: #aaa;"><i class="fas fa-map-marker-alt"></i> </span>
+                    </div>
+                </div>
+            </div>
+            <div class="actor-movies" style="padding: 20px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+                    <h3>Önemli Yapımları</h3>
+                    <div id="actor-filters"></div>
+                </div>
+                <div id="actor-movies-grid" class="actor-movies-grid movie-grid" style="display:flex; overflow-x:auto; padding-bottom:15px; gap:10px;"></div>
+            </div>
+        </div>
+    </div>
+
+
 </body>
 </html>
