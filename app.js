@@ -325,6 +325,10 @@ async function loadGenres() {
 }
 
 function switchTab(event, tabId) {
+    clearAllFilters();
+    const pf = document.getElementById('providerFilter');
+    if (pf) pf.style.display = 'none';
+    
     document.querySelectorAll('.tab-content').forEach(tab => tab.classList.remove('active-tab'));
     document.querySelectorAll('.nav-links a').forEach(link => link.classList.remove('active'));
 
@@ -370,7 +374,7 @@ function createMovieCard(item, mediaType = "movie", tabContext = "") {
     const year = (item.release_date || item.first_air_date || "").split('-')[0];
     const titleWithYear = year ? `${title} (${year})` : title;
     
-    const poster = item.poster_path ? IMAGE_BASE + item.poster_path : 'https://via.placeholder.com/500x750?text=Afiş+Yok';
+    const poster = item.poster_path ? IMAGE_BASE + item.poster_path : 'https://placehold.co/500x750/1a1a2e/ffffff?text=Afis+Yok';
     const rating = item.vote_average ? item.vote_average.toFixed(1) : "N/A";
     
     const genres = (item.genre_ids || []).map(id => genreMap[id]).filter(Boolean).slice(0, 2).join(', ');
@@ -440,8 +444,10 @@ let hoverSlideshowTimer = null;
 let hoverSlideshowInterval = null;
 async function startHoverSlideshow(imgElement, movieId) {
     if (!movieId) return;
+    imgElement.dataset.isHovered = 'true';
     
     hoverSlideshowTimer = setTimeout(async () => {
+        if (imgElement.dataset.isHovered !== 'true') return;
         imgElement.style.transition = "none";
         
         let images = [imgElement.src];
@@ -465,6 +471,8 @@ async function startHoverSlideshow(imgElement, movieId) {
             }
         }
         
+        if (imgElement.dataset.isHovered !== 'true') return;
+        
         if (images.length > 0) {
             imgElement.style.objectFit = 'contain';
             imgElement.style.backgroundColor = 'black';
@@ -481,6 +489,7 @@ async function startHoverSlideshow(imgElement, movieId) {
 }
 
 function stopHoverSlideshow(imgElement, originalSrc) {
+    imgElement.dataset.isHovered = 'false';
     if (hoverSlideshowTimer) {
         clearTimeout(hoverSlideshowTimer);
         hoverSlideshowTimer = null;
@@ -513,15 +522,26 @@ async function fetchAndInjectProviders(itemId, mediaType, itemData = null) {
         const els = document.querySelectorAll(`.providers-${itemId}`);
         if (els.length === 0) return;
 
+        const filterProvId = parseInt(document.getElementById('providerFilter')?.value || "0");
+        let hasProv = false;
+
         if (tr && tr.flatrate) {
-            let html = "";
-            tr.flatrate.slice(0,3).forEach(p => {
-                html += `<img src="${IMAGE_BASE}${p.logo_path}" alt="${p.provider_name}" class="provider-logo" title="${p.provider_name}">`;
-            });
-            els.forEach(el => el.innerHTML = html);
+            hasProv = filterProvId === 0 || tr.flatrate.some(p => p.provider_id === filterProvId);
+            
+            if (hasProv) {
+                let html = "";
+                tr.flatrate.slice(0,3).forEach(p => {
+                    html += `<img src="${IMAGE_BASE}${p.logo_path}" alt="${p.provider_name}" class="provider-logo" title="${p.provider_name}">`;
+                });
+                els.forEach(el => el.innerHTML = html);
+            }
         } else {
-            els.forEach(el => el.innerHTML = "<span class='no-provider'>Türkiye'de yayını yok</span>");
+            hasProv = filterProvId === 0;
+            if (hasProv) {
+                els.forEach(el => el.innerHTML = "<span class='no-provider'>Türkiye'de yayını yok</span>");
+            }
         }
+        
     } catch (err) {
         console.error("Provider bilgisi alınamadı", err);
         const els = document.querySelectorAll(`.providers-${itemId}`);
@@ -579,16 +599,29 @@ async function loadUpcomingMovies() {
 
 function applyPlatformFilters() {
     if (currentMode === "actor") {
-        openActorDetails(currentActorId, document.getElementById('searchInput').value, true, currentJobType);
+        openActorDetails(currentActorId, document.getElementById('searchInput').value, true, currentJobType, 0, true);
     } else if (currentMode === "search") {
-        searchMovie(true);
+        searchMovie(true, true);
     } else {
         loadPlatformMovies(currentProvider, true, true); // true for isFilterChange
     }
 }
 
+function handlePlatformButtonClick(pid) {
+    if (currentProvider === pid) {
+        currentProvider = 0;
+    } else {
+        currentProvider = pid;
+    }
+    const platSelect = document.getElementById('discover-platform');
+    if (platSelect) platSelect.value = currentProvider;
+    
+    loadPlatformMovies(currentProvider, true, true);
+}
+
 async function loadPlatformMovies(providerId = 0, reset = true, isFilterChange = false) {
     if (reset) {
+        if (!isFilterChange) clearAllFilters();
         currentPage = 1;
         document.getElementById('search-results').innerHTML = "";
         document.getElementById('loadMoreBtn').style.display = 'none';
@@ -597,14 +630,8 @@ async function loadPlatformMovies(providerId = 0, reset = true, isFilterChange =
         const sortSelect = document.getElementById('sortByFilter');
         if (sortSelect && sortSelect.value === 'order.asc') sortSelect.value = 'popularity.desc';
         
-        window.scrollTo({ top: 0, behavior: 'smooth' });
-        // Toggle off if already selected, unless it's just a filter change
-        if (!isFilterChange && providerId > 0 && currentProvider === providerId) {
-            providerId = 0;
-            currentProvider = 0;
-        } else {
-            currentProvider = providerId;
-        }
+        if (!isFilterChange) window.scrollTo({ top: 0, behavior: 'smooth' });
+        currentProvider = providerId;
         
         // Sync platform dropdown
         const platSelect = document.getElementById('discover-platform');
@@ -613,7 +640,20 @@ async function loadPlatformMovies(providerId = 0, reset = true, isFilterChange =
         currentPage = 1;
         currentMode = "platform";
         const container = document.getElementById('search-results');
-        container.innerHTML = "<div class='loading'>İçerikler Yükleniyor...</div>";
+        
+        if (isFilterChange) {
+            container.style.minHeight = container.offsetHeight + 'px';
+            const oldMovies = container.querySelectorAll('.movie-card, .no-provider, .loading');
+            oldMovies.forEach(m => m.remove());
+            
+            let skel = "";
+            for(let i=0; i<10; i++) {
+                skel += `<div class="movie-card skeleton-card" style="border:none; background:transparent;"><div class="skeleton" style="width:100%; height:300px; border-radius:10px;"></div><div class="skeleton" style="width:80%; height:20px; margin-top:10px;"></div><div class="skeleton" style="width:50%; height:15px; margin-top:5px;"></div></div>`;
+            }
+            container.insertAdjacentHTML('beforeend', skel);
+        } else {
+            container.innerHTML = "<div class='loading'>İçerikler Yükleniyor...</div>";
+        }
         document.getElementById('loadMoreBtn').style.display = 'none';
         
         document.querySelectorAll('.provider-filter-btn').forEach(btn => btn.classList.remove('active'));
@@ -698,7 +738,9 @@ async function loadPlatformMovies(providerId = 0, reset = true, isFilterChange =
         if (allResults.length > 0) {
             document.getElementById('loadMoreBtn').style.display = 'inline-block';
         }
+        if (reset) document.getElementById('search-results').style.minHeight = '';
     } catch (error) {
+        if (reset) document.getElementById('search-results').style.minHeight = '';
         console.error("loadPlatformMovies error:", error);
         if (reset) document.getElementById('search-results').innerHTML = `<div class='loading' style='color:red;'>Hata oluştu: ${error.message} <br/> ${error.stack}</div>`;
     }
@@ -708,9 +750,9 @@ function handleSearch(event) {
     if (event.key === "Enter") searchMovie();
 }
 
-async function searchMovie(reset = true) {
+async function searchMovie(reset = true, isFilterChange = false) {
     if (reset) {
-        window.scrollTo({ top: 0, behavior: 'smooth' });
+        if (!isFilterChange) window.scrollTo({ top: 0, behavior: 'smooth' });
         currentMode = "search";
         currentPage = 1;
         currentSearchQuery = document.getElementById('searchInput').value.trim();
@@ -726,8 +768,13 @@ async function searchMovie(reset = true) {
         document.getElementById('top10-section').style.display = 'none';
         const platformSelection = document.getElementById('platform-selection-area');
         if (platformSelection) platformSelection.style.display = 'none';
+        const pf = document.getElementById('providerFilter');
+        if (pf) pf.style.display = 'none';
         
         const container = document.getElementById('search-results');
+        if (isFilterChange) {
+            container.style.minHeight = container.offsetHeight + 'px';
+        }
         container.innerHTML = "";
         
         if (!currentSearchQuery) {
@@ -758,6 +805,7 @@ async function searchMovie(reset = true) {
         
         if (filtered.length === 0 && reset) {
             container.innerHTML = "<div class='loading'>Sonuç bulunamadı.</div>";
+            document.getElementById('search-results').style.minHeight = '';
             return;
         }
         
@@ -771,7 +819,9 @@ async function searchMovie(reset = true) {
         } else {
             document.getElementById('loadMoreBtn').style.display = 'none';
         }
+        document.getElementById('search-results').style.minHeight = '';
     } catch (error) {
+        document.getElementById('search-results').style.minHeight = '';
         console.error("searchMovie error:", error);
         if (reset) document.getElementById('search-results').innerHTML = `<div class='loading' style='color:red;'>Arama Hatası: ${error.message}</div>`;
     }
@@ -859,32 +909,44 @@ function toggleWatchlist(btnElem, movieId) {
     
     let watchlist = JSON.parse(localStorage.getItem('watchlist')) || [];
     const existingIndex = watchlist.findIndex(w => w.id === item.id);
+    const isAdding = existingIndex === -1;
     
-    if (existingIndex > -1) {
+    if (!isAdding) {
         watchlist.splice(existingIndex, 1);
-        if (btnElem.id === "modal-wl-btn") {
-            btnElem.classList.remove('active');
-            btnElem.classList.add('inactive');
-            btnElem.innerHTML = '<i class="fas fa-heart"></i> Listeme Ekle';
-            btnElem.style.background = "";
-            btnElem.style.color = "";
-        } else {
-            btnElem.classList.remove('active');
-        }
     } else {
         watchlist.push(item);
-        if (btnElem.id === "modal-wl-btn") {
-            btnElem.classList.remove('inactive');
-            btnElem.classList.add('active');
-            btnElem.innerHTML = `<i class="fas fa-heart"></i> Listeden Çıkar`;
-            btnElem.style.background = "";
-            btnElem.style.color = "";
-        } else {
-            btnElem.classList.add('active');
-        }
     }
     
     localStorage.setItem('watchlist', JSON.stringify(watchlist));
+    
+    // Global sync for all heart buttons for this movie
+    const allBtns = document.querySelectorAll(`button[onclick*="toggleWatchlist(this, ${item.id})"]`);
+    allBtns.forEach(btn => {
+        if (!isAdding) {
+            btn.classList.remove('active');
+        } else {
+            btn.classList.add('active');
+        }
+    });
+    
+    // Explicit sync for the modal button if it's currently open for this movie
+    const modalBtn = document.getElementById("modal-wl-btn");
+    if (modalBtn && window.currentMovieId === item.id) {
+        if (!isAdding) {
+            modalBtn.classList.remove('active');
+            modalBtn.classList.add('inactive');
+            modalBtn.innerHTML = '<i class="fas fa-heart"></i> Listeme Ekle';
+            modalBtn.style.background = "";
+            modalBtn.style.color = "";
+        } else {
+            modalBtn.classList.remove('inactive');
+            modalBtn.classList.add('active');
+            modalBtn.innerHTML = `<i class="fas fa-heart"></i> Listeden Çıkar`;
+            modalBtn.style.background = "";
+            modalBtn.style.color = "";
+        }
+    }
+    
     if (document.getElementById('profile') && document.getElementById('profile').classList.contains('active-tab')) {
         loadProfile();
     }
@@ -1271,6 +1333,7 @@ function closeTrailer(event, force = false) {
 
 async function openDetails(movieId) {
     document.body.style.overflow = "hidden";
+    window.currentMovieId = movieId;
     const item = window.movieCache[movieId];
     if (!item) return;
     
@@ -1434,6 +1497,7 @@ async function openDetails(movieId) {
             // IMDb Badge
             if (fullData.external_ids && fullData.external_ids.imdb_id) {
                 const imdbId = fullData.external_ids.imdb_id;
+                window.currentImdbId = imdbId;
                 const cachedImdb = localStorage.getItem('imdb_' + imdbId);
                 if (cachedImdb) {
                     document.getElementById('rating-span').innerHTML = `<a href="https://www.imdb.com/title/${imdbId}" target="_blank" style="text-decoration:none; color:inherit;"><span class="imdb-badge">IMDb</span> ${cachedImdb}</a>`;
@@ -1479,10 +1543,29 @@ async function openDetails(movieId) {
                 const director = fullData.credits.crew.find(c => c.job === 'Director');
                 if (director) {
                     const safeName = director.name.replace(/'/g, "\\'").replace(/"/g, '&quot;');
-                    const directorHtml = `<div style="margin-top: 8px; display: inline-block; background: rgba(229, 9, 20, 0.1); padding: 4px 10px; border-radius: 12px; border: 1px solid rgba(229, 9, 20, 0.2);"><span style="cursor:pointer; color:var(--accent-color); font-weight:bold;" onclick="openActorDetails(${director.id}, '${safeName}', true, 'Director')" title="${director.name.replace(/"/g, '&quot;')} filmleri"><i class="fas fa-bullhorn"></i> Yönetmen: ${director.name}</span></div>`;
+                    const directorHtml = `<div id="director-badge-container" style="margin-top: 10px; margin-bottom: 10px; display: inline-block; background: rgba(0, 0, 0, 0.6); padding: 5px 12px; border-radius: 15px; border: 1px solid rgba(255, 255, 255, 0.1); box-shadow: 0 2px 4px rgba(0,0,0,0.3); backdrop-filter: blur(5px); transition: all 0.5s ease;"><span style="cursor:pointer; color:#fff; font-weight:bold; font-size: 0.95rem; text-shadow: 0 2px 4px rgba(0,0,0,0.8);" onclick="openActorDetails(${director.id}, '${safeName}', true, 'Director')" title="${director.name.replace(/"/g, '&quot;')} filmleri"><i class="fas fa-bullhorn" style="color: var(--accent-color); margin-right: 5px;"></i> Yönetmen: ${director.name}</span></div>`;
                     const metaContainer = document.getElementById('details-meta');
                     if (metaContainer) {
                         metaContainer.innerHTML += directorHtml;
+                    }
+                    if (item.backdrop_path) {
+                        const backdrop = IMAGE_BASE + item.backdrop_path;
+                        const img = new Image();
+                        img.crossOrigin = "Anonymous";
+                        img.onload = () => {
+                            try {
+                                const colorThief = new ColorThief();
+                                const color = colorThief.getColor(img);
+                                const rgb = `rgba(${color[0]}, ${color[1]}, ${color[2]}, 0.8)`;
+                                const dirBadge = document.getElementById('director-badge-container');
+                                if (dirBadge) {
+                                    dirBadge.style.background = rgb;
+                                    dirBadge.style.boxShadow = `0 4px 15px rgba(${color[0]}, ${color[1]}, ${color[2]}, 0.5)`;
+                                    dirBadge.style.border = `1px solid rgba(${color[0]}, ${color[1]}, ${color[2]}, 0.8)`;
+                                }
+                            } catch(e) {}
+                        };
+                        img.src = backdrop;
                     }
                 }
             }
@@ -1532,6 +1615,7 @@ async function openDetails(movieId) {
                         `;
                     });
                     recContainer.innerHTML = recHtml;
+                    makeScrollable(recContainer);
                 } else {
                     recContainer.innerHTML = "<div style='color:#ccc'>Öneri bulunamadı.</div>";
                 }
@@ -1661,11 +1745,14 @@ async function openDetails(movieId) {
     history.pushState({ modalOpen: true }, "", "#details");
 }
 
-async function openActorDetails(actorId, actorName, reset = true, jobType = 'cast', filterGenre = 0) {
+async function openActorDetails(actorId, actorName, reset = true, jobType = 'cast', filterGenre = 0, isFilterChange = false) {
     hideActorTooltip();
     
     if (reset) {
-        window.scrollTo({ top: 0, behavior: 'smooth' });
+        if (!isFilterChange) {
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+            clearAllFilters();
+        }
         closeDetails(null, true);
         currentMode = "actor";
         currentActorId = actorId;
@@ -1681,11 +1768,27 @@ async function openActorDetails(actorId, actorName, reset = true, jobType = 'cas
         document.querySelectorAll('.provider-filter-btn').forEach(btn => btn.classList.remove('active'));
         currentProvider = 0;
         
+        const pf = document.getElementById('providerFilter');
+        if (pf) pf.style.display = 'inline-block';
+        
         document.getElementById('searchInput').value = actorName;
         const container = document.getElementById('search-results');
-        container.innerHTML = "";
-        showSkeletons('search-results', 10);
-        document.getElementById('loadMoreBtn').style.display = 'none';
+        
+        if (!isFilterChange) {
+            container.innerHTML = "";
+            showSkeletons('search-results', 10);
+            document.getElementById('loadMoreBtn').style.display = 'none';
+        } else {
+            container.style.minHeight = container.offsetHeight + 'px';
+            const oldMovies = container.querySelectorAll('.movie-card, .no-provider, .loading');
+            oldMovies.forEach(m => m.remove());
+            
+            let skel = "";
+            for(let i=0; i<10; i++) {
+                skel += `<div class="movie-card skeleton-card" style="border:none; background:transparent;"><div class="skeleton" style="width:100%; height:300px; border-radius:10px;"></div><div class="skeleton" style="width:80%; height:20px; margin-top:10px;"></div><div class="skeleton" style="width:50%; height:15px; margin-top:5px;"></div></div>`;
+            }
+            container.insertAdjacentHTML('beforeend', skel);
+        }
         
         document.getElementById('top10-section').style.display = 'none';
         const nowPlaying = document.getElementById('now-playing-section');
@@ -1701,13 +1804,14 @@ async function openActorDetails(actorId, actorName, reset = true, jobType = 'cas
     }
     
     try {
-        const [personRes, creditsRes] = await Promise.all([
-            fetch(`${BASE_URL}/person/${currentActorId}?api_key=${API_KEY}&language=tr-TR`),
-            fetch(`${BASE_URL}/person/${currentActorId}/combined_credits?api_key=${API_KEY}&language=tr-TR`)
-        ]);
-        
+        const personRes = await fetch(`${BASE_URL}/person/${currentActorId}?api_key=${API_KEY}&language=tr-TR`);
         const personData = await personRes.json();
-        const data = await creditsRes.json();
+        
+        let data = {};
+        const filterProvId = parseInt(document.getElementById('providerFilter')?.value || "0");
+        
+        const creditsRes = await fetch(`${BASE_URL}/person/${currentActorId}/combined_credits?api_key=${API_KEY}&language=tr-TR`);
+        data = await creditsRes.json();
         
         let movies = [];
         if (jobType === 'Director') {
@@ -1739,9 +1843,22 @@ async function openActorDetails(actorId, actorName, reset = true, jobType = 'cas
             movies = movies.filter(m => m.media_type === "tv");
         }
         
-        const genreId = parseInt(filterGenre);
-        if (genreId > 0) {
-            movies = movies.filter(m => m.genre_ids && m.genre_ids.includes(genreId));
+        const genreFilterStr = document.getElementById('genreFilter')?.value || "";
+        if (genreFilterStr !== "") {
+            const selectedGenresArr = genreFilterStr.split(',').map(g => parseInt(g)).filter(g => !isNaN(g));
+            if (selectedGenresArr.length > 0) {
+                movies = movies.filter(m => m.genre_ids && selectedGenresArr.every(g => m.genre_ids.includes(g)));
+            }
+        } else if (filterGenre > 0) {
+            movies = movies.filter(m => m.genre_ids && m.genre_ids.includes(parseInt(filterGenre)));
+        }
+        
+        const yearFilterStr = document.getElementById('yearFilter')?.value || "";
+        if (yearFilterStr !== "") {
+            movies = movies.filter(m => {
+                const y = m.release_date ? m.release_date.split('-')[0] : (m.first_air_date ? m.first_air_date.split('-')[0] : "");
+                return y === yearFilterStr;
+            });
         }
         
         const ratingFilter = parseFloat(document.getElementById('ratingFilter')?.value || "0");
@@ -1761,12 +1878,33 @@ async function openActorDetails(actorId, actorName, reset = true, jobType = 'cas
             movies.sort((a, b) => b.vote_average - a.vote_average);
         } else if (sortBy.includes("primary_release_date")) {
             movies.sort((a, b) => {
-                const dateA = new Date(a.release_date || a.first_air_date || "1900-01-01");
-                const dateB = new Date(b.release_date || b.first_air_date || "1900-01-01");
+                const dA = a.release_date || a.first_air_date;
+                const dB = b.release_date || b.first_air_date;
+                const dateA = dA ? new Date(dA).getTime() : 0;
+                const dateB = dB ? new Date(dB).getTime() : 0;
                 return sortBy.includes("desc") ? dateB - dateA : dateA - dateB;
             });
         } else {
             movies.sort((a, b) => b.popularity - a.popularity);
+        }
+        
+        if (filterProvId > 0) {
+            const regionStr = (filterProvId === 1899 || filterProvId === 384) ? 'US' : 'TR';
+            const validMovies = [];
+            for (let i = 0; i < movies.length; i += 40) {
+                const chunk = movies.slice(i, i + 40);
+                const results = await Promise.all(chunk.map(async m => {
+                    try {
+                        const res = await fetch(`${BASE_URL}/${m.media_type}/${m.id}/watch/providers?api_key=${API_KEY}`);
+                        const data = await res.json();
+                        const tr = data.results && data.results[regionStr] ? data.results[regionStr] : null;
+                        if (tr && tr.flatrate && tr.flatrate.some(p => p.provider_id === filterProvId)) return m;
+                    } catch (e) { return null; }
+                    return null;
+                }));
+                validMovies.push(...results.filter(Boolean));
+            }
+            movies = validMovies;
         }
         
         const startIndex = (currentPage - 1) * 20;
@@ -1789,9 +1927,10 @@ async function openActorDetails(actorId, actorName, reset = true, jobType = 'cas
             const favText = isFav ? "Favorilerden Çıkar" : "Favorilere Ekle";
             const favClass = isFav ? "active" : "inactive";
             
-            container.innerHTML = "";
-            if (bioText || birthDate || true) { // Always show bio card even if empty bio, to show favorite button
-                container.innerHTML = `
+            if (!isFilterChange) {
+                container.innerHTML = "";
+                if (bioText || birthDate || true) { // Always show bio card even if empty bio, to show favorite button
+                    const bioCardHtml = `
                     <div id="actor-bio-card-container" class="actor-bio-card" style="grid-column: 1 / -1; width: 100%; max-width: 800px; margin: 0 auto 20px auto; padding: 20px; background: var(--card-bg); border-radius: 15px; border: 1px solid var(--glass-border); color: var(--text-muted); font-size: 0.95rem;">
                         <div style="display:flex; align-items:flex-start; gap: 20px; margin-bottom: 10px;">
                             <img src="${personData.profile_path ? IMAGE_BASE + personData.profile_path : 'https://via.placeholder.com/60x90'}" style="width: 80px; height: 120px; border-radius: 10px; object-fit: cover; flex-shrink: 0; user-select: none; -webkit-user-drag: none;">
@@ -1807,50 +1946,36 @@ async function openActorDetails(actorId, actorName, reset = true, jobType = 'cas
                                 </div>
                             </div>
                         </div>
-                        <div style="margin-top: 15px; display: flex; gap: 10px; justify-content: flex-end; align-items: center; padding-top: 10px; border-top: 1px solid rgba(255,255,255,0.05);">
-                            <span style="font-size: 0.9rem; color: var(--text-muted);">Filmografiyi Filtrele:</span>
-                            <select onchange="openActorDetails(${personData.id}, '${personData.name.replace(/'/g, "\\'")}', true, '${jobType}', this.value)" style="background: rgba(0,0,0,0.5); color: white; border: 1px solid var(--glass-border); padding: 6px 12px; border-radius: 20px; outline: none; font-size: 0.9rem; cursor: pointer;">
-                                <option value="0" ${filterGenre == 0 ? 'selected' : ''}>Tüm Kategoriler</option>
-                                <option value="28" ${filterGenre == 28 ? 'selected' : ''}>Aksiyon</option>
-                                <option value="12" ${filterGenre == 12 ? 'selected' : ''}>Macera</option>
-                                <option value="16" ${filterGenre == 16 ? 'selected' : ''}>Animasyon</option>
-                                <option value="35" ${filterGenre == 35 ? 'selected' : ''}>Komedi</option>
-                                <option value="80" ${filterGenre == 80 ? 'selected' : ''}>Suç</option>
-                                <option value="99" ${filterGenre == 99 ? 'selected' : ''}>Belgesel</option>
-                                <option value="18" ${filterGenre == 18 ? 'selected' : ''}>Dram</option>
-                                <option value="10751" ${filterGenre == 10751 ? 'selected' : ''}>Aile</option>
-                                <option value="14" ${filterGenre == 14 ? 'selected' : ''}>Fantastik</option>
-                                <option value="36" ${filterGenre == 36 ? 'selected' : ''}>Tarih</option>
-                                <option value="27" ${filterGenre == 27 ? 'selected' : ''}>Korku</option>
-                                <option value="10402" ${filterGenre == 10402 ? 'selected' : ''}>Müzik</option>
-                                <option value="9648" ${filterGenre == 9648 ? 'selected' : ''}>Gizem</option>
-                                <option value="10749" ${filterGenre == 10749 ? 'selected' : ''}>Romantik</option>
-                                <option value="878" ${filterGenre == 878 ? 'selected' : ''}>Bilim Kurgu</option>
-                                <option value="53" ${filterGenre == 53 ? 'selected' : ''}>Gerilim</option>
-                                <option value="10752" ${filterGenre == 10752 ? 'selected' : ''}>Savaş</option>
-                                <option value="37" ${filterGenre == 37 ? 'selected' : ''}>Vahşi Batı</option>
-                            </select>
-                        </div>
                     </div>
                 `;
-            }
-            
-            // Bio kartına kaydırarak yenilenme illüzyonunu kır
-            setTimeout(() => {
-                const bioCard = document.getElementById('actor-bio-card-container');
-                if (bioCard) {
-                    bioCard.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                    container.innerHTML = bioCardHtml;
                 }
-            }, 300);
+            }
+        }
+        
+        if (isFilterChange) {
+            const skels = container.querySelectorAll('.skeleton-card');
+            skels.forEach(s => s.remove());
         }
         
         if (pagedMovies.length === 0 && reset) {
-            container.innerHTML = "<div class='loading'>Seçtiğiniz filtrelere uygun yapım bulunamadı.</div>";
+            const emptyMsg = filterProvId > 0 ? "Oyuncunun bu platformda içeriği yok." : "Seçtiğiniz filtrelere uygun yapım bulunamadı.";
+            if (!isFilterChange) {
+                container.innerHTML = `
+                    <div id="actor-bio-card-container" style="margin-bottom:30px;">
+                        ${bioCardHtml}
+                    </div>
+                    <div class='loading' style='margin-top:20px;'>${emptyMsg}</div>
+                `;
+            } else {
+                container.insertAdjacentHTML('beforeend', `<div class='loading' style='margin-top:20px;'>${emptyMsg}</div>`);
+            }
+            container.style.minHeight = '';
             return;
         }
         
         for (let i = 0; i < pagedMovies.length; i++) {
-            container.innerHTML += createMovieCard(pagedMovies[i], pagedMovies[i].media_type, "");
+            container.insertAdjacentHTML('beforeend', createMovieCard(pagedMovies[i], pagedMovies[i].media_type, ""));
             fetchAndInjectProviders(pagedMovies[i].id, pagedMovies[i].media_type);
         }
         
@@ -1859,6 +1984,9 @@ async function openActorDetails(actorId, actorName, reset = true, jobType = 'cas
         } else {
             document.getElementById('loadMoreBtn').style.display = 'none';
         }
+        
+        container.style.minHeight = '';
+        
     } catch (e) {
         if (reset) document.getElementById('search-results').innerHTML = "<div class='loading'>Hata oluştu.</div>";
     }
@@ -1920,12 +2048,15 @@ async function loadSeasonEpisodes(tvId, seasonNumber) {
             data.episodes.forEach(ep => {
                 const img = ep.still_path ? IMAGE_BASE + ep.still_path : 'https://via.placeholder.com/120x70?text=Afiş+Yok';
                 const airDate = ep.air_date ? new Date(ep.air_date).toLocaleDateString('tr-TR') : 'Bilinmiyor';
+                
+                const imdbUrl = window.currentImdbId ? `https://www.imdb.com/title/${window.currentImdbId}/episodes?season=${seasonNumber}` : `https://www.themoviedb.org/tv/${tvId}/season/${seasonNumber}/episode/${ep.episode_number}`;
+                
                 html += `
-                    <div class="episode-card">
+                    <div class="episode-card" style="cursor:pointer; position:relative; transition: transform 0.2s;" onmouseover="this.style.transform='scale(1.02)'" onmouseout="this.style.transform='scale(1)'" onclick="window.open('${imdbUrl}', '_blank')" title="IMDb Sayfasını Aç">
                         <img src="${img}" alt="${ep.name}">
                         <div class="episode-info">
-                            <h4>${ep.episode_number}. ${ep.name}</h4>
-                            <p style="color:var(--primary-color); font-size:0.8rem; margin-bottom:5px;">Yayın: ${airDate}</p>
+                            <h4>${ep.episode_number}. ${ep.name} <i class="fab fa-imdb" style="color:#f5c518; margin-left:5px;"></i></h4>
+                            <p style="color:var(--accent-color); font-weight:600; font-size:0.8rem; margin-bottom:5px;">Yayın: ${airDate}</p>
                             <p>${ep.overview || 'Bu bölüm için henüz özet bulunmuyor.'}</p>
                         </div>
                     </div>
@@ -2016,7 +2147,7 @@ let scrollLeft;
 let slider = null;
 
 document.addEventListener('mousedown', (e) => {
-    const target = e.target.closest('.cast-list') || e.target.closest('.collection-list');
+    const target = e.target.closest('.cast-list') || e.target.closest('.collection-list') || e.target.closest('#recently-viewed-grid');
     if (!target) return;
     
     isDown = true;
@@ -2406,6 +2537,8 @@ let gameAttempts = 0;
 let gameScoreCorrect = 0;
 let gameScoreWrong = 0;
 
+let playedGameMovies = [];
+
 async function startNewGame() {
     document.getElementById('game-start-btn').style.display = 'none';
     const nextBtn = document.getElementById('game-next-btn');
@@ -2416,7 +2549,9 @@ async function startNewGame() {
     document.getElementById('clue-1').style.display = 'none';
     document.getElementById('clue-2').style.display = 'none';
     document.getElementById('game-poster').style.filter = 'blur(25px)';
-    document.getElementById('game-overlay-text').style.display = 'block';
+    
+    const overlayText = document.getElementById('game-overlay-text');
+    if (overlayText) overlayText.style.display = 'none';
     gameAttempts = 0;
 
     document.getElementById('game-score-board').style.display = 'flex';
@@ -2429,14 +2564,29 @@ async function startNewGame() {
         const res = await fetch(`${BASE_URL}/discover/movie?api_key=${API_KEY}&language=tr-TR&page=${randomPage}&vote_count.gte=500&with_original_language=en|tr&sort_by=popularity.desc`);
         const data = await res.json();
         
-        // Seçenekleri oluştur (1 doğru, 3 yanlış)
-        const shuffled = data.results.sort(() => 0.5 - Math.random());
+        let shuffled = data.results.filter(m => !playedGameMovies.includes(m.id)).sort(() => 0.5 - Math.random());
+        
+        if (shuffled.length === 0) {
+            // Eğer o sayfadaki tüm filmler oynanmışsa listeyi sıfırla
+            playedGameMovies = [];
+            shuffled = data.results.sort(() => 0.5 - Math.random());
+        }
+        
         currentGameMovie = shuffled[0];
-        currentGameOptions = shuffled.slice(0, 4).sort(() => 0.5 - Math.random());
+        currentGameMovie.media_type = 'movie';
+        window.movieCache[currentGameMovie.id] = currentGameMovie;
+        playedGameMovies.push(currentGameMovie.id);
+        
+        let allOptions = data.results.filter(m => m.id !== currentGameMovie.id).sort(() => 0.5 - Math.random()).slice(0, 3);
+        allOptions.push(currentGameMovie);
+        currentGameOptions = allOptions.sort(() => 0.5 - Math.random());
 
-        // Posteri yükle
-        const posterUrl = currentGameMovie.backdrop_path ? BACKDROP_BASE + currentGameMovie.backdrop_path : (currentGameMovie.poster_path ? IMAGE_BASE + currentGameMovie.poster_path : '');
-        document.getElementById('game-poster').src = posterUrl;
+        // Posteri yükle (Dikey afiş tercih et)
+        const posterUrl = currentGameMovie.poster_path ? IMAGE_BASE + currentGameMovie.poster_path : (currentGameMovie.backdrop_path ? BACKDROP_BASE + currentGameMovie.backdrop_path : '');
+        const posterEl = document.getElementById('game-poster');
+        posterEl.src = posterUrl;
+        posterEl.onclick = null;
+        posterEl.style.cursor = 'default';
 
         // İpuçlarını hazırla
         const releaseYear = currentGameMovie.release_date ? currentGameMovie.release_date.split('-')[0] : 'Bilinmiyor';
@@ -2483,7 +2633,26 @@ function makeGameGuess(guessedId, btn) {
         btn.style.borderColor = '#4CAF50';
         document.getElementById('game-result').innerHTML = '<span style="color:#4CAF50"><i class="fas fa-check-circle"></i> Doğru Bildin!</span>';
         document.getElementById('game-poster').style.filter = 'blur(0px)';
-        document.getElementById('game-overlay-text').style.display = 'none';
+        const posterEl = document.getElementById('game-poster');
+        posterEl.style.cursor = 'pointer';
+        posterEl.onclick = () => openDetails(currentGameMovie.id, currentGameMovie.media_type || 'movie');
+        
+        document.getElementById('clue-1').style.display = 'inline-block';
+        document.getElementById('clue-2').style.display = 'inline-block';
+        const overlayText = document.getElementById('game-overlay-text');
+        if (overlayText) {
+            overlayText.innerHTML = currentGameMovie.title;
+            overlayText.style.display = 'block';
+            overlayText.style.fontSize = '1.2rem';
+            overlayText.style.background = 'rgba(0,0,0,0.7)';
+            overlayText.style.padding = '8px 15px';
+            overlayText.style.borderRadius = '10px';
+            overlayText.style.top = '85%';
+            overlayText.style.textShadow = 'none';
+            overlayText.style.width = 'max-content';
+            overlayText.style.maxWidth = '90%';
+            overlayText.style.textAlign = 'center';
+        }
         
         gameScoreCorrect++;
         document.getElementById('game-score-correct').innerText = gameScoreCorrect;
@@ -2491,8 +2660,10 @@ function makeGameGuess(guessedId, btn) {
         // Diğer butonları devre dışı bırak
         Array.from(document.getElementById('game-options').children).forEach(b => b.disabled = true);
         
-        // 2.5 saniye sonra otomatik yeni oyun
-        setTimeout(startNewGame, 2500);
+        const nextBtn = document.getElementById('game-next-btn');
+        if(nextBtn) {
+            nextBtn.style.display = 'block';
+        }
     } else {
         // Yanlış Bildi
         btn.style.background = '#f44336';
@@ -2509,8 +2680,13 @@ function makeGameGuess(guessedId, btn) {
         } else {
             // Kaybetti
             document.getElementById('game-result').innerHTML = '<span style="color:#f44336"><i class="fas fa-skull-crossbones"></i> Bilemedin! Cevap: ' + currentGameMovie.title + '</span>';
-            document.getElementById('game-poster').style.filter = 'blur(0px)';
-            document.getElementById('game-overlay-text').style.display = 'none';
+            const posterEl = document.getElementById('game-poster');
+            posterEl.style.filter = 'blur(0px)';
+            posterEl.style.cursor = 'pointer';
+            posterEl.onclick = () => openDetails(currentGameMovie.id, currentGameMovie.media_type || 'movie');
+            
+            const overlayText = document.getElementById('game-overlay-text');
+            if (overlayText) overlayText.style.display = 'none';
             
             gameScoreWrong++;
             document.getElementById('game-score-wrong').innerText = gameScoreWrong;
@@ -2522,9 +2698,11 @@ function makeGameGuess(guessedId, btn) {
                     b.style.background = '#4CAF50';
                 }
             });
-            
-            // 2.5 saniye sonra otomatik yeni oyun
-            setTimeout(startNewGame, 2500);
+            // Otomatik geçiş kaldırıldı, kullanıcı next butonuna basacak.
+            const nextBtn = document.getElementById('game-next-btn');
+            if(nextBtn) {
+                nextBtn.style.display = 'block';
+            }
         }
     }
 }
@@ -2541,13 +2719,48 @@ function setMediaType(val, btn) {
     applyPlatformFilters();
 }
 
+let selectedGenres = [];
+
 function setGenre(val, btn) {
-    // Update hidden select
-    document.getElementById('genreFilter').value = val;
-    // Update UI
-    const siblings = btn.parentElement.querySelectorAll('.genre-pill-btn');
-    siblings.forEach(b => b.classList.remove('active'));
-    btn.classList.add('active');
-    // Trigger filter
+    const hepsiBtn = btn.parentElement.querySelector('.genre-pill-btn[onclick*="\'\'"]');
+    
+    if (val === '') {
+        selectedGenres = [];
+        const siblings = btn.parentElement.querySelectorAll('.genre-pill-btn');
+        siblings.forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+    } else {
+        if (hepsiBtn) hepsiBtn.classList.remove('active');
+        
+        if (selectedGenres.includes(val)) {
+            selectedGenres = selectedGenres.filter(g => g !== val);
+            btn.classList.remove('active');
+        } else {
+            selectedGenres.push(val);
+            btn.classList.add('active');
+        }
+        
+        if (selectedGenres.length === 0) {
+            if (hepsiBtn) hepsiBtn.classList.add('active');
+        }
+    }
+    
+    document.getElementById('genreFilter').value = selectedGenres.join(',');
     applyPlatformFilters();
+}
+
+function clearAllFilters() {
+    const gf = document.getElementById('genreFilter');
+    if (gf) gf.value = '';
+    const yf = document.getElementById('yearFilter');
+    if (yf) yf.value = '';
+    const sf = document.getElementById('sortByFilter');
+    if (sf) sf.value = 'popularity.desc';
+    const pf = document.getElementById('providerFilter');
+    if (pf) pf.value = '0';
+    
+    selectedGenres = [];
+    document.querySelectorAll('.genre-pill-btn').forEach(b => b.classList.remove('active'));
+    const hepsiBtn = document.querySelector('.genre-pill-btn[onclick*="\'\'"]');
+    if (hepsiBtn) hepsiBtn.classList.add('active');
 }
