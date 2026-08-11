@@ -36,6 +36,7 @@ body {
     background-color: var(--bg-color);
     color: var(--text-color);
     line-height: 1.6;
+    transition: background-color 0.4s ease, color 0.4s ease;
 }
 
 /* =========================================
@@ -54,6 +55,7 @@ body {
     border: 1px solid var(--glass-border);
     position: relative;
     z-index: 50;
+    transition: background-color 0.4s ease, border-color 0.4s ease, box-shadow 0.4s ease;
 }
 
 .highlight {
@@ -208,6 +210,14 @@ body {
 .no-provider {
     font-size: 0.8rem;
     color: var(--text-muted);
+}
+
+.loading {
+    grid-column: 1 / -1;
+    text-align: center;
+    padding: 20px;
+    color: var(--text-muted);
+    width: 100%;
 }
 
 /* =========================================
@@ -627,6 +637,7 @@ body {
 }
 .details-left {
     flex: 0 0 250px;
+    position: relative;
 }
 .details-left img {
     width: 100%;
@@ -644,6 +655,8 @@ body {
 }
 .details-meta {
     display: flex;
+    flex-wrap: wrap;
+    align-items: center;
     gap: 15px;
     color: var(--text-muted);
     font-size: 0.9rem;
@@ -865,7 +878,8 @@ body {
     flex-direction: row;
     width: 100%;
     max-width: 800px;
-    height: 250px;
+    min-height: 250px;
+    height: auto;
     text-align: left;
 }
 
@@ -897,6 +911,21 @@ body {
     padding: 10px 40px;
     min-width: 200px;
     text-align: center;
+}
+
+.list-view-overview {
+    display: none;
+    color: var(--text-muted);
+    font-size: 0.85rem;
+    margin-top: 5px;
+    margin-bottom: 10px;
+    overflow: hidden;
+    -webkit-line-clamp: 3;
+    -webkit-box-orient: vertical;
+}
+
+.movie-grid.list-view .list-view-overview {
+    display: -webkit-box;
 }
 
 
@@ -1666,11 +1695,11 @@ body.light-theme .actor-bio-scroll::-webkit-scrollbar-thumb {
     margin-bottom: 30px;
     position: sticky;
     top: 70px;
-    z-index: 10;
+    z-index: 100;
     padding: 10px;
     background: var(--glass-bg);
-    backdrop-filter: blur(15px);
-    border-radius: 20px;
+    backdrop-filter: blur(25px);
+    border-radius: 15px;
     border: 1px solid var(--glass-border);
     box-shadow: 0 10px 30px rgba(0,0,0,0.1);
 }

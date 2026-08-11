@@ -175,7 +175,7 @@
                 <div id="top10-grid" class="collection-list"></div>
             </div>
 
-            <div class="search-box glass" style="position: relative; display: flex; align-items: stretch;">
+            <div class="search-box glass" style="position: relative; z-index: 1000; display: flex; align-items: stretch;">
                 <input type="text" id="searchInput" placeholder="Film, Dizi veya Oyuncu adı girin (Örn: timothée chalamet)..." onkeyup="handleSearchInput(event)" onkeypress="if(event.key === 'Enter') searchMovie(true)" autocomplete="off">
                 <div id="autocomplete-box" class="autocomplete-suggestions"></div>
                 <button onclick="searchMovie(true)" style="border-radius: 0;">Ara</button>
@@ -443,10 +443,14 @@
             <div class="details-body">
                 <div class="details-left">
                     <img id="details-poster" src="" alt="" crossorigin="anonymous">
+                    <div id="details-date-badge" style="position:absolute; top: 10px; right: 10px; background: rgba(0,0,0,0.8); color: var(--text-color); padding: 5px 10px; border-radius: 8px; font-weight: bold; font-size: 0.85rem; box-shadow: 0 2px 10px rgba(0,0,0,0.5); backdrop-filter: blur(5px);"></div>
                     <div id="modal-providers" class="modal-providers"></div>
                 </div>
                 <div class="details-right">
                     <h2 id="details-title"></h2>
+                    <div id="random-next-container" style="display:none; margin-bottom: 15px;">
+                        <button id="next-random-btn" onclick="fetchRandomMovie(true)" class="action-btn btn-buy-ticket-card" style="padding: 8px 15px; font-size: 0.9rem; background: var(--accent-color); border:none; border-radius:8px; cursor:pointer; color:white; font-weight:bold; box-shadow: 0 4px 10px rgba(16, 185, 129, 0.3); transition: transform 0.2s;"><i class="fas fa-random"></i> Başka Öner</button>
+                    </div>
                     <div id="details-meta" class="details-meta"></div>
                     <p id="details-overview" class="details-overview"></p>
                     <h3 class="cast-title">Başrol Oyuncuları</h3>

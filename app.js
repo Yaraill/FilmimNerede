@@ -34,6 +34,16 @@ window.addEventListener('load', () => {
     }, 100);
 });
 
+function toggleSelectVisibility(id, show) {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.style.display = show ? 'inline-block' : 'none';
+    const wrapper = el.nextElementSibling;
+    if (wrapper && wrapper.classList.contains('custom-select-container')) {
+        wrapper.style.display = show ? 'inline-block' : 'none';
+    }
+}
+
 document.addEventListener('DOMContentLoaded', () => {
     // V5 Theme check
     if (localStorage.getItem('theme') === 'light') {
@@ -256,24 +266,51 @@ async function loadTop10Trending() {
     }
 }
 
-async function fetchRandomMovie() {
-    const genre = document.getElementById('randomGenreSelect').value;
-    const btn = document.querySelector('#random-modal .btn-buy-ticket');
-    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Aranıyor...';
-    btn.disabled = true;
+window.lastRandomGenre = null;
+async function fetchRandomMovie(isNext = false) {
+    let genre = "";
+    if (isNext) {
+        genre = window.lastRandomGenre;
+    } else {
+        genre = document.getElementById('randomGenreSelect').value;
+        window.lastRandomGenre = genre;
+    }
+    
+    const btn = document.querySelector(isNext ? '#next-random-btn' : '#random-modal .btn-buy-ticket');
+    if (btn) {
+        btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Aranıyor...';
+        btn.disabled = true;
+    }
 
     try {
-        const randomPage = Math.floor(Math.random() * 50) + 1; 
+        let maxPage = 50;
         const genreQuery = genre ? `&with_genres=${genre}` : '';
+        
+        try {
+            const initialRes = await fetch(`${BASE_URL}/discover/movie?api_key=${API_KEY}&language=tr-TR&page=1&vote_count.gte=500&sort_by=popularity.desc${genreQuery}`);
+            const initialData = await initialRes.json();
+            if (initialData.total_pages) {
+                maxPage = Math.min(50, initialData.total_pages);
+            }
+        } catch(e) {}
+        
+        const randomPage = Math.floor(Math.random() * maxPage) + 1; 
         const res = await fetch(`${BASE_URL}/discover/movie?api_key=${API_KEY}&language=tr-TR&page=${randomPage}&vote_count.gte=500&sort_by=popularity.desc${genreQuery}`);
         const data = await res.json();
-        const randomMovie = data.results[Math.floor(Math.random() * data.results.length)];
+        let validMovies = data.results.filter(m => !['hi','ja','ko','zh','th','cn','te','ta'].includes(m.original_language) && !m.title.toLowerCase().includes('making of'));
+        if(validMovies.length === 0) validMovies = data.results;
+        const randomMovie = validMovies[Math.floor(Math.random() * validMovies.length)];
         
         if (randomMovie) {
             randomMovie.media_type = "movie";
             window.movieCache[randomMovie.id] = randomMovie;
-            closeRandom(null, true);
+            if (!isNext) closeRandom(null, true);
+            
+            window.isRandomMode = true;
             openDetails(randomMovie.id);
+            
+            const nextContainer = document.getElementById('random-next-container');
+            if (nextContainer) nextContainer.style.display = 'block';
         } else {
             alert('Bu kritere uygun film bulunamadı, lütfen tekrar deneyin!');
         }
@@ -281,8 +318,14 @@ async function fetchRandomMovie() {
         console.error(e);
         alert('Rastgele film seçilirken hata oluştu.');
     } finally {
-        btn.innerHTML = '<i class="fas fa-magic"></i> Bana Öner!';
-        btn.disabled = false;
+        if (btn) {
+            if (isNext) {
+                btn.innerHTML = '<i class="fas fa-random"></i> Başka Öner';
+            } else {
+                btn.innerHTML = '<i class="fas fa-magic"></i> Bana Öner!';
+            }
+            btn.disabled = false;
+        }
     }
 }
 
@@ -326,8 +369,7 @@ async function loadGenres() {
 
 function switchTab(event, tabId) {
     clearAllFilters();
-    const pf = document.getElementById('providerFilter');
-    if (pf) pf.style.display = 'none';
+    toggleSelectVisibility('providerFilter', false);
     
     document.querySelectorAll('.tab-content').forEach(tab => tab.classList.remove('active-tab'));
     document.querySelectorAll('.nav-links a').forEach(link => link.classList.remove('active'));
@@ -377,7 +419,8 @@ function createMovieCard(item, mediaType = "movie", tabContext = "") {
     const poster = item.poster_path ? IMAGE_BASE + item.poster_path : 'https://placehold.co/500x750/1a1a2e/ffffff?text=Afis+Yok';
     const rating = item.vote_average ? item.vote_average.toFixed(1) : "N/A";
     
-    const genres = (item.genre_ids || []).map(id => genreMap[id]).filter(Boolean).slice(0, 2).join(', ');
+    const allGenres = (item.genre_ids || []).map(id => genreMap[id]).filter(Boolean);
+    const genres = allGenres.slice(0, 3).join(', ') + (allGenres.length > 3 ? '...' : '');
 
     let watchlist = JSON.parse(localStorage.getItem('watchlist')) || [];
     const isSaved = watchlist.find(w => w.id === item.id) ? "active" : "";
@@ -426,7 +469,10 @@ function createMovieCard(item, mediaType = "movie", tabContext = "") {
                     <span class="genre-list">${genres}</span>
                 </div>
                 <div class="movie-title" title="${title}" style="cursor:pointer" onclick="openDetails(${item.id})">${titleWithYear}</div>
-                <div class="bottom-group" style="margin-top: auto; display: flex; flex-direction: column; gap: 10px; padding-top: 10px;">
+                <div class="list-view-overview">
+                    ${(item.overview && item.overview.trim().length > 0) ? item.overview : "Konu özeti bulunmuyor."}
+                </div>
+                <div class="bottom-group" style="margin-top: auto; display: flex; flex-direction: column; gap: 10px; padding-top: 10px; width: 100%; max-width: 280px;">
                     ${dateOrProviderHtml}
                     <div class="card-actions">
                         <button class="action-btn btn-trailer" onclick="openTrailer(${item.id}, '${mediaType}')">
@@ -752,10 +798,20 @@ function handleSearch(event) {
 
 async function searchMovie(reset = true, isFilterChange = false) {
     if (reset) {
+        currentSearchQuery = document.getElementById('searchInput').value.trim();
+        if (!currentSearchQuery) {
+            const activeNav = document.querySelector('.nav-links a.active');
+            if (activeNav) {
+                activeNav.click();
+            } else {
+                switchTab(null, 'now-playing');
+            }
+            return;
+        }
+        
         if (!isFilterChange) window.scrollTo({ top: 0, behavior: 'smooth' });
         currentMode = "search";
         currentPage = 1;
-        currentSearchQuery = document.getElementById('searchInput').value.trim();
         
         document.querySelectorAll('.provider-filter-btn').forEach(btn => btn.classList.remove('active'));
         currentProvider = 0;
@@ -768,8 +824,7 @@ async function searchMovie(reset = true, isFilterChange = false) {
         document.getElementById('top10-section').style.display = 'none';
         const platformSelection = document.getElementById('platform-selection-area');
         if (platformSelection) platformSelection.style.display = 'none';
-        const pf = document.getElementById('providerFilter');
-        if (pf) pf.style.display = 'none';
+        toggleSelectVisibility('providerFilter', false);
         
         const container = document.getElementById('search-results');
         if (isFilterChange) {
@@ -1423,14 +1478,24 @@ async function openDetails(movieId) {
     const genresHtml = (item.genre_ids || []).map(id => {
         const name = genreMap[id];
         return name ? `<span class="genre-badge" onclick="searchByGenre(${id})" title="Bu türde ara">${name}</span>` : '';
-    }).join(' ');
+    }).join(' <span style="color:var(--text-muted); font-size: 0.7rem; display:flex; align-items:center; justify-content:center;">&bull;</span> ');
     
     const d = new Date(item.release_date || item.first_air_date || "");
     const formattedDate = d.toString() !== "Invalid Date" ? d.toLocaleDateString('tr-TR', { day: 'numeric', month: 'long', year: 'numeric' }) : "Bilinmiyor";
     
+    const dateBadge = document.getElementById('details-date-badge');
+    if (dateBadge) {
+        if (formattedDate !== "Bilinmiyor") {
+            dateBadge.innerText = formattedDate;
+            dateBadge.style.display = "block";
+        } else {
+            dateBadge.style.display = "none";
+        }
+    }
+    
     // Default TMDB rating HTML
     const metaContainer = document.getElementById('details-meta');
-    metaContainer.innerHTML = `<span id="rating-span"><i class="fas fa-star" style="color:#fbbf24"></i> ${rating}</span> <span>|</span> <span>${formattedDate}</span> <span>|</span> ${genresHtml}`;
+    metaContainer.innerHTML = `<span id="rating-span"><i class="fas fa-star" style="color:#fbbf24"></i> ${rating}</span> <span>|</span> <div style="display:inline-flex; flex-wrap:wrap; gap:5px; max-width:250px; align-items:center;">${genresHtml}</div>`;
 
     const provContainer = document.getElementById('modal-providers');
     provContainer.style = "margin-top: 15px; display:flex; gap:10px; align-items:center; justify-content: center; flex-wrap: wrap;";
@@ -1491,6 +1556,22 @@ async function openDetails(movieId) {
                 if(i > -1) {
                     r[i].overview = fullData.overview;
                     localStorage.setItem('recentlyViewed', JSON.stringify(r));
+                }
+            }
+
+            const runtime = fullData.runtime || (fullData.episode_run_time && fullData.episode_run_time.length > 0 ? fullData.episode_run_time[0] : (fullData.last_episode_to_air && fullData.last_episode_to_air.runtime ? fullData.last_episode_to_air.runtime : null));
+            if (runtime) {
+                const metaContainer = document.getElementById('details-meta');
+                if (metaContainer && !metaContainer.innerHTML.includes(runtime + ' dk')) {
+                    let runtimeHtml = ` <span>|</span> <span>${runtime} dk`;
+                    if (item.media_type === "tv" && fullData.number_of_episodes > 0) {
+                        const totalMins = runtime * fullData.number_of_episodes;
+                        const hours = Math.floor(totalMins / 60);
+                        const mins = totalMins % 60;
+                        runtimeHtml += ` / Bölüm (Toplam: ${hours}s ${mins}d)`;
+                    }
+                    runtimeHtml += `</span>`;
+                    metaContainer.innerHTML += runtimeHtml;
                 }
             }
 
@@ -1768,8 +1849,7 @@ async function openActorDetails(actorId, actorName, reset = true, jobType = 'cas
         document.querySelectorAll('.provider-filter-btn').forEach(btn => btn.classList.remove('active'));
         currentProvider = 0;
         
-        const pf = document.getElementById('providerFilter');
-        if (pf) pf.style.display = 'inline-block';
+        toggleSelectVisibility('providerFilter', true);
         
         document.getElementById('searchInput').value = actorName;
         const container = document.getElementById('search-results');
@@ -1959,18 +2039,21 @@ async function openActorDetails(actorId, actorName, reset = true, jobType = 'cas
         }
         
         if (pagedMovies.length === 0 && reset) {
-            const emptyMsg = filterProvId > 0 ? "Oyuncunun bu platformda içeriği yok." : "Seçtiğiniz filtrelere uygun yapım bulunamadı.";
+            const emptyMsg = filterProvId > 0 ? (jobType === 'Director' ? "Yönetmenin bu platformda içeriği yok." : "Oyuncunun bu platformda içeriği yok.") : "Seçtiğiniz filtrelere uygun yapım bulunamadı.";
             if (!isFilterChange) {
                 container.innerHTML = `
                     <div id="actor-bio-card-container" style="margin-bottom:30px;">
                         ${bioCardHtml}
                     </div>
-                    <div class='loading' style='margin-top:20px;'>${emptyMsg}</div>
+                    <div class='loading' style='margin-top:20px; text-align:center;'>${emptyMsg}</div>
                 `;
             } else {
-                container.insertAdjacentHTML('beforeend', `<div class='loading' style='margin-top:20px;'>${emptyMsg}</div>`);
+                const existingMsgs = container.querySelectorAll('.loading');
+                existingMsgs.forEach(m => m.remove());
+                container.insertAdjacentHTML('beforeend', `<div class='loading' style='margin-top:20px; text-align:center;'>${emptyMsg}</div>`);
             }
             container.style.minHeight = '';
+            document.getElementById('loadMoreBtn').style.display = 'none';
             return;
         }
         
@@ -2002,6 +2085,10 @@ function closeDetails(event, force = false, isHistoryEvent = false) {
             // Dinamik Temayı Sıfırla
             document.documentElement.style.setProperty('--primary-color', '');
             document.documentElement.style.setProperty('--accent-color', '');
+            
+            const nextContainer = document.getElementById('random-next-container');
+            if (nextContainer) nextContainer.style.display = 'none';
+            window.isRandomMode = false;
             
             // Temizlik
             document.getElementById('modal-providers').innerHTML = "";
