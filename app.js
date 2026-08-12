@@ -244,7 +244,7 @@ function resetPlatformView() {
 function switchViewMode(mode) {
     const container = document.getElementById('search-results');
     const nowPlayingContainer = document.getElementById('now-playing-grid');
-    const vizyonContainer = document.getElementById('vizyon-grid');
+    const vizyonContainer = document.getElementById('upcoming-movies');
     const watchlistContainer = document.getElementById('watchlist-grid');
     
     if(document.getElementById('viewGridBtn')) document.getElementById('viewGridBtn').classList.remove('active');
@@ -672,10 +672,11 @@ async function loadNowPlaying() {
     try {
         const res = await fetch(`${BASE_URL}/movie/now_playing?api_key=${API_KEY}&language=tr-TR&region=TR&page=1`);
         const data = await res.json();
-        container.innerHTML = "";
+        let html = "";
         data.results.forEach(movie => {
-            container.innerHTML += createMovieCard(movie, "movie", "now-playing");
+            html += createMovieCard(movie, "movie", "now-playing");
         });
+        container.innerHTML = html;
         
         // Fetch providers for each movie after rendering cards
         data.results.forEach(movie => {
@@ -696,11 +697,11 @@ async function loadUpcomingMovies() {
         const today = new Date().toISOString().split('T')[0];
         const response = await fetch(`${BASE_URL}/discover/movie?api_key=${API_KEY}&language=tr-TR&region=TR&with_release_type=2|3|4&release_date.gte=${today}&sort_by=release_date.asc&popularity.gte=15&page=1`);
         const data = await response.json();
-        container.innerHTML = "";
-        
+        let html = "";
         data.results.forEach(movie => {
-            container.innerHTML += createMovieCard(movie, "movie", "upcoming");
+            html += createMovieCard(movie, "movie", "upcoming");
         });
+        container.innerHTML = html;
     } catch (error) {
         container.innerHTML = "<div class='loading'>Hata oluştu.</div>";
     }
@@ -885,10 +886,12 @@ async function loadPlatformMovies(providerId = 0, reset = true, isFilterChange =
             return;
         }
         
+        let html = "";
         for (let i = 0; i < allResults.length; i++) {
-            container.innerHTML += createMovieCard(allResults[i], allResults[i].media_type, "");
+            html += createMovieCard(allResults[i], allResults[i].media_type, "");
             fetchAndInjectProviders(allResults[i].id, allResults[i].media_type);
         }
+        container.innerHTML += html;
         
         if (allResults.length > 0) {
             document.getElementById('loadMoreBtn').style.display = 'inline-block';
@@ -898,6 +901,9 @@ async function loadPlatformMovies(providerId = 0, reset = true, isFilterChange =
         if (reset) document.getElementById('search-results').style.minHeight = '';
         console.error("loadPlatformMovies error:", error);
         if (reset) document.getElementById('search-results').innerHTML = `<div class='loading' style='color:red;'>Hata oluştu: ${error.message} <br/> ${error.stack}</div>`;
+    } finally {
+        const spinner = document.getElementById('infinite-spinner');
+        if (spinner) spinner.style.display = 'none';
     }
 }
 
@@ -975,10 +981,12 @@ async function searchMovie(reset = true, isFilterChange = false) {
             return;
         }
         
+        let html = "";
         for (let i = 0; i < filtered.length; i++) {
-            container.innerHTML += createMovieCard(filtered[i], filtered[i].media_type, "");
+            html += createMovieCard(filtered[i], filtered[i].media_type, "");
             fetchAndInjectProviders(filtered[i].id, filtered[i].media_type);
         }
+        container.innerHTML += html;
         
         if (filtered.length > 0) {
             document.getElementById('loadMoreBtn').style.display = 'inline-block';
@@ -990,6 +998,9 @@ async function searchMovie(reset = true, isFilterChange = false) {
         document.getElementById('search-results').style.minHeight = '';
         console.error("searchMovie error:", error);
         if (reset) document.getElementById('search-results').innerHTML = `<div class='loading' style='color:red;'>Arama Hatası: ${error.message}</div>`;
+    } finally {
+        const spinner = document.getElementById('infinite-spinner');
+        if (spinner) spinner.style.display = 'none';
     }
 }
 
@@ -1060,6 +1071,9 @@ async function handleSearchInput(event) {
 
 function loadMoreResults() {
     currentPage++;
+    const spinner = document.getElementById('infinite-spinner');
+    if (spinner) spinner.style.display = 'block';
+    
     if (currentMode === "platform") {
         loadPlatformMovies(currentProvider, false);
     } else if (currentMode === "search") {
@@ -2081,6 +2095,31 @@ async function openActorDetails(actorId, actorName, reset = true, jobType = 'cas
             movies = movies.filter(m => m.vote_average >= ratingFilter);
         }
         
+        const runtimeFilter = document.getElementById('runtimeFilter')?.value || "";
+        if (runtimeFilter !== "") {
+            movies = movies.filter(m => m.media_type === "movie");
+            
+            const validMovies = [];
+            const maxToCheck = Math.min(movies.length, 60);
+            for (let i = 0; i < maxToCheck; i += 20) {
+                const chunk = movies.slice(i, Math.min(i + 20, maxToCheck));
+                const results = await Promise.all(chunk.map(async m => {
+                    try {
+                        const res = await fetch(`${BASE_URL}/movie/${m.id}?api_key=${API_KEY}&language=tr-TR`);
+                        const detail = await res.json();
+                        const rt = detail.runtime || 0;
+                        if (runtimeFilter == '90' && rt <= 90 && rt > 0) return m;
+                        if (runtimeFilter == '120' && rt > 90 && rt <= 105) return m;
+                        if (runtimeFilter == '150' && rt > 105 && rt <= 135) return m;
+                        if (runtimeFilter == '180' && rt > 135) return m;
+                    } catch (e) { return null; }
+                    return null;
+                }));
+                validMovies.push(...results.filter(Boolean));
+            }
+            movies = validMovies;
+        }
+        
         const sortBy = document.getElementById('sortByFilter') ? document.getElementById('sortByFilter').value : 'popularity.desc';
         if (sortBy === 'order.asc') {
             movies.sort((a, b) => {
@@ -2208,6 +2247,9 @@ async function openActorDetails(actorId, actorName, reset = true, jobType = 'cas
         
     } catch (e) {
         if (reset) document.getElementById('search-results').innerHTML = "<div class='loading'>Hata oluştu.</div>";
+    } finally {
+        const spinner = document.getElementById('infinite-spinner');
+        if (spinner) spinner.style.display = 'none';
     }
 }
 
@@ -2637,6 +2679,9 @@ function toggleActorFavorite(btnElem, actorId, actorName, profilePath) {
 }
 
 function makeScrollable(container) {
+    if (!container || container.dataset.isScrollable) return;
+    container.dataset.isScrollable = "true";
+    
     let isDown = false;
     let startX;
     let scrollLeft;
