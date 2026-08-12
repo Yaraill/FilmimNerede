@@ -54,7 +54,7 @@ body {
     -webkit-backdrop-filter: blur(16px);
     border: 1px solid var(--glass-border);
     position: relative;
-    z-index: 50;
+    
     transition: background-color 0.4s ease, border-color 0.4s ease, box-shadow 0.4s ease;
 }
 
@@ -72,7 +72,7 @@ body {
     padding: 1.5rem 5%;
     position: sticky;
     top: 0;
-    z-index: 100;
+    z-index: 2500;
     border-bottom: 1px solid var(--glass-border);
     backdrop-filter: blur(16px);
     -webkit-backdrop-filter: blur(16px);
@@ -231,8 +231,7 @@ body {
     padding: 10px;
     border-radius: 30px;
     position: relative;
-    z-index: 50; /* Z-Index fix for overlap */
-}
+    z-index: 100;}
 
 .search-box input {
     flex: 1;
@@ -241,7 +240,7 @@ body {
     border-radius: 25px 0 0 25px;
     outline: none;
     font-size: 1.1rem;
-    background: rgba(255,255,255,0.1);
+    background: var(--card-bg); border: 1px solid var(--glass-border);
     color: var(--text-color);
 }
 
@@ -254,15 +253,14 @@ body {
     top: 100%;
     left: 0;
     right: 0;
-    background: var(--card-bg);
-    border: 1px solid var(--glass-border);
-    border-radius: 0 0 15px 15px;
-    z-index: 1000;
+    background: var(--nav-bg);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 10px;
     margin-top: 5px;
-    max-height: 300px;
+    max-height: 250px;
     overflow-y: auto;
-    display: none;
-    box-shadow: 0 10px 25px rgba(0,0,0,0.5);
+    z-index: 5000;
+    box-shadow: 0 4px 15px rgba(0,0,0,0.8);
     backdrop-filter: blur(10px);
 }
 
@@ -432,7 +430,7 @@ body {
 .modal {
     display: none;
     position: fixed;
-    z-index: 1000;
+    z-index: 10000;
     left: 0;
     top: 0;
     width: 100%;
@@ -446,7 +444,7 @@ body {
     display: flex;
 }
 #trailer-modal {
-    z-index: 2000;
+    z-index: 10000;
 }
 #random-modal {
     align-items: flex-start;
@@ -538,20 +536,13 @@ body {
    V3: Bilet Al (Şehir Seçici)
    ========================================= */
 .city-selector-wrapper {
-    margin-top: 2rem;
+    margin: 10px auto 30px auto;
     position: relative;
-    display: inline-flex;
+    display: flex;
+    justify-content: center;
     align-items: center;
-    background: var(--card-bg);
-    border-radius: 50px;
-    border: 1px solid var(--glass-border);
-    padding: 10px 30px;
-    backdrop-filter: blur(15px);
-    -webkit-backdrop-filter: blur(15px);
-    z-index: 50;
-    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3), inset 0 1px 0 rgba(255,255,255,0.05);
-    transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
-    cursor: pointer;
+    width: fit-content;
+    z-index: 9999;
 }
 
 .city-selector-wrapper:hover {
@@ -1695,7 +1686,7 @@ body.light-theme .actor-bio-scroll::-webkit-scrollbar-thumb {
     margin-bottom: 30px;
     position: sticky;
     top: 70px;
-    z-index: 100;
+    z-index: 2500;
     padding: 10px;
     background: var(--glass-bg);
     backdrop-filter: blur(25px);
@@ -2071,4 +2062,70 @@ body.light-theme .custom-option:hover {
 }
 select.custom-select-hidden {
     display: none !important;
+}
+
+
+/* Y�zen Oynat�c� (PiP) Mode */
+.modal.pip-mode {
+    background-color: transparent;
+    pointer-events: none; /* Let clicks pass through overlay */
+    align-items: flex-end;
+    justify-content: flex-end;
+    padding: 20px;
+    z-index: 9999;
+}
+.modal.pip-mode .modal-content {
+    width: 350px;
+    max-width: 100%;
+    pointer-events: auto; /* Enable clicks on the video */
+    animation: slideInBottomRight 0.3s ease;
+    box-shadow: 0 10px 30px rgba(0,0,0,0.8);
+    border-radius: 12px;
+}
+.modal.pip-mode .close-btn {
+    top: -30px;
+    right: 0px;
+    font-size: 28px;
+    text-shadow: 0 2px 4px rgba(0,0,0,0.8);
+}
+.modal.pip-mode .pip-btn i:before {
+    content: "\f065"; /* fa-expand-alt */
+}
+@keyframes slideInBottomRight {
+    from { transform: translateY(100px) scale(0.8); opacity: 0; }
+    to { transform: translateY(0) scale(1); opacity: 1; }
+}
+
+
+/* Geli�mi� Filtreler Drawer */
+.drawer {
+    position: fixed;
+    top: 0;
+    right: 0;
+    width: 350px;
+    height: 100vh;
+    background: rgba(15, 23, 42, 0.95);
+    backdrop-filter: blur(20px);
+    border-left: 1px solid rgba(255,255,255,0.1);
+    z-index: 4000;
+    padding: 30px 20px;
+    box-shadow: -10px 0 30px rgba(0,0,0,0.5);
+    overflow-y: auto;
+    animation: slideInRight 0.3s ease;
+}
+.light-theme .drawer {
+    background: rgba(255, 255, 255, 0.95);
+    border-left: 1px solid rgba(0,0,0,0.1);
+}
+@keyframes slideInRight {
+    from { transform: translateX(100%); }
+    to { transform: translateX(0); }
+}
+
+.drawer.closing {
+    animation: slideOutRight 0.3s ease forwards;
+}
+@keyframes slideOutRight {
+    from { transform: translateX(0); }
+    to { transform: translateX(100%); }
 }
