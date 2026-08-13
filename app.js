@@ -2447,27 +2447,37 @@ async function loadTrendingActors() {
     if (!container) return;
     
     try {
-        const [res1, res2, res3, res4] = await Promise.all([
-            fetch(`${BASE_URL}/trending/person/week?api_key=${API_KEY}&language=tr-TR&page=1`),
-            fetch(`${BASE_URL}/trending/person/week?api_key=${API_KEY}&language=tr-TR&page=2`),
-            fetch(`${BASE_URL}/trending/person/week?api_key=${API_KEY}&language=tr-TR&page=3`),
-            fetch(`${BASE_URL}/trending/person/week?api_key=${API_KEY}&language=tr-TR&page=4`)
-        ]);
-        const data1 = await res1.json();
-        const data2 = await res2.json();
-        const data3 = await res3.json();
-        const data4 = await res4.json();
-        const allActors = [...data1.results, ...data2.results, ...data3.results, ...data4.results];
+        const promises = [];
+        for(let p = 1; p <= 8; p++) {
+            promises.push(fetch(`${BASE_URL}/person/popular?api_key=${API_KEY}&language=tr-TR&page=${p}`));
+        }
+        const responses = await Promise.all(promises);
+        
+        let allActors = [];
+        for(const res of responses) {
+            const data = await res.json();
+            if(data.results) allActors = allActors.concat(data.results);
+        }
         
         let html = "";
         
-        // Asya yapımı (Kore, Japon, Çin, Hint vb.) içeriklerle tanınanları filtrele
+        // Asya yapımı içeriklerle veya +18 (adult) içeriklerle tanınanları filtrele
         const filteredActors = allActors.filter(actor => {
-            const hasAsianContent = actor.known_for && actor.known_for.some(m => {
+            if (actor.adult) return false;
+            
+            // Eğer isminde Latin alfabesi (ve Türkçe karakterler) harici (Çince, Japonca, Kiril, Arapça vb.) bir harf varsa direkt ele
+            if (!/^[-a-zA-Z0-9\s.,'şğüöçıŞĞÜÖÇİäöüßéèêëàâäôûçñ]+$/.test(actor.name)) return false;
+            
+            // Eğer bilinen yapımları (known_for) boşsa veya hiç yoksa, bu genelde gizli +18 oyuncusu olduğu anlamına gelir. Bunu da ele.
+            if (!actor.known_for || actor.known_for.length === 0) return false;
+            
+            const hasAsianOrAdultContent = actor.known_for.some(m => {
                 const lang = m.original_language;
-                return ['ko', 'ja', 'zh', 'cn', 'hi', 'th', 'vi', 'tl'].includes(lang);
+                const isAsian = ['ko', 'ja', 'zh', 'cn', 'hi', 'th', 'vi', 'tl'].includes(lang);
+                const isAdult = m.adult === true;
+                return isAsian || isAdult;
             });
-            return !hasAsianContent && /^[-a-zA-Z0-9\s.,'şğüöçıŞĞÜÖÇİäöüßéèêëàâäôûçñ]+$/.test(actor.name);
+            return !hasAsianOrAdultContent;
         });
         
         // Remove duplicates just in case since we fetched 2 pages
