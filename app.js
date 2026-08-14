@@ -36,6 +36,144 @@ let currentSearchQuery = "";
 let currentActorId = 0;
 let currentJobType = "cast";
 
+// =========================================
+// ROUTER SYSTEM (HASH ROUTING)
+// =========================================
+let routeGeneration = 0;
+let currentAbortController = null;
+let isNavigatingBack = false;
+
+function isValidRouteId(value) {
+    if (!/^[1-9]\d*$/.test(value)) return false;
+    if (value.length > 15) return false;
+    const id = Number(value);
+    return Number.isSafeInteger(id);
+}
+
+function navigate(route, options = {}) {
+    const { replace = false } = options;
+    const url = '#' + route;
+
+    if (window.location.hash === url) {
+        return;
+    }
+
+    const currentState = history.state || {};
+    let currentIndex = currentState.filmRehberiRouter ? currentState.filmRehberiRouter.index : 0;
+
+    if (!replace) {
+        currentIndex++;
+    }
+
+    const newState = {
+        ...currentState,
+        filmRehberiRouter: { index: currentIndex }
+    };
+
+    if (replace) {
+        history.replaceState(newState, "", url);
+    } else {
+        history.pushState(newState, "", url);
+    }
+    
+    handleRoute();
+}
+
+function parseRoute() {
+    const hash = window.location.hash.slice(1);
+    if (!hash) return { page: "home" };
+
+    if (hash.startsWith("movie/")) return { page: "movie", id: hash.split("/")[1] };
+    if (hash.startsWith("actor/")) return { page: "actor", id: hash.split("/")[1] };
+    if (hash.startsWith("search")) {
+        const parts = hash.split("?");
+        const queryString = parts[1] || "";
+        const params = new URLSearchParams(queryString);
+        return { page: "search", query: params.get("q") };
+    }
+    return { page: hash };
+}
+
+let lastRenderedHash = null;
+
+function handleRoute() {
+    const currentHash = window.location.hash || "#home";
+    if (lastRenderedHash === currentHash) return;
+    lastRenderedHash = currentHash;
+
+    const route = parseRoute();
+    
+    if (currentAbortController) {
+        currentAbortController.abort();
+    }
+    currentAbortController = new AbortController();
+    const generation = ++routeGeneration;
+    const routeContext = { generation, signal: currentAbortController.signal };
+
+    const detailsModal = document.getElementById('details-modal');
+    const actorModal = document.getElementById('actor-modal');
+    if (detailsModal) {
+        detailsModal.style.display = 'none';
+        detailsModal.classList.remove('active');
+        const p = document.getElementById('modal-providers');
+        if(p) p.innerHTML = "";
+        const trailerContainer = document.getElementById('details-trailer-container');
+        if (trailerContainer) trailerContainer.innerHTML = "";
+        const detailsPoster = document.getElementById('details-poster');
+        if(detailsPoster) detailsPoster.src = "";
+        const detailsCast = document.getElementById('details-cast');
+        if(detailsCast) detailsCast.innerHTML = "";
+        const vContainer = document.getElementById('video-bg-container');
+        if (vContainer) {
+            vContainer.innerHTML = "";
+        }
+    }
+    if (actorModal) actorModal.style.display = 'none';
+    
+    document.body.style.overflow = "auto";
+    if (window.player) {
+        window.player.destroy();
+        window.player = null;
+    }
+    const trailerModal = document.getElementById('trailer-modal');
+    if(trailerModal) trailerModal.style.display = 'none';
+
+    switch (route.page) {
+        case "movie":
+            renderMovie(route.id, routeContext);
+            break;
+        case "actor":
+            if (!isValidRouteId(route.id)) {
+                navigate('', { replace: true });
+                break;
+            }
+            renderActor(route.id, "", true, "cast", 0, false, routeContext);
+            break;
+        case "search":
+            if (route.query) {
+                renderSection("home");
+                const searchInput = document.getElementById('search-input');
+                if (searchInput) searchInput.value = route.query;
+                renderSearch(route.query, routeContext);
+            } else {
+                renderSection("home");
+            }
+            break;
+        case "vizyon":
+        case "now-playing":
+        case "platform":
+        case "profile":
+        case "games":
+        case "imax":
+            renderSection(route.page);
+            break;
+        case "home":
+        default:
+            renderSection("home");
+            break;
+    }
+}
+
 document.addEventListener('DOMContentLoaded', () => {
     setTimeout(() => {
         window.scrollTo({ top: 0, behavior: 'auto' });
@@ -141,7 +279,16 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
-    handleDeepLink();
+    // Initialize Router
+    window.addEventListener("hashchange", handleRoute);
+    
+    if (history.state && history.state.hasInternalRoute) {
+        window.appHistoryState = history.state;
+    } else {
+        history.replaceState(window.appHistoryState, "", window.location.hash);
+    }
+    
+    handleRoute();
 
     // Infinite Scroll Implementation
     const loadMoreBtn = document.getElementById('loadMoreBtn');
@@ -292,6 +439,7 @@ async function loadTop10Trending() {
     try {
         const res = await fetch(`${BASE_URL}/trending/all/week?api_key=${API_KEY}&language=tr-TR`);
         const data = await res.json();
+        if (routeContext && routeContext.generation !== routeGeneration) return;
         const top10 = data.results.slice(0, 10);
         
         const container = document.getElementById('top10-grid');
@@ -431,16 +579,24 @@ async function loadGenres() {
 }
 
 function switchTab(event, tabId) {
+    if (event) event.preventDefault();
+    navigate(tabId);
+}
+
+function renderSection(tabId) {
+    if (tabId === 'home') tabId = 'now-playing';
+
     clearAllFilters();
     toggleSelectVisibility('providerFilter', false);
     
     document.querySelectorAll('.tab-content').forEach(tab => tab.classList.remove('active-tab'));
     document.querySelectorAll('.nav-links a').forEach(link => link.classList.remove('active'));
 
-    document.getElementById(tabId).classList.add('active-tab');
-    if (event && event.currentTarget) {
-        event.currentTarget.classList.add('active');
-    }
+    const tabEl = document.getElementById(tabId);
+    if(tabEl) tabEl.classList.add('active-tab');
+    
+    const link = document.querySelector(`.nav-links a[onclick*="${tabId}"]`);
+    if(link) link.classList.add('active');
 
     if (tabId === 'now-playing') {
         loadNowPlaying();
@@ -957,7 +1113,7 @@ async function searchMovie(reset = true, isFilterChange = false) {
     }
 
     try {
-        const res = await fetch(`${BASE_URL}/search/multi?api_key=${API_KEY}&language=tr-TR&query=${encodeURIComponent(currentSearchQuery)}&page=${currentPage}&include_adult=false`);
+        const res = await fetch(`${BASE_URL}/search/multi?api_key=${API_KEY}&language=tr-TR&query=${encodeURIComponent(currentSearchQuery)}&page=${currentPage}&include_adult=false`, { signal: routeContext?.signal });
         const data = await res.json();
         
         // Filter out people and talk shows locally
@@ -1511,9 +1667,40 @@ function closeTrailer(event, force = false) {
     }
 }
 
-async function openDetails(movieId) {
+function openDetails(movieId) {
+    navigate('movie/' + movieId);
+}
+
+async function renderMovie(movieId, routeContext) {
+    const modal = document.getElementById('details-modal');
+    if (modal) modal.style.display = 'flex';
+
     document.body.style.overflow = "hidden";
     window.currentMovieId = movieId;
+
+    try {
+    let data;
+    try {
+        let res = await fetch(`${BASE_URL}/movie/${movieId}?api_key=${API_KEY}&language=tr-TR`, { signal: routeContext?.signal });
+        data = await res.json();
+        if (data.status_code === 34) {
+            res = await fetch(`${BASE_URL}/tv/${movieId}?api_key=${API_KEY}&language=tr-TR`, { signal: routeContext?.signal });
+            data = await res.json();
+            data.title = data.name;
+            data.media_type = "tv";
+        } else {
+            data.media_type = "movie";
+        }
+        
+        if (routeContext && routeContext.generation !== routeGeneration) {
+            return; 
+        }
+        
+        if (data.id) {
+            window.movieCache[movieId] = data;
+        }
+    } catch(e) {}
+    
     const item = window.movieCache[movieId];
     if (!item) return;
     
@@ -1523,7 +1710,7 @@ async function openDetails(movieId) {
 
     // Quick API validation for legacy items that might have wrong media_type
     try {
-        let verifyRes = await fetch(`${BASE_URL}/${item.media_type}/${item.id}?api_key=${API_KEY}&language=tr-TR`);
+        let verifyRes = await fetch(`${BASE_URL}/${item.media_type}/${item.id}?api_key=${API_KEY}&language=tr-TR`, { signal: routeContext?.signal });
         let verifyData = await verifyRes.json();
         if (verifyData.status_code === 34) {
             item.media_type = item.media_type === "movie" ? "tv" : "movie";
@@ -1949,16 +2136,27 @@ async function openDetails(movieId) {
     
     // History API for Android Back Button behavior
     history.pushState({ modalOpen: true }, "", "#details");
+    } catch (e) {
+        if (e.name === 'AbortError') return;
+        console.error(e);
+    }
 }
 
-async function openActorDetails(actorId, actorName, reset = true, jobType = 'cast', filterGenre = 0, isFilterChange = false) {
+function openActorDetails(actorId, actorName, reset = true, jobType = 'cast', filterGenre = 0, isFilterChange = false) {
+    navigate('actor/' + actorId);
+}
+
+async function renderActor(actorId, actorName = "", reset = true, jobType = 'cast', filterGenre = 0, isFilterChange = false, routeContext = null) {
     hideActorTooltip();
     
     if (reset) {
         if (!isFilterChange) {
                 // Filter clearing moved to top
             }
-        closeDetails(null, true);
+        
+        const detailsModal = document.getElementById('details-modal');
+        if (detailsModal) detailsModal.style.display = 'none';
+
         currentMode = "actor";
         currentActorId = actorId;
         currentJobType = jobType;
@@ -2016,8 +2214,16 @@ async function openActorDetails(actorId, actorName, reset = true, jobType = 'cas
     }
 
     try {
+        let currentRoute = parseRoute();
+        if (currentRoute.page !== 'actor' || currentRoute.id != actorId) return;
+
         const personRes = await fetch(`${BASE_URL}/person/${currentActorId}?api_key=${API_KEY}&language=tr-TR`);
         const personData = await personRes.json();
+        
+        if (!actorName) {
+            const searchInput = document.getElementById('searchInput');
+            if (searchInput) searchInput.value = personData.name;
+        }
         
         // EĞER KİŞİ ASLEN BİR YÖNETMENSE VE VARSAYILAN OLARAK 'CAST' GELDİYSE, ONU YÖNETMEN OLARAK DEĞİŞTİR!
         if (jobType === 'cast' && personData.known_for_department === 'Directing') {
@@ -2028,6 +2234,9 @@ async function openActorDetails(actorId, actorName, reset = true, jobType = 'cas
         
         const creditsRes = await fetch(`${BASE_URL}/person/${currentActorId}/combined_credits?api_key=${API_KEY}&language=tr-TR`);
         let data = await creditsRes.json();
+        
+        currentRoute = parseRoute();
+        if (currentRoute.page !== 'actor' || currentRoute.id != actorId) return;
         
         let movies = [];
         if (jobType === 'Director') {
@@ -2255,34 +2464,14 @@ async function openActorDetails(actorId, actorName, reset = true, jobType = 'cas
 
 function closeDetails(event, force = false, isHistoryEvent = false) {
     if (force || (event && (event.target.id === 'details-modal' || event.target.closest('.close-btn')))) {
-        const modal = document.getElementById('details-modal');
-        if (modal && modal.classList.contains('active')) {
-            modal.classList.remove('active');
-            document.body.style.overflow = "auto";
-            
-            // Dinamik Temayı Sıfırla
-            document.documentElement.style.setProperty('--primary-color', '');
-            document.documentElement.style.setProperty('--accent-color', '');
-            
-            const nextContainer = document.getElementById('random-next-container');
-            if (nextContainer) nextContainer.style.display = 'none';
-            window.isRandomMode = false;
-            
-            // Temizlik
-            document.getElementById('modal-providers').innerHTML = "";
-            const trailerContainer = document.getElementById('details-trailer-container');
-            if (trailerContainer) trailerContainer.innerHTML = "";
-            document.getElementById('details-poster').src = "";
-            document.getElementById('details-cast').innerHTML = "";
-            const vContainer = document.getElementById('video-bg-container');
-            if (vContainer) {
-                vContainer.innerHTML = "";
-                vContainer.style.opacity = "0";
-            }
-            
-            if (!isHistoryEvent) {
-                window.history.pushState(null, null, window.location.pathname);
-            }
+        if (isNavigatingBack) return;
+        
+        const state = history.state;
+        if (state && state.filmRehberiRouter && state.filmRehberiRouter.index > 0) {
+            isNavigatingBack = true;
+            history.back();
+        } else {
+            navigate('', { replace: true });
         }
     }
 }
