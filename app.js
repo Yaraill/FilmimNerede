@@ -211,11 +211,11 @@ function handleRoute() {
         case "profile":
         case "games":
         case "imax":
-            renderSection(route.page);
+            renderSection(route.page, routeContext);
             break;
         case "home":
         default:
-            renderSection("home");
+            renderSection("home", routeContext);
             break;
     }
 }
@@ -250,13 +250,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     
     // Load default tab
-    loadNowPlaying();
     loadGenres();
-    loadTop10Trending();
-    loadTrendingActors();
-    loadCuratedCollections();
-    renderRecentlyViewed();
-    loadSmartRecommendations();
     
     // Close autocomplete when clicking outside
     
@@ -377,7 +371,7 @@ function showSkeletons(containerId, count = 10) {
 }
 
 
-function resetPlatformView() {
+function resetPlatformView(routeContext = null) {
     document.getElementById('searchInput').value = "";
     
     // Fallbacks for removed filters
@@ -410,7 +404,7 @@ function resetPlatformView() {
     const filterControls = document.querySelector('.filter-controls');
     if (filterControls) filterControls.style.display = 'flex';
     
-    loadPlatformMovies(0, true);
+    loadPlatformMovies(0, true, false, routeContext);
 }
 
 function switchViewMode(mode) {
@@ -460,11 +454,11 @@ function closeRandom(event, force = false) {
     }
 }
 
-async function loadTop10Trending(routeContext = null) {
+async function loadTop10Trending(routeContext = null, expectedPage = null) {
     try {
-        const res = await fetch(`${BASE_URL}/trending/all/week?api_key=${API_KEY}&language=tr-TR`);
+        const res = await fetch(`${BASE_URL}/trending/all/week?api_key=${API_KEY}&language=tr-TR`, { signal: routeContext?.signal });
         const data = await res.json();
-        if (routeContext && routeContext.generation !== routeGeneration) return;
+        if (routeContext && expectedPage && !isRouteContextCurrent(routeContext, expectedPage)) return;
         const top10 = data.results.slice(0, 10);
         
         const container = document.getElementById('top10-grid');
@@ -498,6 +492,7 @@ async function loadTop10Trending(routeContext = null) {
             makeScrollable(container);
         }
     } catch (e) {
+        if (e.name === 'AbortError') return;
         console.error("Top 10 fetching failed", e);
     }
 }
@@ -608,7 +603,8 @@ function switchTab(event, tabId) {
     navigate(tabId);
 }
 
-function renderSection(tabId) {
+function renderSection(tabId, routeContext = null) {
+    const routePage = tabId;
     if (tabId === 'home') tabId = 'now-playing';
 
     clearAllFilters();
@@ -624,13 +620,18 @@ function renderSection(tabId) {
     if(link) link.classList.add('active');
 
     if (tabId === 'now-playing') {
-        loadNowPlaying();
+        loadNowPlaying(routeContext, routePage);
+        loadTop10Trending(routeContext, routePage);
+        loadTrendingActors(routeContext, routePage);
+        loadCuratedCollections(routeContext, routePage);
+        renderRecentlyViewed(routeContext);
+        loadSmartRecommendations(routeContext, routePage);
     } else if (tabId === 'vizyon') {
-        loadUpcomingMovies();
+        loadUpcomingMovies(routeContext);
     } else if (tabId === 'platform') {
-        resetPlatformView();
+        resetPlatformView(routeContext);
     } else if (tabId === 'profile') {
-        loadProfile();
+        loadProfile(routeContext);
     }
 }
 
@@ -841,7 +842,7 @@ async function fetchAndInjectProviders(itemId, mediaType, itemData = null, route
     }
 }
 
-async function loadNowPlaying() {
+async function loadNowPlaying(routeContext = null, expectedPage = null) {
     const container = document.getElementById('now-playing-grid');
     if(document.getElementById('top10-section')) document.getElementById('top10-section').style.display = 'block';
     if(document.getElementById('collections-section')) document.getElementById('collections-section').style.display = 'block';
@@ -853,8 +854,11 @@ async function loadNowPlaying() {
     container.style.display = "";
     container.innerHTML = "<div class='loading'>Vizyondaki filmler çekiliyor...</div>";
     try {
-        const res = await fetch(`${BASE_URL}/movie/now_playing?api_key=${API_KEY}&language=tr-TR&region=TR&page=1`);
+        const res = await fetch(`${BASE_URL}/movie/now_playing?api_key=${API_KEY}&language=tr-TR&region=TR&page=1`, { signal: routeContext?.signal });
         const data = await res.json();
+        
+        if (routeContext && expectedPage && !isRouteContextCurrent(routeContext, expectedPage)) return;
+        
         let html = "";
         data.results.forEach(movie => {
             html += createMovieCard(movie, "movie", "now-playing");
@@ -863,14 +867,15 @@ async function loadNowPlaying() {
         
         // Fetch providers for each movie after rendering cards
         data.results.forEach(movie => {
-            fetchAndInjectProviders(movie.id, "movie");
+            fetchAndInjectProviders(movie.id, "movie", null, routeContext);
         });
     } catch (error) {
+        if (error.name === 'AbortError') return;
         container.innerHTML = "<div class='loading'>Hata oluştu.</div>";
     }
 }
 
-async function loadUpcomingMovies() {
+async function loadUpcomingMovies(routeContext = null) {
     const container = document.getElementById('upcoming-movies');
     if (container.children.length > 1) return; 
     
@@ -878,14 +883,18 @@ async function loadUpcomingMovies() {
     container.innerHTML = "<div class='loading'>Gelecek filmler çekiliyor...</div>";
     try {
         const today = new Date().toISOString().split('T')[0];
-        const response = await fetch(`${BASE_URL}/discover/movie?api_key=${API_KEY}&language=tr-TR&region=TR&with_release_type=2|3|4&release_date.gte=${today}&sort_by=release_date.asc&popularity.gte=15&page=1`);
+        const response = await fetch(`${BASE_URL}/discover/movie?api_key=${API_KEY}&language=tr-TR&region=TR&with_release_type=2|3|4&release_date.gte=${today}&sort_by=release_date.asc&popularity.gte=15&page=1`, { signal: routeContext?.signal });
         const data = await response.json();
+        
+        if (routeContext && !isRouteContextCurrent(routeContext, "vizyon")) return;
+        
         let html = "";
         data.results.forEach(movie => {
             html += createMovieCard(movie, "movie", "upcoming");
         });
         container.innerHTML = html;
     } catch (error) {
+        if (error.name === 'AbortError') return;
         container.innerHTML = "<div class='loading'>Hata oluştu.</div>";
     }
 }
@@ -912,7 +921,7 @@ function handlePlatformButtonClick(pid) {
     loadPlatformMovies(currentProvider, true, true);
 }
 
-async function loadPlatformMovies(providerId = 0, reset = true, isFilterChange = false) {
+async function loadPlatformMovies(providerId = 0, reset = true, isFilterChange = false, routeContext = null) {
     if (reset) {
         if (!isFilterChange) clearAllFilters();
         currentPage = 1;
@@ -1021,8 +1030,10 @@ async function loadPlatformMovies(providerId = 0, reset = true, isFilterChange =
                 }
             }
             
-            const res = await fetch(url);
+            const res = await fetch(url, { signal: routeContext?.signal });
             const data = await res.json();
+            
+            if (routeContext && !isRouteContextCurrent(routeContext, "platform")) return;
             
             if (data.results && data.results.length > 0) {
                 let results = data.results;
@@ -1072,7 +1083,7 @@ async function loadPlatformMovies(providerId = 0, reset = true, isFilterChange =
         let html = "";
         for (let i = 0; i < allResults.length; i++) {
             html += createMovieCard(allResults[i], allResults[i].media_type, "");
-            fetchAndInjectProviders(allResults[i].id, allResults[i].media_type);
+            fetchAndInjectProviders(allResults[i].id, allResults[i].media_type, null, routeContext);
         }
         container.innerHTML += html;
         
@@ -1081,6 +1092,7 @@ async function loadPlatformMovies(providerId = 0, reset = true, isFilterChange =
         }
         if (reset) document.getElementById('search-results').style.minHeight = '';
     } catch (error) {
+        if (error.name === 'AbortError') return;
         if (reset) document.getElementById('search-results').style.minHeight = '';
         console.error("loadPlatformMovies error:", error);
         if (reset) document.getElementById('search-results').innerHTML = `<div class='loading' style='color:red;'>Hata oluştu: ${error.message} <br/> ${error.stack}</div>`;
@@ -1391,7 +1403,7 @@ function shareMovie(id) {
     }
 }
 
-function renderRecentlyViewed() {
+function renderRecentlyViewed(routeContext = null) {
     const recent = JSON.parse(localStorage.getItem('recentlyViewed') || '[]');
     const container = document.getElementById('recently-viewed-grid');
     if (!container) return;
@@ -1401,7 +1413,7 @@ function renderRecentlyViewed() {
     } else {
         document.getElementById('recently-viewed-section').style.display = 'block';
         container.innerHTML = recent.map(item => createMovieCard(item, item.media_type, "")).join('');
-        recent.forEach(item => fetchAndInjectProviders(item.id, item.media_type, item));
+        recent.forEach(item => fetchAndInjectProviders(item.id, item.media_type, item, routeContext));
     }
 }
 
@@ -1428,7 +1440,7 @@ function switchProfileTab(tabId, btnElem) {
     }
 }
 
-function loadProfile() {
+function loadProfile(routeContext = null) {
     const watchlistGrid = document.getElementById('watchlist-grid');
     const ratedTvGrid = document.getElementById('rated-tv-grid');
     const ratedMovieGrid = document.getElementById('rated-movie-grid');
@@ -1518,7 +1530,7 @@ function loadProfile() {
     }
     
     // Render Recently Viewed
-    renderRecentlyViewed();
+    renderRecentlyViewed(routeContext);
 
     // Render Watchlist
     if (watchlist.length === 0) {
@@ -1576,7 +1588,7 @@ function loadProfile() {
     [...watchlist, ...ratedMovies].forEach(item => {
         let type = item.media_type;
         if (!type || type === "undefined") type = item.first_air_date ? "tv" : "movie";
-        fetchAndInjectProviders(item.id, type, item);
+        fetchAndInjectProviders(item.id, type, item, routeContext);
     });
 }
 
@@ -2689,16 +2701,17 @@ document.addEventListener('mousemove', (e) => {
 
 // V19 Mega Update Functions
 
-async function loadTrendingActors() {
+async function loadTrendingActors(routeContext = null, expectedPage = null) {
     const container = document.getElementById('trending-actors-list');
     if (!container) return;
     
     try {
         const promises = [];
         for(let p = 1; p <= 8; p++) {
-            promises.push(fetch(`${BASE_URL}/person/popular?api_key=${API_KEY}&language=tr-TR&page=${p}`));
+            promises.push(fetch(`${BASE_URL}/person/popular?api_key=${API_KEY}&language=tr-TR&page=${p}`, { signal: routeContext?.signal }));
         }
         const responses = await Promise.all(promises);
+        if (routeContext && expectedPage && !isRouteContextCurrent(routeContext, expectedPage)) return;
         
         let allActors = [];
         for(const res of responses) {
@@ -2762,11 +2775,12 @@ async function loadTrendingActors() {
         // Add drag to scroll
         makeScrollable(container);
     } catch (e) {
+        if (e.name === 'AbortError') return;
         container.innerHTML = "<div style='color:red'>Oyuncular yüklenemedi.</div>";
     }
 }
 
-async function loadCuratedCollections() {
+async function loadCuratedCollections(routeContext = null, expectedPage = null) {
     const container = document.getElementById('curated-collections-list');
     if (!container) return;
     
@@ -2806,13 +2820,15 @@ async function loadCuratedCollections() {
     ];
     
     const fetchPromises = collections.map(c => 
-        fetch(`${BASE_URL}/collection/${c.id}?api_key=${API_KEY}&language=tr-TR`)
+        fetch(`${BASE_URL}/collection/${c.id}?api_key=${API_KEY}&language=tr-TR`, { signal: routeContext?.signal })
             .then(res => res.json())
             .then(data => ({ data, c }))
-            .catch(() => null)
+            .catch((e) => { if (e.name === 'AbortError') throw e; return null; })
     );
     
-    const results = await Promise.all(fetchPromises);
+    try {
+        const results = await Promise.all(fetchPromises);
+        if (routeContext && expectedPage && !isRouteContextCurrent(routeContext, expectedPage)) return;
     
     let html = "";
     for (let res of results) {
@@ -2848,6 +2864,10 @@ async function loadCuratedCollections() {
     }, 30);
     
     makeScrollable(container);
+    } catch(e) {
+        if (e.name === 'AbortError') return;
+        console.error("Collections error:", e);
+    }
 }
 
 async function openCollection(collectionId) {
@@ -3423,7 +3443,7 @@ document.addEventListener('DOMContentLoaded', () => {
 // =========================================
 // AKILLI NER ALGORTMASI (Puanlananlara Gre)
 // =========================================
-async function loadSmartRecommendations() {
+async function loadSmartRecommendations(routeContext = null, expectedPage = null) {
     let rated = JSON.parse(localStorage.getItem('ratedMovies')) || [];
     let ratings = JSON.parse(localStorage.getItem('movieRatings')) || {};
     
@@ -3445,7 +3465,7 @@ async function loadSmartRecommendations() {
         let recommendedMovies = [];
         for (let movie of topMovies) {
             let mediaType = movie.media_type || 'movie';
-            let res = await fetch(`${BASE_URL}/${mediaType}/${movie.id}/recommendations?api_key=${API_KEY}&language=tr-TR`);
+            let res = await fetch(`${BASE_URL}/${mediaType}/${movie.id}/recommendations?api_key=${API_KEY}&language=tr-TR`, { signal: routeContext?.signal });
             let data = await res.json();
             if (data.results) {
                 recommendedMovies.push(...data.results);
@@ -3484,7 +3504,7 @@ async function loadSmartRecommendations() {
         
         // Eğer 14'ten az çıktıysa, popüler ve yüksek puanlı filmlerle doldur
         if (finalMovies.length < 14) {
-            let res = await fetch(`${BASE_URL}/discover/movie?api_key=${API_KEY}&language=tr-TR&sort_by=vote_average.desc&vote_count.gte=1000&without_genres=99`);
+            let res = await fetch(`${BASE_URL}/discover/movie?api_key=${API_KEY}&language=tr-TR&sort_by=vote_average.desc&vote_count.gte=1000&without_genres=99`, { signal: routeContext?.signal });
             let data = await res.json();
             if (data.results) {
                 let extra = data.results.filter(m => !seen.has(m.id) && !ratings[m.id] && m.poster_path && !m.adult && m.vote_average >= 7.0);
@@ -3496,8 +3516,12 @@ async function loadSmartRecommendations() {
         finalMovies.forEach(item => {
             html += createMovieCard(item, item.media_type || 'movie', 'smart');
         });
+        
+        if (routeContext && expectedPage && !isRouteContextCurrent(routeContext, expectedPage)) return;
+        
         document.getElementById('smart-recommendations-list').innerHTML = html;
     } catch(e) {
+        if (e.name === 'AbortError') return;
         console.error("Smart Recommendation error", e);
     }
 }
