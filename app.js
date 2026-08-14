@@ -41,7 +41,7 @@ let currentJobType = "cast";
 // =========================================
 let routeGeneration = 0;
 let currentAbortController = null;
-let isNavigatingBack = false;
+
 
 function isValidRouteId(value) {
     if (!/^[1-9]\d*$/.test(value)) return false;
@@ -84,6 +84,15 @@ function parseRoute() {
     if (!hash) return { page: "home" };
 
     if (hash.startsWith("movie/")) return { page: "movie", id: hash.split("/")[1] };
+    if (hash.startsWith("film/")) {
+        const id = hash.split("/")[1];
+        if (isValidRouteId(id)) {
+            window.history.replaceState(window.history.state, "", `#movie/${id}`);
+            return { page: "movie", id };
+        } else {
+            return { page: "platform" };
+        }
+    }
     if (hash.startsWith("actor/")) return { page: "actor", id: hash.split("/")[1] };
     if (hash.startsWith("search")) {
         const parts = hash.split("?");
@@ -127,6 +136,8 @@ function handleRoute() {
         if (vContainer) {
             vContainer.innerHTML = "";
         }
+        document.documentElement.style.removeProperty('--primary-color');
+        document.documentElement.style.removeProperty('--accent-color');
     }
     if (actorModal) actorModal.style.display = 'none';
     
@@ -295,11 +306,18 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Initialize Router
     window.addEventListener("hashchange", handleRoute);
+    window.addEventListener("popstate", handleRoute);
     
-    if (history.state && history.state.hasInternalRoute) {
-        window.appHistoryState = history.state;
-    } else {
-        history.replaceState(window.appHistoryState, "", window.location.hash);
+    const currentState = history.state || {};
+    if (!currentState.filmRehberiRouter) {
+        history.replaceState(
+            {
+                ...currentState,
+                filmRehberiRouter: { index: 0 }
+            },
+            "",
+            window.location.href
+        );
     }
     
     handleRoute();
@@ -1363,7 +1381,8 @@ function removeRating(id) {
 }
 
 function shareMovie(id) {
-    const url = `${window.location.origin}${window.location.pathname}#film/${id}`;
+    if (!isValidRouteId(id)) return;
+    const url = `${window.location.origin}${window.location.pathname}#movie/${id}`;
     if (navigator.share) {
         navigator.share({
             title: 'FilmimNerede',
@@ -1739,9 +1758,6 @@ async function renderMovie(movieId, routeContext) {
             }
         }
     } catch(e) {}
-
-    window.history.pushState(null, null, '#film/' + movieId);
-
     const modal = document.getElementById('details-modal');
     
     // Add to recently viewed
@@ -2149,8 +2165,7 @@ async function renderMovie(movieId, routeContext) {
     modal.classList.add('active');
     document.body.style.overflow = "hidden";
     
-    // History API for Android Back Button behavior
-    history.pushState({ modalOpen: true }, "", "#details");
+    // History API handled centrally
     } catch (e) {
         if (e.name === 'AbortError') return;
         console.error(e);
@@ -2477,27 +2492,19 @@ async function renderActor(actorId, actorName = "", reset = true, jobType = 'cas
     }
 }
 
-function closeDetails(event, force = false, isHistoryEvent = false) {
+function closeDetails(event, force = false) {
     if (force || (event && (event.target.id === 'details-modal' || event.target.closest('.close-btn')))) {
-        if (isNavigatingBack) return;
+        const hash = window.location.hash || "";
+        if (!hash.startsWith('#movie/')) return;
         
         const state = history.state;
         if (state && state.filmRehberiRouter && state.filmRehberiRouter.index > 0) {
-            isNavigatingBack = true;
             history.back();
         } else {
-            navigate('', { replace: true });
+            navigate('platform', { replace: true });
         }
     }
 }
-
-// Tarayıcı geri tuşu eventi
-window.addEventListener('popstate', (event) => {
-    const detailsModal = document.getElementById('details-modal');
-    if (detailsModal && detailsModal.classList.contains('active')) {
-        closeDetails(null, true, true);
-    }
-});
 
 // =========================================
 // V5: PREMIUM FONKSİYONLAR (Tooltip, TV)
