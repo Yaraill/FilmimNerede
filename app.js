@@ -43,6 +43,26 @@ let routeGeneration = 0;
 let currentAbortController = null;
 
 
+function isRouteContextCurrent(routeContext, expectedPage, expectedId = null) {
+    if (!routeContext) return false;
+    if (routeContext.signal && routeContext.signal.aborted) return false;
+    if (routeContext.generation !== routeGeneration) return false;
+    
+    const hash = window.location.hash.slice(1);
+    let currentPage = "home";
+    let currentId = null;
+    
+    if (hash.startsWith("movie/")) { currentPage = "movie"; currentId = hash.split("/")[1]; }
+    else if (hash.startsWith("actor/")) { currentPage = "actor"; currentId = hash.split("/")[1]; }
+    else if (hash.startsWith("search")) { currentPage = "search"; }
+    else if (hash) { currentPage = hash; }
+    
+    if (currentPage !== expectedPage) return false;
+    if (expectedId !== null && String(currentId) !== String(expectedId)) return false;
+    
+    return true;
+}
+
 function isValidRouteId(value) {
     if (!/^[1-9]\d*$/.test(value)) return false;
     if (value.length > 15) return false;
@@ -776,7 +796,7 @@ function stopHoverSlideshow(imgElement, originalSrc) {
     }
 }
 
-async function fetchAndInjectProviders(itemId, mediaType, itemData = null) {
+async function fetchAndInjectProviders(itemId, mediaType, itemData = null, routeContext = null) {
     if (!mediaType || mediaType === "undefined") {
         if (itemData && (itemData.first_air_date || itemData.name)) {
             mediaType = "tv";
@@ -785,7 +805,8 @@ async function fetchAndInjectProviders(itemId, mediaType, itemData = null) {
         }
     }
     try {
-        const res = await fetch(`${BASE_URL}/${mediaType}/${itemId}/watch/providers?api_key=${API_KEY}`);
+        const res = await fetch(`${BASE_URL}/${mediaType}/${itemId}/watch/providers?api_key=${API_KEY}`, { signal: routeContext?.signal });
+        if (routeContext && !isRouteContextCurrent(routeContext, parseRoute().page)) return;
         const data = await res.json();
         const tr = data.results && data.results.TR ? data.results.TR : null;
         
@@ -813,6 +834,7 @@ async function fetchAndInjectProviders(itemId, mediaType, itemData = null) {
         }
         
     } catch (err) {
+        if (err.name === 'AbortError') return;
         console.error("Provider bilgisi alınamadı", err);
         const els = document.querySelectorAll(`.providers-${itemId}`);
         els.forEach(el => el.innerHTML = "<span class='no-provider'>Platform bilgisi alınamadı</span>");
@@ -1706,7 +1728,12 @@ async function renderMovie(movieId, routeContext) {
         if (data.id) {
             window.movieCache[movieId] = data;
         }
-    } catch(e) {}
+    } catch(e) {
+        if (e.name === 'AbortError') return;
+        console.error(e);
+    }
+    
+    if (!isRouteContextCurrent(routeContext, "movie", movieId)) return;
     
     const item = window.movieCache[movieId];
     if (!item) return;
@@ -1730,7 +1757,12 @@ async function renderMovie(movieId, routeContext) {
                 localStorage.setItem('watchlist', JSON.stringify(wl));
             }
         }
-    } catch(e) {}
+    } catch(e) {
+        if (e.name === 'AbortError') return;
+    }
+
+    if (!isRouteContextCurrent(routeContext, "movie", movieId)) return;
+
     const modal = document.getElementById('details-modal');
     
     // Add to recently viewed
@@ -1834,6 +1866,7 @@ async function renderMovie(movieId, routeContext) {
                 provContainer.innerHTML = "<span style='color:var(--text-muted); font-size:0.9rem;'>Türkiye'de dijital yayını yok</span>";
             }
         }).catch(err => {
+            if (err.name === 'AbortError') return;
             const provContainer = document.getElementById('modal-providers');
             if(provContainer) provContainer.innerHTML = "<span style='color:var(--text-muted); font-size:0.9rem;'>Platform bilgisi alınamadı</span>";
         });
@@ -2150,6 +2183,7 @@ function openActorDetails(actorId, actorName, reset = true, jobType = 'cast', fi
 }
 
 async function renderActor(actorId, actorName = "", reset = true, jobType = 'cast', filterGenre = 0, isFilterChange = false, routeContext = null) {
+    routeContext = routeContext || { generation: routeGeneration, signal: currentAbortController?.signal };
     hideActorTooltip();
     
     if (reset) {
@@ -2217,11 +2251,12 @@ async function renderActor(actorId, actorName = "", reset = true, jobType = 'cas
     }
 
     try {
-        let currentRoute = parseRoute();
-        if (currentRoute.page !== 'actor' || currentRoute.id != actorId) return;
+        if (!isRouteContextCurrent(routeContext, "actor", actorId)) return;
 
-        const personRes = await fetch(`${BASE_URL}/person/${currentActorId}?api_key=${API_KEY}&language=tr-TR`);
+        const personRes = await fetch(`${BASE_URL}/person/${currentActorId}?api_key=${API_KEY}&language=tr-TR`, { signal: routeContext?.signal });
         const personData = await personRes.json();
+        
+        if (!isRouteContextCurrent(routeContext, "actor", actorId)) return;
         
         if (!actorName) {
             const searchInput = document.getElementById('searchInput');
@@ -2235,11 +2270,10 @@ async function renderActor(actorId, actorName = "", reset = true, jobType = 'cas
         
         const filterProvId = parseInt(document.getElementById('providerFilter')?.value || "0");
         
-        const creditsRes = await fetch(`${BASE_URL}/person/${currentActorId}/combined_credits?api_key=${API_KEY}&language=tr-TR`);
+        const creditsRes = await fetch(`${BASE_URL}/person/${currentActorId}/combined_credits?api_key=${API_KEY}&language=tr-TR`, { signal: routeContext?.signal });
         let data = await creditsRes.json();
         
-        currentRoute = parseRoute();
-        if (currentRoute.page !== 'actor' || currentRoute.id != actorId) return;
+        if (!isRouteContextCurrent(routeContext, "actor", actorId)) return;
         
         let movies = [];
         if (jobType === 'Director') {
@@ -2324,7 +2358,7 @@ async function renderActor(actorId, actorName = "", reset = true, jobType = 'cas
                         if (runtimeFilter == '120' && rt > 90 && rt <= 105) return m;
                         if (runtimeFilter == '150' && rt > 105 && rt <= 135) return m;
                         if (runtimeFilter == '180' && rt > 135) return m;
-                    } catch (e) { return null; }
+                    } catch (e) { if (e.name === 'AbortError') throw e; return null; }
                     return null;
                 }));
                 validMovies.push(...results.filter(Boolean));
@@ -2366,7 +2400,7 @@ async function renderActor(actorId, actorName = "", reset = true, jobType = 'cas
                         const data = await res.json();
                         const tr = data.results && data.results[regionStr] ? data.results[regionStr] : null;
                         if (tr && tr.flatrate && tr.flatrate.some(p => p.provider_id === filterProvId)) return m;
-                    } catch (e) { return null; }
+                    } catch (e) { if (e.name === 'AbortError') throw e; return null; }
                     return null;
                 }));
                 validMovies.push(...results.filter(Boolean));
@@ -2374,12 +2408,14 @@ async function renderActor(actorId, actorName = "", reset = true, jobType = 'cas
             movies = validMovies;
         }
         
+        if (!isRouteContextCurrent(routeContext, "actor", actorId)) return;
         const startIndex = (currentPage - 1) * 20;
         const endIndex = startIndex + 20;
         const pagedMovies = movies.slice(startIndex, endIndex);
         
         const container = document.getElementById('search-results');
         
+        let bioCardHtml = "";
         if (reset) {
             let bioText = personData.biography ? personData.biography : "";
             const birthDate = personData.birthday ? new Date(personData.birthday).getFullYear() : "";
@@ -2395,9 +2431,10 @@ async function renderActor(actorId, actorName = "", reset = true, jobType = 'cas
             const favClass = isFav ? "active" : "inactive";
             
             if (!isFilterChange) {
+                if (!isRouteContextCurrent(routeContext, "actor", actorId)) return;
                 container.innerHTML = "";
                 if (bioText || birthDate || true) { // Always show bio card even if empty bio, to show favorite button
-                    const bioCardHtml = `
+                    bioCardHtml = `
                     <div id="actor-bio-card-container" class="actor-bio-card" style="grid-column: 1 / -1; width: 100%; max-width: 800px; margin: 0 auto 20px auto; padding: 20px; background: var(--card-bg); border-radius: 15px; border: 1px solid var(--glass-border); color: var(--text-muted); font-size: 0.95rem;">
                         <div style="display:flex; align-items:flex-start; gap: 20px; margin-bottom: 10px;">
                             <img src="${personData.profile_path ? IMAGE_BASE + personData.profile_path : 'https://via.placeholder.com/60x90'}" style="width: 80px; height: 120px; border-radius: 10px; object-fit: cover; flex-shrink: 0; user-select: none; -webkit-user-drag: none;" loading="lazy">
@@ -2421,6 +2458,7 @@ async function renderActor(actorId, actorName = "", reset = true, jobType = 'cas
         }
         
         if (isFilterChange) {
+            if (!isRouteContextCurrent(routeContext, "actor", actorId)) return;
             const skels = container.querySelectorAll('.skeleton-card');
             skels.forEach(s => s.remove());
         }
@@ -2444,9 +2482,10 @@ async function renderActor(actorId, actorName = "", reset = true, jobType = 'cas
             return;
         }
         
+        if (!isRouteContextCurrent(routeContext, "actor", actorId)) return;
         for (let i = 0; i < pagedMovies.length; i++) {
             container.insertAdjacentHTML('beforeend', createMovieCard(pagedMovies[i], pagedMovies[i].media_type, ""));
-            fetchAndInjectProviders(pagedMovies[i].id, pagedMovies[i].media_type);
+            fetchAndInjectProviders(pagedMovies[i].id, pagedMovies[i].media_type, null, routeContext);
         }
         
         if (endIndex < movies.length) {
@@ -2458,6 +2497,7 @@ async function renderActor(actorId, actorName = "", reset = true, jobType = 'cas
         container.style.minHeight = '';
         
     } catch (e) {
+        if (e.name === 'AbortError') return;
         if (reset) document.getElementById('search-results').innerHTML = "<div class='loading'>Hata oluştu.</div>";
     } finally {
         const spinner = document.getElementById('infinite-spinner');
