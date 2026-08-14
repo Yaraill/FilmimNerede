@@ -35,6 +35,8 @@ let currentMode = "platform";
 let currentSearchQuery = "";
 let currentActorId = 0;
 let currentJobType = "cast";
+let searchRequestGeneration = 0;
+let isLoadingMore = false;
 
 // =========================================
 // ROUTER SYSTEM (HASH ROUTING)
@@ -1107,6 +1109,15 @@ function handleSearch(event) {
 }
 
 async function searchMovie(reset = true, isFilterChange = false, routeContext = null) {
+    routeContext = routeContext || {
+        generation: routeGeneration,
+        signal: currentAbortController?.signal
+    };
+
+    const requestGeneration = reset
+        ? ++searchRequestGeneration
+        : searchRequestGeneration;
+
     if (reset) {
         currentSearchQuery = document.getElementById('searchInput').value.trim();
         if (!currentSearchQuery) {
@@ -1151,9 +1162,16 @@ async function searchMovie(reset = true, isFilterChange = false, routeContext = 
         document.getElementById('loadMoreBtn').style.display = 'none';
     }
 
+    const requestQuery = currentSearchQuery;
+    const requestPage = currentPage;
+
     try {
-        const res = await fetch(`${BASE_URL}/search/multi?api_key=${API_KEY}&language=tr-TR&query=${encodeURIComponent(currentSearchQuery)}&page=${currentPage}&include_adult=false`, { signal: routeContext?.signal });
+        const res = await fetch(`${BASE_URL}/search/multi?api_key=${API_KEY}&language=tr-TR&query=${encodeURIComponent(requestQuery)}&page=${requestPage}&include_adult=false`, { signal: routeContext?.signal });
         const data = await res.json();
+        
+        if (requestGeneration !== searchRequestGeneration) return;
+        if (routeContext && (routeContext.signal?.aborted || routeContext.generation !== routeGeneration)) return;
+        if (requestQuery !== currentSearchQuery) return;
         
         // Filter out people and talk shows locally
         let filtered = data.results.filter(item => {
@@ -1179,7 +1197,7 @@ async function searchMovie(reset = true, isFilterChange = false, routeContext = 
         let html = "";
         for (let i = 0; i < filtered.length; i++) {
             html += createMovieCard(filtered[i], filtered[i].media_type, "");
-            fetchAndInjectProviders(filtered[i].id, filtered[i].media_type);
+            fetchAndInjectProviders(filtered[i].id, filtered[i].media_type, null, routeContext);
         }
         container.innerHTML += html;
         
@@ -1191,30 +1209,52 @@ async function searchMovie(reset = true, isFilterChange = false, routeContext = 
         document.getElementById('search-results').style.minHeight = '';
     } catch (error) {
         if (error.name === 'AbortError') return;
+        if (requestGeneration !== searchRequestGeneration) return;
+        if (routeContext && (routeContext.signal?.aborted || routeContext.generation !== routeGeneration)) return;
         document.getElementById('search-results').style.minHeight = '';
         console.error("searchMovie error:", error);
         if (reset) document.getElementById('search-results').innerHTML = `<div class='loading' style='color:red;'>Arama Hatası: ${error.message}</div>`;
     } finally {
-        const spinner = document.getElementById('infinite-spinner');
-        if (spinner) spinner.style.display = 'none';
+        if (requestGeneration === searchRequestGeneration) {
+            const spinner = document.getElementById('infinite-spinner');
+            if (spinner) spinner.style.display = 'none';
+        }
     }
 }
 
 let searchTimeout = null;
+let autocompleteAbortController = null;
+let autocompleteRequestGeneration = 0;
 async function handleSearchInput(event) {
     const query = event.target.value.trim();
     const box = document.getElementById('autocomplete-box');
+    
+    const requestGeneration = ++autocompleteRequestGeneration;
+    const routeGenerationAtInput = routeGeneration;
+    
+    clearTimeout(searchTimeout);
+    
+    if (autocompleteAbortController) {
+        autocompleteAbortController.abort();
+        autocompleteAbortController = null;
+    }
     
     if (query.length < 3) {
         if(box) box.style.display = 'none';
         return;
     }
     
-    clearTimeout(searchTimeout);
     searchTimeout = setTimeout(async () => {
+        const controller = new AbortController();
+        autocompleteAbortController = controller;
         try {
-            const res = await fetch(`${BASE_URL}/search/multi?api_key=${API_KEY}&language=tr-TR&query=${encodeURIComponent(query)}&include_adult=false`);
+            const res = await fetch(`${BASE_URL}/search/multi?api_key=${API_KEY}&language=tr-TR&query=${encodeURIComponent(query)}&include_adult=false`, { signal: controller.signal });
             const data = await res.json();
+            
+            if (requestGeneration !== autocompleteRequestGeneration) return;
+            if (routeGenerationAtInput !== routeGeneration) return;
+            const currentInputValue = document.getElementById('searchInput')?.value.trim() || "";
+            if (currentInputValue !== query) return;
             
             let results = data.results.filter(item => {
                 if (item.genre_ids && (item.genre_ids.includes(10767) || item.genre_ids.includes(10763) || item.genre_ids.includes(10764))) return false;
@@ -1259,23 +1299,78 @@ async function handleSearchInput(event) {
                 });
                 box.style.display = 'block';
             }
-        } catch(e) {
+        } catch (e) {
+            if (e.name === 'AbortError') return;
             console.error("Autocomplete Error:", e);
+        } finally {
+            if (autocompleteAbortController === controller) {
+                autocompleteAbortController = null;
+            }
         }
     }, 400);
 }
 
-function loadMoreResults() {
+async function loadMoreResults() {
+    if (isLoadingMore) return;
+
+    if (
+        currentMode !== "platform" &&
+        currentMode !== "search" &&
+        currentMode !== "actor"
+    ) {
+        return;
+    }
+
+    isLoadingMore = true;
+
+    const modeAtStart = currentMode;
+    const routeContext = {
+        generation: routeGeneration,
+        signal: currentAbortController?.signal
+    };
+
     currentPage++;
+
     const spinner = document.getElementById('infinite-spinner');
     if (spinner) spinner.style.display = 'block';
-    
-    if (currentMode === "platform") {
-        loadPlatformMovies(currentProvider, false);
-    } else if (currentMode === "search") {
-        searchMovie(false);
-    } else if (currentMode === "actor") {
-        openActorDetails(currentActorId, document.getElementById('searchInput').value, false, currentJobType);
+
+    try {
+        if (modeAtStart === "platform") {
+            await loadPlatformMovies(
+                currentProvider,
+                false,
+                false,
+                routeContext
+            );
+
+        } else if (modeAtStart === "search") {
+            await searchMovie(
+                false,
+                false,
+                routeContext
+            );
+
+        } else if (modeAtStart === "actor") {
+            await renderActor(
+                currentActorId,
+                document.getElementById('searchInput')?.value || "",
+                false,
+                currentJobType,
+                0,
+                false,
+                routeContext
+            );
+        }
+    } catch (e) {
+        if (e?.name !== 'AbortError') {
+            console.error("loadMoreResults error:", e);
+        }
+    } finally {
+        isLoadingMore = false;
+
+        if (spinner) {
+            spinner.style.display = 'none';
+        }
     }
 }
 
