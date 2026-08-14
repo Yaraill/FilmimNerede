@@ -326,3 +326,102 @@ async function renderActor(actorId, actorName = "", reset = true, jobType = 'cas
         if (spinner) spinner.style.display = 'none';
     }
 }
+
+let currentTooltipTimer = null;
+function showActorTooltip(element, actorId) {
+    if (currentTooltipTimer) clearTimeout(currentTooltipTimer);
+    
+    currentTooltipTimer = setTimeout(async () => {
+        let tooltip = document.getElementById('global-actor-tooltip');
+        if (!tooltip) {
+            tooltip = document.createElement('div');
+            tooltip.id = 'global-actor-tooltip';
+            tooltip.className = 'actor-tooltip';
+            document.body.appendChild(tooltip);
+        }
+        
+        tooltip.innerHTML = "Yükleniyor...";
+        
+        // Calculate position
+        const rect = element.getBoundingClientRect();
+        tooltip.style.position = 'fixed';
+        tooltip.style.left = (rect.left + rect.width / 2) + 'px';
+        tooltip.style.bottom = (window.innerHeight - rect.top + 10) + 'px';
+        tooltip.style.transform = 'translateX(-50%) translateY(0)';
+        tooltip.classList.add('active');
+        
+        try {
+            const [pRes, mRes] = await Promise.all([
+                fetch(`${BASE_URL}/person/${actorId}?api_key=${API_KEY}&language=tr-TR`),
+                fetch(`${BASE_URL}/person/${actorId}/combined_credits?api_key=${API_KEY}&language=tr-TR`)
+            ]);
+            
+            const person = await pRes.json();
+            const movies = await mRes.json();
+            
+            let ageHtml = "";
+            if (person.birthday) {
+                const birth = new Date(person.birthday);
+                const end = person.deathday ? new Date(person.deathday) : new Date();
+                const age = Math.floor((end - birth) / (365.25 * 24 * 60 * 60 * 1000));
+                ageHtml = person.deathday ? `Vefat (${age} yaşında)` : `${age} Yaşında`;
+            }
+            
+            const place = person.place_of_birth ? `<br>${person.place_of_birth.split(',').pop().trim()}` : "";
+            
+            const bestMovies = (movies.cast || []).sort((a,b) => b.popularity - a.popularity).slice(0, 3);
+            let moviesHtml = "";
+            bestMovies.forEach(m => {
+                moviesHtml += `<li style="white-space: normal; overflow: visible;">• ${m.title || m.name}</li>`;
+            });
+            
+            tooltip.innerHTML = `
+                <h4>${person.name}</h4>
+                <div class="tt-meta">${ageHtml} ${place}</div>
+                ${moviesHtml ? `<ul style="padding: 0; list-style: none;">${moviesHtml}</ul>` : ''}
+            `;
+        } catch(e) {
+            tooltip.innerHTML = "Bilgi alınamadı.";
+        }
+    }, 400);
+}
+
+function hideActorTooltip(element = null) {
+    if (currentTooltipTimer) clearTimeout(currentTooltipTimer);
+    const tooltip = document.getElementById('global-actor-tooltip');
+    if (tooltip) {
+        tooltip.classList.remove('active');
+    }
+}
+
+function toggleActorFavorite(btnElem, actorId, actorName, profilePath) {
+    let favs = JSON.parse(localStorage.getItem('favoriteActors') || '[]');
+    const existingIndex = favs.findIndex(a => a.id === actorId);
+    
+    if (existingIndex > -1) {
+        favs.splice(existingIndex, 1);
+        if (btnElem) {
+            btnElem.classList.remove('active', 'inactive');
+            btnElem.classList.add('inactive');
+            if(btnElem.id === "modal-actor-fav-btn") {
+                btnElem.innerHTML = '<i class="fas fa-heart" style="font-size:1.2rem;"></i>';
+            }
+        }
+    } else {
+        favs.push({ id: actorId, name: actorName, profile_path: profilePath });
+        if (btnElem) {
+            btnElem.classList.remove('active', 'inactive');
+            btnElem.classList.add('active');
+            if(btnElem.id === "modal-actor-fav-btn") {
+                btnElem.innerHTML = '<i class="fas fa-heart" style="font-size:1.2rem;"></i>';
+            }
+        }
+    }
+    
+    localStorage.setItem('favoriteActors', JSON.stringify(favs));
+    
+    // Refresh profile grid if open
+    if (document.getElementById('profile') && document.getElementById('profile').classList.contains('active-tab')) {
+        loadProfile();
+    }
+}
