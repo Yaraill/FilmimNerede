@@ -494,3 +494,130 @@ async function renderMovie(movieId, routeContext) {
         console.error(e);
     }
 }
+
+function searchByGenre(genreId) {
+    closeDetails(null, true);
+    resetPlatformView();
+    
+    const select = document.getElementById('genreFilter');
+    if (select) {
+        let matchedValue = "";
+        Array.from(select.options).forEach(opt => {
+            if (opt.value === String(genreId) || opt.value.split('|').includes(String(genreId))) {
+                matchedValue = opt.value;
+            }
+        });
+        
+        if (matchedValue) {
+            select.value = matchedValue;
+        } else {
+            select.value = genreId;
+        }
+    }
+    
+    loadPlatformMovies(0, true);
+}
+
+async function openTrailer(id, mediaType) {
+    const modal = document.getElementById('trailer-modal');
+    const container = document.getElementById('video-container');
+    
+    container.innerHTML = "<div style='color:white;text-align:center;padding-top:20%;font-size:1.2rem'>Fragman Aranıyor...</div>";
+    modal.classList.add('active');
+
+    const bgIframe = document.querySelector('#video-bg-container iframe');
+    if (bgIframe && bgIframe.contentWindow) {
+        bgIframe.contentWindow.postMessage('{"event":"command","func":"pauseVideo","args":""}', '*');
+    }
+
+    try {
+        const res = await fetch(`${BASE_URL}/${mediaType}/${id}/videos?api_key=${API_KEY}`);
+        const data = await res.json();
+        
+        let trailer = data.results.find(v => v.site === "YouTube" && v.type === "Trailer");
+        if (!trailer && data.results.length > 0) trailer = data.results.find(v => v.site === "YouTube");
+        
+        if (trailer) {
+            container.innerHTML = `<iframe src="https://www.youtube-nocookie.com/embed/${trailer.key}?autoplay=1&rel=0" allow="autoplay; encrypted-media" allowfullscreen></iframe>`;
+        } else {
+            container.innerHTML = "<div style='color:white;text-align:center;padding-top:20%;font-size:1.2rem'>Bu yapım için fragman bulunamadı 😔</div>";
+        }
+    } catch (e) {
+        container.innerHTML = "<div style='color:red;text-align:center;padding-top:20%;'>Fragman yüklenirken hata oluştu!</div>";
+    }
+}
+
+function closeTrailer(event, force = false) {
+    if (force || (event && event.target.id === 'trailer-modal')) {
+        const modal = document.getElementById('trailer-modal');
+        const container = document.getElementById('video-container');
+        modal.classList.remove('active');
+        container.innerHTML = ""; 
+        
+        const bgIframe = document.querySelector('#video-bg-container iframe');
+        if (bgIframe && bgIframe.contentWindow) {
+            bgIframe.contentWindow.postMessage('{"event":"command","func":"playVideo","args":""}', '*');
+        }
+    }
+}
+
+function closeDetails(event, force = false) {
+    if (force || (event && (event.target.id === 'details-modal' || event.target.closest('.close-btn')))) {
+        const hash = window.location.hash || "";
+        if (!hash.startsWith('#movie/')) return;
+        
+        const state = history.state;
+        if (state && state.filmRehberiRouter && state.filmRehberiRouter.index > 0) {
+            history.back();
+        } else {
+            navigate('platform', { replace: true });
+        }
+    }
+}
+
+// =========================================
+// V5: PREMIUM FONKSİYONLAR (Tooltip, TV)
+// =========================================
+
+async function loadSeasonEpisodes(tvId, seasonNumber, routeContext = null) {
+    const container = document.getElementById('episodes-container');
+    if (!container) return;
+    
+    // Güvenli Snapshot
+    routeContext = routeContext || { generation: routeGeneration, signal: currentAbortController?.signal };
+    
+    container.innerHTML = "<div class='loading'>Bölümler yükleniyor...</div>";
+    try {
+        const res = await fetch(`${BASE_URL}/tv/${tvId}/season/${seasonNumber}?api_key=${API_KEY}&language=tr-TR`, { signal: routeContext?.signal });
+        const data = await res.json();
+        
+        if (!isRouteContextCurrent(routeContext, "movie", tvId)) return;
+        
+        if (data.episodes && data.episodes.length > 0) {
+            let html = "";
+            data.episodes.forEach(ep => {
+                const img = ep.still_path ? IMAGE_BASE + ep.still_path : 'https://via.placeholder.com/120x70?text=Afiş+Yok';
+                const airDate = ep.air_date ? new Date(ep.air_date).toLocaleDateString('tr-TR') : 'Bilinmiyor';
+                
+                const imdbUrl = window.currentImdbId ? `https://www.imdb.com/title/${window.currentImdbId}/episodes?season=${seasonNumber}` : `https://www.themoviedb.org/tv/${tvId}/season/${seasonNumber}/episode/${ep.episode_number}`;
+                
+                html += `
+                    <div class="episode-card" style="cursor:pointer; position:relative; transition: transform 0.2s;" onmouseover="this.style.transform='scale(1.02)'" onmouseout="this.style.transform='scale(1)'" onclick="window.open('${imdbUrl}', '_blank')" title="IMDb Sayfasını Aç">
+                        <img src="${img}" alt="${ep.name}" loading="lazy">
+                        <div class="episode-info">
+                            <h4>${ep.episode_number}. ${ep.name} <i class="fab fa-imdb" style="color:#f5c518; margin-left:5px;"></i></h4>
+                            <p style="color:var(--accent-color); font-weight:600; font-size:0.8rem; margin-bottom:5px;">Yayın: ${airDate}</p>
+                            <p>${ep.overview || 'Bu bölüm için henüz özet bulunmuyor.'}</p>
+                        </div>
+                    </div>
+                `;
+            });
+            container.innerHTML = html;
+        } else {
+            container.innerHTML = "<div>Bu sezon için bölüm bulunamadı.</div>";
+        }
+    } catch(e) {
+        if (e.name === 'AbortError') return;
+        container.innerHTML = "<div style='color:red'>Hata oluştu.</div>";
+    }
+}
