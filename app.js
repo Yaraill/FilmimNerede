@@ -160,7 +160,12 @@ function handleRoute() {
                     navigate('platform', { replace: true });
                     break;
                 }
-                renderSection("home");
+                document.querySelectorAll('.tab-content').forEach(tab => tab.classList.remove('active-tab'));
+                document.querySelectorAll('.nav-links a').forEach(link => link.classList.remove('active'));
+                const tabEl = document.getElementById('platform');
+                if(tabEl) tabEl.classList.add('active-tab');
+                const navLink = document.querySelector(`.nav-links a[onclick*="platform"]`);
+                if(navLink) navLink.classList.add('active');
                 const searchInput = document.getElementById('searchInput');
                 if (searchInput) searchInput.value = queryStr;
                 searchMovie(true, false, routeContext);
