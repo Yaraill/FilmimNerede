@@ -140,6 +140,10 @@ function handleRoute() {
 
     switch (route.page) {
         case "movie":
+            if (!isValidRouteId(route.id)) {
+                navigate('platform', { replace: true });
+                break;
+            }
             renderMovie(route.id, routeContext);
             break;
         case "actor":
@@ -151,12 +155,17 @@ function handleRoute() {
             break;
         case "search":
             if (route.query) {
+                const queryStr = route.query.trim();
+                if (!queryStr) {
+                    navigate('platform', { replace: true });
+                    break;
+                }
                 renderSection("home");
-                const searchInput = document.getElementById('search-input');
-                if (searchInput) searchInput.value = route.query;
-                renderSearch(route.query, routeContext);
+                const searchInput = document.getElementById('searchInput');
+                if (searchInput) searchInput.value = queryStr;
+                searchMovie(true, false, routeContext);
             } else {
-                renderSection("home");
+                navigate('platform', { replace: true });
             }
             break;
         case "vizyon":
@@ -435,7 +444,7 @@ function closeRandom(event, force = false) {
     }
 }
 
-async function loadTop10Trending() {
+async function loadTop10Trending(routeContext = null) {
     try {
         const res = await fetch(`${BASE_URL}/trending/all/week?api_key=${API_KEY}&language=tr-TR`);
         const data = await res.json();
@@ -1067,7 +1076,7 @@ function handleSearch(event) {
     if (event.key === "Enter") searchMovie();
 }
 
-async function searchMovie(reset = true, isFilterChange = false) {
+async function searchMovie(reset = true, isFilterChange = false, routeContext = null) {
     if (reset) {
         currentSearchQuery = document.getElementById('searchInput').value.trim();
         if (!currentSearchQuery) {
@@ -1151,6 +1160,7 @@ async function searchMovie(reset = true, isFilterChange = false) {
         }
         document.getElementById('search-results').style.minHeight = '';
     } catch (error) {
+        if (error.name === 'AbortError') return;
         document.getElementById('search-results').style.minHeight = '';
         console.error("searchMovie error:", error);
         if (reset) document.getElementById('search-results').innerHTML = `<div class='loading' style='color:red;'>Arama Hatası: ${error.message}</div>`;
