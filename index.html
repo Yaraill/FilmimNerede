@@ -451,6 +451,71 @@
                     </div>
                 </div>
             </div>
+        <span class="pip-btn" onclick="togglePiP(event)" title="Yüzen Oynatıcı (PiP)" style="position:absolute; top:-38px; right: 40px; color:white; font-size: 24px; cursor: pointer; transition: color 0.2s;"><i class="fas fa-compress-alt"></i></span>
+            <div class="video-container" id="video-container">
+                <!-- YouTube iFrame buraya gelecek -->
+            </div>
+        </div>
+    </div>
+
+    <!-- Rastgele (Surprise Me) Modalı -->
+    <div id="random-modal" class="modal" onclick="closeRandom(event)">
+        <div class="modal-content glass" style="max-width: 400px; text-align: center; padding: 40px 20px;">
+            <span class="close-btn" onclick="closeRandom(null, true)">&times;</span>
+            <h2 style="margin-bottom: 20px; font-size: 2rem;">🎲 Ne İzlesem?</h2>
+            <p style="margin-bottom: 20px; color: var(--text-muted);">Bir tür seç, sana rastgele efsane bir film önereyim!</p>
+            <select id="randomGenreSelect" class="modern-select" style="width: 100%; margin-bottom: 20px; font-size: 1.1rem; padding: 15px;">
+                <option value="">Harbiden Rastgele (Tüm Türler)</option>
+                <option value="28">Aksiyon</option>
+                <option value="878">Bilim Kurgu</option>
+                <option value="35">Komedi</option>
+                <option value="18">Dram</option>
+                <option value="80">Suç</option>
+                <option value="9648">Gizem</option>
+                <option value="27">Korku</option>
+                <option value="53">Gerilim</option>
+                <option value="10749">Romantik</option>
+                <option value="16">Animasyon</option>
+            </select>
+            <button onclick="fetchRandomMovie()" class="btn-buy-ticket" style="width: 100%; justify-content: center; font-size: 1.2rem; padding: 15px;"><i class="fas fa-magic"></i> Bana Öner!</button>
+        </div>
+    </div>
+
+    <!-- Detaylar Penceresi (Modal) -->
+    <div id="details-modal" class="modal details-modal-wrapper" onclick="closeDetails(event)">
+        <div id="ambilight-bg" class="ambilight-bg"></div>
+        <div id="video-bg-container" class="video-bg-container"></div>
+        <div class="details-content glass">
+            <span class="close-btn" onclick="closeDetails(null, true)">&times;</span>
+            <div id="details-backdrop" class="details-backdrop"></div>
+            <div class="details-body">
+                <div class="details-left">
+                    <img id="details-poster" src="" alt="" crossorigin="anonymous">
+                    <div id="details-date-badge" style="position:absolute; top: 10px; right: 10px; background: rgba(0,0,0,0.8); color: var(--text-color); padding: 5px 10px; border-radius: 8px; font-weight: bold; font-size: 0.85rem; box-shadow: 0 2px 10px rgba(0,0,0,0.5); backdrop-filter: blur(5px);"></div>
+                    <div id="modal-providers" class="modal-providers"></div>
+                </div>
+                <div class="details-right">
+                    <h2 id="details-title"></h2>
+                    <div id="random-next-container" style="display:none; margin-bottom: 15px;">
+                        <button id="next-random-btn" onclick="fetchRandomMovie(true)" class="action-btn btn-buy-ticket-card" style="padding: 8px 15px; font-size: 0.9rem; background: var(--accent-color); border:none; border-radius:8px; cursor:pointer; color:white; font-weight:bold; box-shadow: 0 4px 10px rgba(16, 185, 129, 0.3); transition: transform 0.2s;"><i class="fas fa-random"></i> Başka Öner</button>
+                    </div>
+                    <div id="details-meta" class="details-meta"></div>
+                    <p id="details-overview" class="details-overview"></p>
+                    <h3 class="cast-title">Başrol Oyuncuları</h3>
+                    <div id="details-cast" class="cast-list">
+                        <!-- Javascript ile oyuncular gelecek -->
+                    </div>
+                    
+                    <h3 class="cast-title" style="margin-top: 25px;">Önerilen Benzer Yapımlar</h3>
+                    <div id="details-recommendations" class="recommendations-list">
+                        <!-- Javascript ile benzer filmler gelecek -->
+                    </div>
+
+                    <div id="details-actions" class="details-actions">
+                        <!-- Bilet Al butonu artık kartların üzerine taşındı -->
+                    </div>
+                </div>
+            </div>
         </div>
     </div>
 
@@ -460,13 +525,6 @@
     <script src="js/runtime/config.js?v=1"></script>
     <script src="js/runtime/state.js?v=1"></script>
     <script src="js/runtime/router.js?v=1"></script>
-    <script src="app.js?v=52"></script>
-    <script>
-        if ('serviceWorker' in navigator) {
-            window.addEventListener('load', () => {
-                navigator.serviceWorker.register('/service-worker.js')
-                    .then(reg => console.log('Service Worker registered'))
-                    .catch(err => console.log('Service Worker error', err));
             });
         }
     </script>
