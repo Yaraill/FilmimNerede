@@ -1791,6 +1791,7 @@ async function renderMovie(movieId, routeContext) {
     
     // Dynamic Theme (ColorThief)
     posterImgElem.onload = function() {
+        if (!isRouteContextCurrent(routeContext, "movie", movieId)) return;
         try {
             if (typeof ColorThief !== 'undefined') {
                 const colorThief = new ColorThief();
@@ -1850,9 +1851,10 @@ async function renderMovie(movieId, routeContext) {
     provContainer.innerHTML = "Platformlar aranıyor...";
 
     // Modal Provider Fetch (WITH DEEP LINKS)
-    fetch(`${BASE_URL}/${item.media_type}/${item.id}/watch/providers?api_key=${API_KEY}`)
+    fetch(`${BASE_URL}/${item.media_type}/${item.id}/watch/providers?api_key=${API_KEY}`, { signal: routeContext?.signal })
         .then(res => res.json())
         .then(data => {
+            if (!isRouteContextCurrent(routeContext, "movie", movieId)) return;
             const tr = data.results && data.results.TR ? data.results.TR : null;
             const provContainer = document.getElementById('modal-providers');
             if (tr && tr.flatrate) {
@@ -1893,9 +1895,10 @@ async function renderMovie(movieId, routeContext) {
     castContainer.innerHTML = "<div style='color:#ccc'>Oyuncular yükleniyor...</div>";
     if(recContainer) recContainer.innerHTML = "<div style='color:#ccc'>Öneriler yükleniyor...</div>";
 
-    fetch(`${BASE_URL}/${item.media_type}/${item.id}?api_key=${API_KEY}&language=tr-TR&append_to_response=videos,credits,recommendations,external_ids`)
+    fetch(`${BASE_URL}/${item.media_type}/${item.id}?api_key=${API_KEY}&language=tr-TR&append_to_response=videos,credits,recommendations,external_ids`, { signal: routeContext?.signal })
         .then(res => res.json())
         .then(async fullData => {
+            if (!isRouteContextCurrent(routeContext, "movie", movieId)) return;
             if (fullData.overview) {
                 document.getElementById('details-overview').innerText = fullData.overview;
                 item.overview = fullData.overview;
@@ -1932,14 +1935,17 @@ async function renderMovie(movieId, routeContext) {
                 if (cachedImdb) {
                     document.getElementById('rating-span').innerHTML = `<a href="https://www.imdb.com/title/${imdbId}" target="_blank" style="text-decoration:none; color:inherit;"><span class="imdb-badge">IMDb</span> ${cachedImdb}</a>`;
                 } else {
-                    fetch(`https://www.omdbapi.com/?apikey=cfcb7364&i=${imdbId}`)
+                    fetch(`https://www.omdbapi.com/?apikey=cfcb7364&i=${imdbId}`, { signal: routeContext?.signal })
                         .then(r => r.json())
                         .then(omdbData => {
+                            if (!isRouteContextCurrent(routeContext, "movie", movieId)) return;
                             if (omdbData.imdbRating && omdbData.imdbRating !== "N/A") {
                                 document.getElementById('rating-span').innerHTML = `<a href="https://www.imdb.com/title/${imdbId}" target="_blank" style="text-decoration:none; color:inherit;"><span class="imdb-badge">IMDb</span> ${omdbData.imdbRating}</a>`;
                                 localStorage.setItem('imdb_' + imdbId, omdbData.imdbRating);
                             }
-                        }).catch(e => {});
+                        }).catch(e => {
+                            if (e.name === 'AbortError') return;
+                        });
                 }
             }
 
@@ -1953,15 +1959,18 @@ async function renderMovie(movieId, routeContext) {
                     videoBgContainer.innerHTML = `<iframe src="https://www.youtube-nocookie.com/embed/${video.key}?autoplay=1&mute=1&controls=0&loop=1&playlist=${video.key}&modestbranding=1&showinfo=0&rel=0&iv_load_policy=3&enablejsapi=1" allow="autoplay; encrypted-media" allowfullscreen></iframe>`;
                     
                     // Şirket interneti engellemesini (Hata 152 / Beyaz Ekran) tespit etmek için ufak bir bağlantı testi
-                    fetch('https://www.youtube-nocookie.com/favicon.ico', { mode: 'no-cors' })
+                    fetch('https://www.youtube-nocookie.com/favicon.ico', { mode: 'no-cors', signal: routeContext?.signal })
                         .then(() => {
+                            if (!isRouteContextCurrent(routeContext, "movie", movieId)) return;
                             // Bağlantı başarılı, videoyu göster
                             setTimeout(() => {
+                                if (!isRouteContextCurrent(routeContext, "movie", movieId)) return;
                                 videoBgContainer.style.opacity = "1";
                                 if(backdropEl) backdropEl.style.display = "none"; // Video oynayacağı için resmi kaldır
                             }, 1000);
                         })
-                        .catch(() => {
+                        .catch((err) => {
+                            if (err.name === 'AbortError') return;
                             // Bağlantı reddedildi (Şirket ağı engelledi)
                             // Videoyu hiç gösterme, arka plandaki resim kalsın.
                             console.warn("YouTube bağlantısı engellendi, video arka planı iptal edildi.");
@@ -1983,6 +1992,7 @@ async function renderMovie(movieId, routeContext) {
                         const img = new Image();
                         img.crossOrigin = "Anonymous";
                         img.onload = () => {
+                            if (!isRouteContextCurrent(routeContext, "movie", movieId)) return;
                             try {
                                 const colorThief = new ColorThief();
                                 const color = colorThief.getColor(img);
@@ -2078,15 +2088,17 @@ async function renderMovie(movieId, routeContext) {
                     const firstSeason = fullData.seasons.find(s => s.season_number > 0) || fullData.seasons[0];
                     if (firstSeason) {
                         document.querySelector('.season-select').value = firstSeason.season_number;
-                        loadSeasonEpisodes(item.id, firstSeason.season_number);
+                        loadSeasonEpisodes(item.id, firstSeason.season_number, routeContext);
                     }
                 }
             }
 
             // Collections
             if (item.media_type === "movie" && fullData.belongs_to_collection) {
-                const colRes = await fetch(`${BASE_URL}/collection/${fullData.belongs_to_collection.id}?api_key=${API_KEY}&language=tr-TR`);
+                const colRes = await fetch(`${BASE_URL}/collection/${fullData.belongs_to_collection.id}?api_key=${API_KEY}&language=tr-TR`, { signal: routeContext?.signal });
                 const colData = await colRes.json();
+                
+                if (!isRouteContextCurrent(routeContext, "movie", movieId)) return;
                 
                 if (colData.parts && colData.parts.length > 0) {
                     colData.parts.sort((a, b) => new Date(a.release_date) - new Date(b.release_date));
@@ -2119,6 +2131,7 @@ async function renderMovie(movieId, routeContext) {
                 }
             }
         }).catch(err => {
+            if (err.name === 'AbortError') return;
             console.error("Full fetch error", err);
             castContainer.innerHTML = "<div style='color:red'>Veriler çekilemedi.</div>";
         });
@@ -2167,6 +2180,8 @@ async function renderMovie(movieId, routeContext) {
             actionsDiv.insertAdjacentHTML('beforeend', combinedHtml);
         }
     }
+
+    if (!isRouteContextCurrent(routeContext, "movie", movieId)) return;
 
     modal.classList.add('active');
     document.body.style.overflow = "hidden";
@@ -2351,7 +2366,7 @@ async function renderActor(actorId, actorName = "", reset = true, jobType = 'cas
                 const chunk = movies.slice(i, Math.min(i + 20, maxToCheck));
                 const results = await Promise.all(chunk.map(async m => {
                     try {
-                        const res = await fetch(`${BASE_URL}/movie/${m.id}?api_key=${API_KEY}&language=tr-TR`);
+                        const res = await fetch(`${BASE_URL}/movie/${m.id}?api_key=${API_KEY}&language=tr-TR`, { signal: routeContext?.signal });
                         const detail = await res.json();
                         const rt = detail.runtime || 0;
                         if (runtimeFilter == '90' && rt <= 90 && rt > 0) return m;
@@ -2362,6 +2377,7 @@ async function renderActor(actorId, actorName = "", reset = true, jobType = 'cas
                     return null;
                 }));
                 validMovies.push(...results.filter(Boolean));
+                if (!isRouteContextCurrent(routeContext, "actor", actorId)) return;
             }
             movies = validMovies;
         }
@@ -2396,7 +2412,7 @@ async function renderActor(actorId, actorName = "", reset = true, jobType = 'cas
                 const chunk = movies.slice(i, Math.min(i + 20, maxToCheck));
                 const results = await Promise.all(chunk.map(async m => {
                     try {
-                        const res = await fetch(`${BASE_URL}/${m.media_type}/${m.id}/watch/providers?api_key=${API_KEY}`);
+                        const res = await fetch(`${BASE_URL}/${m.media_type}/${m.id}/watch/providers?api_key=${API_KEY}`, { signal: routeContext?.signal });
                         const data = await res.json();
                         const tr = data.results && data.results[regionStr] ? data.results[regionStr] : null;
                         if (tr && tr.flatrate && tr.flatrate.some(p => p.provider_id === filterProvId)) return m;
@@ -2404,6 +2420,7 @@ async function renderActor(actorId, actorName = "", reset = true, jobType = 'cas
                     return null;
                 }));
                 validMovies.push(...results.filter(Boolean));
+                if (!isRouteContextCurrent(routeContext, "actor", actorId)) return;
             }
             movies = validMovies;
         }
@@ -2523,14 +2540,19 @@ function closeDetails(event, force = false) {
 // V5: PREMIUM FONKSİYONLAR (Tooltip, TV)
 // =========================================
 
-async function loadSeasonEpisodes(tvId, seasonNumber) {
+async function loadSeasonEpisodes(tvId, seasonNumber, routeContext = null) {
     const container = document.getElementById('episodes-container');
     if (!container) return;
     
+    // Güvenli Snapshot
+    routeContext = routeContext || { generation: routeGeneration, signal: currentAbortController?.signal };
+    
     container.innerHTML = "<div class='loading'>Bölümler yükleniyor...</div>";
     try {
-        const res = await fetch(`${BASE_URL}/tv/${tvId}/season/${seasonNumber}?api_key=${API_KEY}&language=tr-TR`);
+        const res = await fetch(`${BASE_URL}/tv/${tvId}/season/${seasonNumber}?api_key=${API_KEY}&language=tr-TR`, { signal: routeContext?.signal });
         const data = await res.json();
+        
+        if (!isRouteContextCurrent(routeContext, "movie", tvId)) return;
         
         if (data.episodes && data.episodes.length > 0) {
             let html = "";
@@ -2556,6 +2578,7 @@ async function loadSeasonEpisodes(tvId, seasonNumber) {
             container.innerHTML = "<div>Bu sezon için bölüm bulunamadı.</div>";
         }
     } catch(e) {
+        if (e.name === 'AbortError') return;
         container.innerHTML = "<div style='color:red'>Hata oluştu.</div>";
     }
 }
