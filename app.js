@@ -90,6 +90,7 @@ function parseRoute() {
             window.history.replaceState(window.history.state, "", `#movie/${id}`);
             return { page: "movie", id };
         } else {
+            window.history.replaceState(window.history.state, "", `#platform`);
             return { page: "platform" };
         }
     }
@@ -106,11 +107,11 @@ function parseRoute() {
 let lastRenderedHash = null;
 
 function handleRoute() {
+    const route = parseRoute();
+
     const currentHash = window.location.hash || "#home";
     if (lastRenderedHash === currentHash) return;
     lastRenderedHash = currentHash;
-
-    const route = parseRoute();
     
     if (currentAbortController) {
         currentAbortController.abort();
@@ -355,34 +356,6 @@ function showSkeletons(containerId, count = 10) {
     container.innerHTML = html;
 }
 
-async function handleDeepLink() {
-    const hash = window.location.hash;
-    if (hash && hash.startsWith('#film/')) {
-        const id = hash.replace('#film/', '');
-        if (!window.movieCache[id]) {
-            try {
-                let res = await fetch(`${BASE_URL}/movie/${id}?api_key=${API_KEY}&language=tr-TR`);
-                let data = await res.json();
-                if (data.status_code === 34) {
-                    res = await fetch(`${BASE_URL}/tv/${id}?api_key=${API_KEY}&language=tr-TR`);
-                    data = await res.json();
-                    data.title = data.name;
-                    data.media_type = "tv";
-                } else {
-                    data.media_type = "movie";
-                }
-                if (data.id) {
-                    window.movieCache[id] = data;
-                }
-            } catch (e) {
-                console.error("Deep link fetch error", e);
-            }
-        }
-        if (window.movieCache[id]) {
-            openDetails(id);
-        }
-    }
-}
 
 function resetPlatformView() {
     document.getElementById('searchInput').value = "";
