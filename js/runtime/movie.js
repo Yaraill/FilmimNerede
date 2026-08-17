@@ -73,7 +73,7 @@ async function renderMovie(movieId, routeContext) {
     recent.unshift(item);
     if(recent.length > 10) recent.pop();
     localStorage.setItem('recentlyViewed', JSON.stringify(recent));
-    renderRecentlyViewed();
+    renderRecentlyViewed(routeContext);
 
     if (modal) {
         modal.scrollTo(0, 0);
