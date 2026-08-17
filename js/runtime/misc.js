@@ -241,10 +241,8 @@ async function executeDiscover() {
         });
     } catch (e) {
         console.error("executeDiscover error:", e);
-        if (reset) {
-            const container = document.getElementById('search-results');
-            container.innerHTML = `<div class='no-provider' style='color:red;'>Keşfet Hatası: ${e.message}</div>`;
-        }
+        const container = document.getElementById('search-results');
+        container.innerHTML = `<div class='no-provider' style='color:red;'>Keşfet Hatası: ${e.message}</div>`;
     }
 }
 
