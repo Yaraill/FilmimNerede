@@ -105,6 +105,7 @@ async function searchMovie(reset = true, isFilterChange = false, routeContext = 
         if (error.name === 'AbortError') return;
         if (requestGeneration !== searchRequestGeneration) return;
         if (routeContext && (routeContext.signal?.aborted || routeContext.generation !== routeGeneration)) return;
+        if (!reset) throw error;
         document.getElementById('search-results').style.minHeight = '';
         console.error("searchMovie error:", error);
         if (reset) document.getElementById('search-results').innerHTML = `<div class='loading' style='color:red;'>Arama Hatası: ${error.message}</div>`;
@@ -223,7 +224,9 @@ async function loadMoreResults() {
         signal: currentAbortController?.signal
     };
 
-    currentPage++;
+    const previousPage = currentPage;
+    const attemptedPage = previousPage + 1;
+    currentPage = attemptedPage;
 
     const spinner = document.getElementById('infinite-spinner');
     if (spinner) spinner.style.display = 'block';
@@ -257,6 +260,14 @@ async function loadMoreResults() {
         }
     } catch (e) {
         if (e?.name !== 'AbortError') {
+            if (
+                currentMode === modeAtStart &&
+                currentPage === attemptedPage &&
+                routeContext.generation === routeGeneration &&
+                !routeContext.signal?.aborted
+            ) {
+                currentPage = previousPage;
+            }
             console.error("loadMoreResults error:", e);
         }
     } finally {

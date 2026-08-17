@@ -231,6 +231,7 @@ async function loadPlatformMovies(providerId = 0, reset = true, isFilterChange =
         if (reset) document.getElementById('search-results').style.minHeight = '';
     } catch (error) {
         if (error.name === 'AbortError') return;
+        if (!reset) throw error;
         if (reset) document.getElementById('search-results').style.minHeight = '';
         console.error("loadPlatformMovies error:", error);
         if (reset) document.getElementById('search-results').innerHTML = `<div class='loading' style='color:red;'>Hata oluştu: ${error.message} <br/> ${error.stack}</div>`;

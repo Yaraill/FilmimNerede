@@ -320,6 +320,7 @@ async function renderActor(actorId, actorName = "", reset = true, jobType = 'cas
         
     } catch (e) {
         if (e.name === 'AbortError') return;
+        if (!reset) throw e;
         if (reset) document.getElementById('search-results').innerHTML = "<div class='loading'>Hata oluştu.</div>";
     } finally {
         const spinner = document.getElementById('infinite-spinner');
