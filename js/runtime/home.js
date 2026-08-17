@@ -1,3 +1,6 @@
+let trendingActorsAutoScrollInterval = null;
+let curatedCollectionsAutoScrollInterval = null;
+
 async function loadTop10Trending(routeContext = null, expectedPage = null) {
     try {
         const res = await fetch(`${BASE_URL}/trending/all/week?api_key=${API_KEY}&language=tr-TR`, { signal: routeContext?.signal });
@@ -158,7 +161,10 @@ async function loadTrendingActors(routeContext = null, expectedPage = null) {
         
         // Add auto-scroll
         let direction = 1;
-        setInterval(() => {
+        if (trendingActorsAutoScrollInterval !== null) {
+            clearInterval(trendingActorsAutoScrollInterval);
+        }
+        trendingActorsAutoScrollInterval = setInterval(() => {
             if(!container.classList.contains('active')) {
                 container.scrollLeft += direction;
                 if (container.scrollLeft >= (container.scrollWidth - container.clientWidth - 1)) {
@@ -249,7 +255,10 @@ async function loadCuratedCollections(routeContext = null, expectedPage = null) 
     
     // Add auto-scroll
     let direction = 1;
-    setInterval(() => {
+    if (curatedCollectionsAutoScrollInterval !== null) {
+        clearInterval(curatedCollectionsAutoScrollInterval);
+    }
+    curatedCollectionsAutoScrollInterval = setInterval(() => {
         if(!container.classList.contains('active')) {
             container.scrollLeft += direction;
             if (container.scrollLeft >= (container.scrollWidth - container.clientWidth - 1)) {
