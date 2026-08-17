@@ -621,3 +621,19 @@ async function loadSeasonEpisodes(tvId, seasonNumber, routeContext = null) {
         container.innerHTML = "<div style='color:red'>Hata oluştu.</div>";
     }
 }
+
+function shareMovie(id) {
+    if (!isValidRouteId(id)) return;
+    const url = `${window.location.origin}${window.location.pathname}#movie/${id}`;
+    if (navigator.share) {
+        navigator.share({
+            title: 'FilmimNerede',
+            text: 'Bu filme mutlaka göz atmalısın!',
+            url: url
+        }).catch(console.error);
+    } else {
+        navigator.clipboard.writeText(url).then(() => {
+            alert('Bağlantı kopyalandı: ' + url);
+        });
+    }
+}

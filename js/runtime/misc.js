@@ -424,3 +424,17 @@ function makeGameGuess(guessedId, btn) {
         }
     }
 }
+
+function switchGameTab(tabId, btnElem) {
+    document.querySelectorAll('.game-tab-content').forEach(tab => {
+        tab.style.display = 'none';
+    });
+    document.getElementById(tabId + '-tab').style.display = 'block';
+    
+    if (btnElem) {
+        btnElem.parentElement.querySelectorAll('.segment-btn').forEach(btn => {
+            btn.classList.remove('active');
+        });
+        btnElem.classList.add('active');
+    }
+}

@@ -234,21 +234,6 @@ function renderSection(tabId, routeContext = null) {
 
 
 
-function shareMovie(id) {
-    if (!isValidRouteId(id)) return;
-    const url = `${window.location.origin}${window.location.pathname}#movie/${id}`;
-    if (navigator.share) {
-        navigator.share({
-            title: 'FilmimNerede',
-            text: 'Bu filme mutlaka göz atmalısın!',
-            url: url
-        }).catch(console.error);
-    } else {
-        navigator.clipboard.writeText(url).then(() => {
-            alert('Bağlantı kopyalandı: ' + url);
-        });
-    }
-}
 
 
 
@@ -268,16 +253,3 @@ function shareMovie(id) {
 
 
 
-function switchGameTab(tabId, btnElem) {
-    document.querySelectorAll('.game-tab-content').forEach(tab => {
-        tab.style.display = 'none';
-    });
-    document.getElementById(tabId + '-tab').style.display = 'block';
-    
-    if (btnElem) {
-        btnElem.parentElement.querySelectorAll('.segment-btn').forEach(btn => {
-            btn.classList.remove('active');
-        });
-        btnElem.classList.add('active');
-    }
-}
