@@ -1,8 +1,17 @@
-function openDetails(movieId) {
-    navigate('movie/' + movieId);
+function openDetails(movieId, mediaType = null) {
+    if (mediaType === 'movie' || mediaType === 'tv') {
+        navigate(`movie/${movieId}/${mediaType}`);
+    } else {
+        const cachedType = window.movieCache[movieId]?.media_type;
+        if (cachedType === 'movie' || cachedType === 'tv') {
+            navigate(`movie/${movieId}/${cachedType}`);
+        } else {
+            navigate('movie/' + movieId);
+        }
+    }
 }
 
-async function renderMovie(movieId, routeContext) {
+async function renderMovie(movieId, routeContext, requestedMediaType = null) {
     const modal = document.getElementById('details-modal');
     if (modal) modal.style.display = 'flex';
 
@@ -12,15 +21,26 @@ async function renderMovie(movieId, routeContext) {
     try {
     let data;
     try {
-        let res = await fetch(`${BASE_URL}/movie/${movieId}?api_key=${API_KEY}&language=tr-TR`, { signal: routeContext?.signal });
-        data = await res.json();
-        if (data.status_code === 34) {
-            res = await fetch(`${BASE_URL}/tv/${movieId}?api_key=${API_KEY}&language=tr-TR`, { signal: routeContext?.signal });
+        if (requestedMediaType === 'tv') {
+            let res = await fetch(`${BASE_URL}/tv/${movieId}?api_key=${API_KEY}&language=tr-TR`, { signal: routeContext?.signal });
             data = await res.json();
             data.title = data.name;
             data.media_type = "tv";
-        } else {
+        } else if (requestedMediaType === 'movie') {
+            let res = await fetch(`${BASE_URL}/movie/${movieId}?api_key=${API_KEY}&language=tr-TR`, { signal: routeContext?.signal });
+            data = await res.json();
             data.media_type = "movie";
+        } else {
+            let res = await fetch(`${BASE_URL}/movie/${movieId}?api_key=${API_KEY}&language=tr-TR`, { signal: routeContext?.signal });
+            data = await res.json();
+            if (data.status_code === 34) {
+                res = await fetch(`${BASE_URL}/tv/${movieId}?api_key=${API_KEY}&language=tr-TR`, { signal: routeContext?.signal });
+                data = await res.json();
+                data.title = data.name;
+                data.media_type = "tv";
+            } else {
+                data.media_type = "movie";
+            }
         }
         
         if (routeContext && routeContext.generation !== routeGeneration) {
@@ -350,7 +370,7 @@ async function renderMovie(movieId, routeContext) {
                         const rImg = rec.poster_path ? IMAGE_BASE + rec.poster_path : 'https://via.placeholder.com/100x150?text=Yok';
                         const rTitle = rec.title || rec.name;
                         recHtml += `
-                            <div class="recommendation-card" onclick="openDetails(${rec.id})">
+                            <div class="recommendation-card" onclick="openDetails(${rec.id}, '${rec.media_type || item.media_type}')">
                                 <img src="${rImg}" alt="${rTitle}" loading="lazy">
                                 <div class="recommendation-title" title="${rTitle}">${rTitle}</div>
                             </div>
@@ -421,7 +441,7 @@ async function renderMovie(movieId, routeContext) {
                         };
                         const pImg = part.poster_path ? IMAGE_BASE + part.poster_path : 'https://via.placeholder.com/100x150?text=Yok';
                         colHtml += `
-                            <div class="recommendation-card" onclick="openDetails(${part.id})">
+                            <div class="recommendation-card" onclick="openDetails(${part.id}, 'movie')">
                                 <img src="${pImg}" alt="${part.title}" style="${part.id === item.id ? 'outline: 3px solid var(--primary-color); outline-offset: -3px; border-radius: 10px;' : ''}" loading="lazy">
                                 <div class="recommendation-title" title="${part.title}">${part.title}</div>
                             </div>

@@ -186,7 +186,7 @@ async function handleSearchInput(event) {
                             openActorDetails(item.id, title);
                         } else {
                             window.movieCache[item.id] = item;
-                            openDetails(item.id);
+                            openDetails(item.id, item.media_type);
                         }
                     };
                     

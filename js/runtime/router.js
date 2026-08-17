@@ -88,9 +88,22 @@ function parseRoute() {
     }
 
     if (hash.startsWith("movie/")) {
+        const parts = hash.split("/");
+        const id = parts[1];
+        const type = parts[2];
+        if (type === 'movie' || type === 'tv') {
+            return {
+                page: "movie",
+                id: id,
+                mediaType: type
+            };
+        } else if (type) {
+            return { page: "invalid" };
+        }
         return {
             page: "movie",
-            id: hash.split("/")[1]
+            id: id,
+            mediaType: null
         };
     }
 
@@ -261,7 +274,8 @@ function handleRoute() {
 
             renderMovie(
                 route.id,
-                routeContext
+                routeContext,
+                route.mediaType
             );
             break;
 

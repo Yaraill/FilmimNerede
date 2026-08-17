@@ -60,7 +60,7 @@ async function fetchRandomMovie(isNext = false) {
             if (!isNext) closeRandom(null, true);
             
             window.isRandomMode = true;
-            openDetails(randomMovie.id);
+            openDetails(randomMovie.id, 'movie');
             
             const nextContainer = document.getElementById('random-next-container');
             if (nextContainer) nextContainer.style.display = 'block';

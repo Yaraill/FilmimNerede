@@ -30,7 +30,7 @@ async function loadTop10Trending(routeContext = null, expectedPage = null) {
                 };
                 
                 return `
-                    <div class="recommendation-card top10-card" onclick="openDetails(${item.id})" style="position:relative; width:140px; margin-left: 20px;">
+                    <div class="recommendation-card top10-card" onclick="openDetails(${item.id}, '${item.media_type}')" style="position:relative; width:140px; margin-left: 20px;">
                         <span class="top10-number">${index + 1}</span>
                         <img src="${poster}" alt="${title}" style="width: 100%; height: 210px; object-fit: cover; border-radius: 10px; box-shadow: 0 5px 15px rgba(0,0,0,0.5);" loading="lazy">
                     </div>

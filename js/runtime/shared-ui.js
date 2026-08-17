@@ -142,14 +142,14 @@ function createMovieCard(item, mediaType = "movie", tabContext = "") {
             <button class="btn-heart ${isSaved}" onclick="toggleWatchlist(this, ${item.id})" title="Listeme Ekle/Çıkar">
                 <i class="fas fa-heart"></i>
             </button>
-            <img src="${poster}" alt="${title}" class="movie-poster" style="cursor:pointer" onclick="openDetails(${item.id})"
+            <img src="${poster}" alt="${title}" class="movie-poster" style="cursor:pointer" onclick="openDetails(${item.id}, '${mediaType}')"
                 onmouseenter="startHoverSlideshow(this, ${item.id})" 
                 onmouseleave="stopHoverSlideshow(this, '${poster}')">
             <div class="movie-info">
                 <div class="movie-meta">
                     <span class="genre-list">${genres}</span>
                 </div>
-                <div class="movie-title" title="${title}" style="cursor:pointer" onclick="openDetails(${item.id})">${titleWithYear}</div>
+                <div class="movie-title" title="${title}" style="cursor:pointer" onclick="openDetails(${item.id}, '${mediaType}')">${titleWithYear}</div>
                 <div class="list-view-overview">
                     ${(item.overview && item.overview.trim().length > 0) ? item.overview : "Konu özeti bulunmuyor."}
                 </div>
