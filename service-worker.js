@@ -1,4 +1,4 @@
-const CACHE_NAME = 'filmimnerede-v64';
+const CACHE_NAME = 'filmimnerede-v65';
 const ASSETS_TO_CACHE = [
   '/',
   '/index.html',
@@ -13,7 +13,8 @@ const ASSETS_TO_CACHE = [
   '/js/runtime/movie.js?v=2',
   '/js/runtime/actor.js?v=2',
   '/js/runtime/home.js?v=3',
-  '/app.js?v=62'
+  '/js/runtime/profile.js?v=1',
+  '/app.js?v=63'
 ];
 
 // Install event: cache assets
