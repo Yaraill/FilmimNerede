@@ -2,7 +2,13 @@ function openActorDetails(actorId, actorName, reset = true, jobType = 'cast', fi
     navigate('actor/' + actorId);
 }
 
+let actorRequestGeneration = 0;
+
 async function renderActor(actorId, actorName = "", reset = true, jobType = 'cast', filterGenre = 0, isFilterChange = false, routeContext = null) {
+    const requestGeneration = reset
+        ? ++actorRequestGeneration
+        : actorRequestGeneration;
+
     routeContext = routeContext || { generation: routeGeneration, signal: currentAbortController?.signal };
     hideActorTooltip();
     
@@ -76,6 +82,7 @@ async function renderActor(actorId, actorName = "", reset = true, jobType = 'cas
         const personRes = await fetch(`${BASE_URL}/person/${currentActorId}?api_key=${API_KEY}&language=tr-TR`, { signal: routeContext?.signal });
         const personData = await personRes.json();
         
+        if (requestGeneration !== actorRequestGeneration) return;
         if (!isRouteContextCurrent(routeContext, "actor", actorId)) return;
         
         if (!actorName) {
@@ -93,6 +100,7 @@ async function renderActor(actorId, actorName = "", reset = true, jobType = 'cas
         const creditsRes = await fetch(`${BASE_URL}/person/${currentActorId}/combined_credits?api_key=${API_KEY}&language=tr-TR`, { signal: routeContext?.signal });
         let data = await creditsRes.json();
         
+        if (requestGeneration !== actorRequestGeneration) return;
         if (!isRouteContextCurrent(routeContext, "actor", actorId)) return;
         
         let movies = [];
@@ -181,6 +189,7 @@ async function renderActor(actorId, actorName = "", reset = true, jobType = 'cas
                     } catch (e) { if (e.name === 'AbortError') throw e; return null; }
                     return null;
                 }));
+                if (requestGeneration !== actorRequestGeneration) return;
                 validMovies.push(...results.filter(Boolean));
                 if (!isRouteContextCurrent(routeContext, "actor", actorId)) return;
             }
@@ -224,12 +233,14 @@ async function renderActor(actorId, actorName = "", reset = true, jobType = 'cas
                     } catch (e) { if (e.name === 'AbortError') throw e; return null; }
                     return null;
                 }));
+                if (requestGeneration !== actorRequestGeneration) return;
                 validMovies.push(...results.filter(Boolean));
                 if (!isRouteContextCurrent(routeContext, "actor", actorId)) return;
             }
             movies = validMovies;
         }
         
+        if (requestGeneration !== actorRequestGeneration) return;
         if (!isRouteContextCurrent(routeContext, "actor", actorId)) return;
         const startIndex = (currentPage - 1) * 20;
         const endIndex = startIndex + 20;
@@ -320,6 +331,7 @@ async function renderActor(actorId, actorName = "", reset = true, jobType = 'cas
         
     } catch (e) {
         if (e.name === 'AbortError') return;
+        if (requestGeneration !== actorRequestGeneration) return;
         if (!reset) throw e;
         if (reset) document.getElementById('search-results').innerHTML = "<div class='loading'>Hata oluştu.</div>";
     } finally {
