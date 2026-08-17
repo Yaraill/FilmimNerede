@@ -240,3 +240,91 @@ async function loadPlatformMovies(providerId = 0, reset = true, isFilterChange =
     }
 }
 
+
+
+// --- PREMIUM FILTER UI LOGIC ---
+function setMediaType(val, btn) {
+    // Update hidden select
+    document.getElementById('mediaTypeFilter').value = val;
+    // Update UI
+    const siblings = btn.parentElement.querySelectorAll('.segment-btn');
+    siblings.forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    // Trigger filter
+    applyPlatformFilters();
+}
+
+let selectedGenres = [];
+
+function setGenre(val, btn) {
+    const hepsiBtn = btn.parentElement.querySelector('.genre-pill-btn[onclick*="\'\'"]');
+    
+    if (val === '') {
+        selectedGenres = [];
+        const siblings = btn.parentElement.querySelectorAll('.genre-pill-btn');
+        siblings.forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+    } else {
+        if (hepsiBtn) hepsiBtn.classList.remove('active');
+        
+        if (selectedGenres.includes(val)) {
+            selectedGenres = selectedGenres.filter(g => g !== val);
+            btn.classList.remove('active');
+        } else {
+            selectedGenres.push(val);
+            btn.classList.add('active');
+        }
+        
+        if (selectedGenres.length === 0) {
+            if (hepsiBtn) hepsiBtn.classList.add('active');
+        }
+    }
+    
+    document.getElementById('genreFilter').value = selectedGenres.join(',');
+    applyPlatformFilters();
+}
+
+function clearAllFilters() {
+    const gf = document.getElementById('genreFilter');
+    if (gf) gf.value = '';
+    const yf = document.getElementById('yearFilter');
+    if (yf) yf.value = '';
+    const sf = document.getElementById('sortByFilter');
+    if (sf) sf.value = 'popularity.desc';
+    const pf = document.getElementById('providerFilter');
+    if (pf) pf.value = '0';
+    const rf = document.getElementById('ratingFilter');
+    if (rf) rf.value = '0';
+    const rtf = document.getElementById('runtimeFilter');
+    if (rtf) rtf.value = '';
+    const mtf = document.getElementById('mediaTypeFilter');
+    if (mtf) mtf.value = 'all';
+    
+    document.querySelectorAll('.segment-btn[onclick^="setMediaType"]').forEach(btn => btn.classList.remove('active'));
+    const allMediaBtn = document.querySelector('.segment-btn[onclick="setMediaType(\'all\', this)"]');
+    if (allMediaBtn) allMediaBtn.classList.add('active');
+    
+    // Sync custom selects if they exist
+    document.querySelectorAll('select.custom-select-hidden').forEach(select => {
+        const wrapper = select.nextElementSibling;
+        if (wrapper && wrapper.classList.contains('custom-select-container')) {
+            const selectedOption = select.options[select.selectedIndex];
+            if (selectedOption) {
+                const trigger = wrapper.querySelector('.custom-select-trigger span');
+                if (trigger) trigger.textContent = selectedOption.text;
+                
+                wrapper.querySelectorAll('.custom-option').forEach(opt => {
+                    opt.classList.remove('selected');
+                    if (opt.dataset.value === select.value) {
+                        opt.classList.add('selected');
+                    }
+                });
+            }
+        }
+    });
+    
+    selectedGenres = [];
+    document.querySelectorAll('.genre-pill-btn').forEach(b => b.classList.remove('active'));
+    const hepsiBtn = document.querySelector('.genre-pill-btn[onclick*="\'\'"]');
+    if (hepsiBtn) hepsiBtn.classList.add('active');
+}
