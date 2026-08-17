@@ -268,6 +268,10 @@ async function loadCuratedCollections(routeContext = null, expectedPage = null) 
 }
 
 async function openCollection(collectionId) {
+    const routeContext = {
+        generation: routeGeneration,
+        signal: currentAbortController?.signal
+    };
     window.scrollTo({ top: 0, behavior: 'smooth' });
     closeDetails(null, true);
     currentMode = "search";
@@ -286,8 +290,16 @@ async function openCollection(collectionId) {
     showSkeletons('search-results', 10);
     
     try {
-        const res = await fetch(`${BASE_URL}/collection/${collectionId}?api_key=${API_KEY}&language=tr-TR`);
+        const res = await fetch(
+            `${BASE_URL}/collection/${collectionId}?api_key=${API_KEY}&language=tr-TR`,
+            { signal: routeContext.signal }
+        );
         const data = await res.json();
+        
+        if (
+            routeContext.signal?.aborted ||
+            routeContext.generation !== routeGeneration
+        ) return;
         
         let cleanName = data.name.replace(/\s*(Serisi|Koleksiyonu|Collection|Üçlemesi|Efsanesi|\[Seri\])$/gi, '').trim();
         
@@ -313,9 +325,14 @@ async function openCollection(collectionId) {
         container.innerHTML += html;
         
         data.parts.forEach(item => {
-            fetchAndInjectProviders(item.id, 'movie', item);
+            fetchAndInjectProviders(item.id, 'movie', item, routeContext);
         });
     } catch (e) {
+        if (e.name === 'AbortError') return;
+        if (
+            routeContext.signal?.aborted ||
+            routeContext.generation !== routeGeneration
+        ) return;
         container.innerHTML = "<div style='color:red'>Hata oluştu.</div>";
     }
 }
