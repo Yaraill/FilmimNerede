@@ -4,6 +4,7 @@ function openActorDetails(actorId, actorName, reset = true, jobType = 'cast', fi
 
 let actorRequestGeneration = 0;
 const actorRuntimeCache = new Map();
+const actorProviderFilterCache = new Map();
 
 async function renderActor(actorId, actorName = "", reset = true, jobType = 'cast', filterGenre = 0, isFilterChange = false, routeContext = null) {
     const requestGeneration = reset
@@ -235,8 +236,24 @@ async function renderActor(actorId, actorName = "", reset = true, jobType = 'cas
                 const chunk = movies.slice(i, Math.min(i + 20, maxToCheck));
                 const results = await Promise.all(chunk.map(async m => {
                     try {
-                        const res = await fetch(`${BASE_URL}/${m.media_type}/${m.id}/watch/providers?api_key=${API_KEY}`, { signal: routeContext?.signal });
-                        const data = await res.json();
+                        const mediaType = m.media_type;
+                        const cacheKey = `${mediaType}:${m.id}`;
+                        let data;
+
+                        if (actorProviderFilterCache.has(cacheKey)) {
+                            data = actorProviderFilterCache.get(cacheKey);
+                        } else {
+                            const res = await fetch(
+                                `${BASE_URL}/${mediaType}/${m.id}/watch/providers?api_key=${API_KEY}`,
+                                { signal: routeContext?.signal }
+                            );
+                            data = await res.json();
+
+                            if (res.ok) {
+                                actorProviderFilterCache.set(cacheKey, data);
+                            }
+                        }
+
                         const tr = data.results && data.results[regionStr] ? data.results[regionStr] : null;
                         if (tr && tr.flatrate && tr.flatrate.some(p => p.provider_id === filterProvId)) return m;
                     } catch (e) { if (e.name === 'AbortError') throw e; return null; }
