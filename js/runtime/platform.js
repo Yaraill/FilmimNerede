@@ -59,7 +59,13 @@ function handlePlatformButtonClick(pid) {
 }
 
 
+let platformRequestGeneration = 0;
+
 async function loadPlatformMovies(providerId = 0, reset = true, isFilterChange = false, routeContext = null) {
+    const requestGeneration = reset
+        ? ++platformRequestGeneration
+        : platformRequestGeneration;
+
     if (reset) {
         if (!isFilterChange) clearAllFilters();
         currentPage = 1;
@@ -171,6 +177,7 @@ async function loadPlatformMovies(providerId = 0, reset = true, isFilterChange =
             const res = await fetch(url, { signal: routeContext?.signal });
             const data = await res.json();
             
+            if (requestGeneration !== platformRequestGeneration) return;
             if (routeContext && !isRouteContextCurrent(routeContext, "platform")) return;
             
             if (data.results && data.results.length > 0) {
@@ -189,6 +196,8 @@ async function loadPlatformMovies(providerId = 0, reset = true, isFilterChange =
                         }
                     }));
                     
+                    if (requestGeneration !== platformRequestGeneration) return;
+
                     results = detailedResults.filter(detail => {
                         const rt = detail.runtime;
                         if (runtime == '90') return rt <= 90;
@@ -208,6 +217,8 @@ async function loadPlatformMovies(providerId = 0, reset = true, isFilterChange =
             }
         }
         
+        if (requestGeneration !== platformRequestGeneration) return;
+
         allResults.sort((a, b) => b.popularity - a.popularity);
         
         const container = document.getElementById('search-results');
@@ -231,6 +242,7 @@ async function loadPlatformMovies(providerId = 0, reset = true, isFilterChange =
         if (reset) document.getElementById('search-results').style.minHeight = '';
     } catch (error) {
         if (error.name === 'AbortError') return;
+        if (requestGeneration !== platformRequestGeneration) return;
         if (!reset) throw error;
         if (reset) document.getElementById('search-results').style.minHeight = '';
         console.error("loadPlatformMovies error:", error);
