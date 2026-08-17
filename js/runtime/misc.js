@@ -247,3 +247,180 @@ async function executeDiscover() {
         }
     }
 }
+
+// --- MINI OYUN (AFİŞTEN TAHMİN) ---
+let currentGameMovie = null;
+let currentGameOptions = [];
+let gameAttempts = 0;
+let gameScoreCorrect = 0;
+let gameScoreWrong = 0;
+
+let playedGameMovies = [];
+
+async function startNewGame() {
+    document.getElementById('game-start-btn').style.display = 'none';
+    const nextBtn = document.getElementById('game-next-btn');
+    if(nextBtn) nextBtn.style.display = 'none';
+    document.getElementById('game-container').style.display = 'none';
+    document.getElementById('game-loading').style.display = 'block';
+    document.getElementById('game-result').innerHTML = '';
+    document.getElementById('clue-1').style.display = 'none';
+    document.getElementById('clue-2').style.display = 'none';
+    document.getElementById('game-poster').style.filter = 'blur(25px)';
+    
+    const overlayText = document.getElementById('game-overlay-text');
+    if (overlayText) overlayText.style.display = 'none';
+    gameAttempts = 0;
+
+    document.getElementById('game-score-board').style.display = 'flex';
+    document.getElementById('game-score-correct').innerText = gameScoreCorrect;
+    document.getElementById('game-score-wrong').innerText = gameScoreWrong;
+
+    try {
+        // Rastgele 1-10 arası popüler film sayfası
+        const randomPage = Math.floor(Math.random() * 20) + 1;
+        const res = await fetch(`${BASE_URL}/discover/movie?api_key=${API_KEY}&language=tr-TR&page=${randomPage}&vote_count.gte=500&with_original_language=en|tr&sort_by=popularity.desc`);
+        const data = await res.json();
+        
+        let shuffled = data.results.filter(m => !playedGameMovies.includes(m.id)).sort(() => 0.5 - Math.random());
+        
+        if (shuffled.length === 0) {
+            // Eğer o sayfadaki tüm filmler oynanmışsa listeyi sıfırla
+            playedGameMovies = [];
+            shuffled = data.results.sort(() => 0.5 - Math.random());
+        }
+        
+        currentGameMovie = shuffled[0];
+        currentGameMovie.media_type = 'movie';
+        window.movieCache[currentGameMovie.id] = currentGameMovie;
+        playedGameMovies.push(currentGameMovie.id);
+        
+        let allOptions = data.results.filter(m => m.id !== currentGameMovie.id).sort(() => 0.5 - Math.random()).slice(0, 3);
+        allOptions.push(currentGameMovie);
+        currentGameOptions = allOptions.sort(() => 0.5 - Math.random());
+
+        // Posteri yükle (Dikey afiş tercih et)
+        const posterUrl = currentGameMovie.poster_path ? IMAGE_BASE + currentGameMovie.poster_path : (currentGameMovie.backdrop_path ? BACKDROP_BASE + currentGameMovie.backdrop_path : '');
+        const posterEl = document.getElementById('game-poster');
+        posterEl.src = posterUrl;
+        posterEl.onclick = null;
+        posterEl.style.cursor = 'default';
+
+        // İpuçlarını hazırla
+        const releaseYear = currentGameMovie.release_date ? currentGameMovie.release_date.split('-')[0] : 'Bilinmiyor';
+        document.getElementById('clue-1').innerHTML = `<i class='far fa-calendar-alt'></i> Yıl: ${releaseYear}`;
+        
+        // Oyuncu ipucunu çek
+        const castRes = await fetch(`${BASE_URL}/movie/${currentGameMovie.id}/credits?api_key=${API_KEY}&language=tr-TR`);
+        const castData = await castRes.json();
+        if(castData.cast && castData.cast.length > 0) {
+            document.getElementById('clue-2').innerHTML = `<i class='fas fa-user'></i> Oyuncu: ${castData.cast[0].name}`;
+        } else {
+            document.getElementById('clue-2').innerHTML = `<i class='fas fa-star'></i> Puan: ${currentGameMovie.vote_average}`;
+        }
+
+        // Seçenekleri ekrana bas
+        const optionsContainer = document.getElementById('game-options');
+        optionsContainer.innerHTML = '';
+        currentGameOptions.forEach(opt => {
+            const btn = document.createElement('button');
+            btn.className = 'game-option-btn';
+            btn.innerText = opt.title;
+            btn.onclick = () => makeGameGuess(opt.id, btn);
+            optionsContainer.appendChild(btn);
+        });
+
+        document.getElementById('game-loading').style.display = 'none';
+        document.getElementById('game-container').style.display = 'block';
+
+        // Oyun yüklendikten sonra kaydırma yap (Başlığı gizle, afişe odakla)
+        setTimeout(() => {
+            const container = document.getElementById('game-container');
+            if(container) container.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }, 100);
+    } catch (err) {
+        console.error(err);
+        document.getElementById('game-loading').innerHTML = 'Oyun yüklenirken hata oluştu.';
+    }
+}
+
+function makeGameGuess(guessedId, btn) {
+    if(guessedId === currentGameMovie.id) {
+        // Doğru Bildi!
+        btn.style.background = '#4CAF50';
+        btn.style.borderColor = '#4CAF50';
+        document.getElementById('game-result').innerHTML = '<span style="color:#4CAF50"><i class="fas fa-check-circle"></i> Doğru Bildin!</span>';
+        document.getElementById('game-poster').style.filter = 'blur(0px)';
+        const posterEl = document.getElementById('game-poster');
+        posterEl.style.cursor = 'pointer';
+        posterEl.onclick = () => openDetails(currentGameMovie.id, currentGameMovie.media_type || 'movie');
+        
+        document.getElementById('clue-1').style.display = 'inline-block';
+        document.getElementById('clue-2').style.display = 'inline-block';
+        const overlayText = document.getElementById('game-overlay-text');
+        if (overlayText) {
+            overlayText.innerHTML = currentGameMovie.title;
+            overlayText.style.display = 'block';
+            overlayText.style.fontSize = '1.2rem';
+            overlayText.style.background = 'rgba(0,0,0,0.7)';
+            overlayText.style.padding = '8px 15px';
+            overlayText.style.borderRadius = '10px';
+            overlayText.style.top = '85%';
+            overlayText.style.textShadow = 'none';
+            overlayText.style.width = 'max-content';
+            overlayText.style.maxWidth = '90%';
+            overlayText.style.textAlign = 'center';
+        }
+        
+        gameScoreCorrect++;
+        document.getElementById('game-score-correct').innerText = gameScoreCorrect;
+
+        // Diğer butonları devre dışı bırak
+        Array.from(document.getElementById('game-options').children).forEach(b => b.disabled = true);
+        
+        const nextBtn = document.getElementById('game-next-btn');
+        if(nextBtn) {
+            nextBtn.style.display = 'block';
+        }
+    } else {
+        // Yanlış Bildi
+        btn.style.background = '#f44336';
+        btn.style.borderColor = '#f44336';
+        btn.disabled = true;
+        gameAttempts++;
+        
+        if(gameAttempts === 1) {
+            document.getElementById('game-result').innerHTML = '<span style="color:#f44336"><i class="fas fa-times-circle"></i> Yanlış! 1. İpucu açıldı.</span>';
+            document.getElementById('clue-1').style.display = 'inline-block';
+        } else if(gameAttempts === 2) {
+            document.getElementById('game-result').innerHTML = '<span style="color:#f44336"><i class="fas fa-times-circle"></i> Yanlış! 2. İpucu açıldı.</span>';
+            document.getElementById('clue-2').style.display = 'inline-block';
+        } else {
+            // Kaybetti
+            document.getElementById('game-result').innerHTML = '<span style="color:#f44336"><i class="fas fa-skull-crossbones"></i> Bilemedin! Cevap: ' + currentGameMovie.title + '</span>';
+            const posterEl = document.getElementById('game-poster');
+            posterEl.style.filter = 'blur(0px)';
+            posterEl.style.cursor = 'pointer';
+            posterEl.onclick = () => openDetails(currentGameMovie.id, currentGameMovie.media_type || 'movie');
+            
+            const overlayText = document.getElementById('game-overlay-text');
+            if (overlayText) overlayText.style.display = 'none';
+            
+            gameScoreWrong++;
+            document.getElementById('game-score-wrong').innerText = gameScoreWrong;
+
+            // Doğru olanı yeşil yap
+            Array.from(document.getElementById('game-options').children).forEach(b => {
+                b.disabled = true;
+                if(b.innerText === currentGameMovie.title) {
+                    b.style.background = '#4CAF50';
+                }
+            });
+            // Otomatik geçiş kaldırıldı, kullanıcı next butonuna basacak.
+            const nextBtn = document.getElementById('game-next-btn');
+            if(nextBtn) {
+                nextBtn.style.display = 'block';
+            }
+        }
+    }
+}
