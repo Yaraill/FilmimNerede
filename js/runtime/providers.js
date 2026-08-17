@@ -1,3 +1,5 @@
+const providerDataCache = new Map();
+
 async function fetchAndInjectProviders(itemId, mediaType, itemData = null, routeContext = null) {
     if (!mediaType || mediaType === "undefined") {
         if (itemData && (itemData.first_air_date || itemData.name)) {
@@ -6,10 +8,28 @@ async function fetchAndInjectProviders(itemId, mediaType, itemData = null, route
             mediaType = "movie";
         }
     }
+    const cacheKey = `${mediaType}:${itemId}`;
     try {
-        const res = await fetch(`${BASE_URL}/${mediaType}/${itemId}/watch/providers?api_key=${API_KEY}`, { signal: routeContext?.signal });
+        let data;
+
+        if (providerDataCache.has(cacheKey)) {
+            data = providerDataCache.get(cacheKey);
+        } else {
+            const res = await fetch(
+                `${BASE_URL}/${mediaType}/${itemId}/watch/providers?api_key=${API_KEY}`,
+                { signal: routeContext?.signal }
+            );
+
+            if (routeContext && !isRouteContextCurrent(routeContext, parseRoute().page)) return;
+
+            data = await res.json();
+
+            if (res.ok) {
+                providerDataCache.set(cacheKey, data);
+            }
+        }
+
         if (routeContext && !isRouteContextCurrent(routeContext, parseRoute().page)) return;
-        const data = await res.json();
         const tr = data.results && data.results.TR ? data.results.TR : null;
         
         const els = document.querySelectorAll(`.providers-${itemId}`);
