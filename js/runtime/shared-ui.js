@@ -235,3 +235,99 @@ function stopHoverSlideshow(imgElement, originalSrc) {
     }
 }
 
+
+
+// =========================================
+// MOBILE HAMBURGER MENU
+// =========================================
+function toggleMobileMenu() {
+    const menuToggle = document.getElementById('mobile-menu');
+    const navLinks = document.querySelector('.nav-links');
+    if (menuToggle && navLinks) {
+        menuToggle.classList.toggle('active');
+        navLinks.classList.toggle('active');
+    }
+}
+
+// Close mobile menu when a nav link is clicked
+document.querySelectorAll('.nav-links li a, .nav-links li button').forEach(link => {
+    link.addEventListener('click', () => {
+        const menuToggle = document.getElementById('mobile-menu');
+        const navLinks = document.querySelector('.nav-links');
+        if (menuToggle && menuToggle.classList.contains('active')) {
+            menuToggle.classList.remove('active');
+            navLinks.classList.remove('active');
+        }
+    });
+});
+
+// =========================================
+// CUSTOM SELECTS INITIALIZATION
+// =========================================
+document.addEventListener('DOMContentLoaded', () => {
+    const selects = document.querySelectorAll('select.premium-dropdown, select.premium-city-select, select.modern-select');
+    selects.forEach(select => {
+        if (select.classList.contains('custom-select-hidden')) return;
+        
+        select.classList.add('custom-select-hidden');
+        
+        const wrapper = document.createElement('div');
+        wrapper.className = 'custom-select-container';
+        if (select.style.width === '100%' || select.classList.contains('modern-select')) wrapper.classList.add('full-width');
+        
+        const trigger = document.createElement('div');
+        trigger.className = 'custom-select-trigger';
+        
+        const selectedOption = select.options[select.selectedIndex];
+        let triggerText = selectedOption ? selectedOption.text : "Seçiniz...";
+        
+        trigger.innerHTML = `<span>${triggerText}</span> <i class="fas fa-chevron-down"></i>`;
+        
+        const optionsWrapper = document.createElement('div');
+        optionsWrapper.className = 'custom-options-wrapper';
+        
+        Array.from(select.options).forEach((option, index) => {
+            if (option.disabled && option.value === "") return;
+            
+            const customOption = document.createElement('div');
+            customOption.className = 'custom-option';
+            if (index === select.selectedIndex) customOption.classList.add('selected');
+            customOption.textContent = option.text;
+            customOption.dataset.value = option.value;
+            if (option.hidden) customOption.style.display = 'none';
+            
+            customOption.addEventListener('click', function(e) {
+                e.stopPropagation();
+                select.value = this.dataset.value;
+                select.dispatchEvent(new Event('change', { bubbles: true }));
+                if (typeof select.onchange === 'function') {
+                    select.onchange(new Event('change'));
+                }
+                
+                trigger.querySelector('span').textContent = this.textContent;
+                optionsWrapper.querySelectorAll('.custom-option').forEach(opt => opt.classList.remove('selected'));
+                this.classList.add('selected');
+                wrapper.classList.remove('open');
+            });
+            optionsWrapper.appendChild(customOption);
+        });
+        
+        trigger.addEventListener('click', function(e) {
+            e.stopPropagation();
+            document.querySelectorAll('.custom-select-container').forEach(c => {
+                if (c !== wrapper) c.classList.remove('open');
+            });
+            wrapper.classList.toggle('open');
+        });
+        
+        wrapper.appendChild(trigger);
+        wrapper.appendChild(optionsWrapper);
+        select.parentNode.insertBefore(wrapper, select.nextSibling);
+    });
+    
+    document.addEventListener('click', () => {
+        document.querySelectorAll('.custom-select-container').forEach(c => {
+            c.classList.remove('open');
+        });
+    });
+});
