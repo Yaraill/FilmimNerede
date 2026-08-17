@@ -3,6 +3,7 @@ function openActorDetails(actorId, actorName, reset = true, jobType = 'cast', fi
 }
 
 let actorRequestGeneration = 0;
+const actorRuntimeCache = new Map();
 
 async function renderActor(actorId, actorName = "", reset = true, jobType = 'cast', filterGenre = 0, isFilterChange = false, routeContext = null) {
     const requestGeneration = reset
@@ -179,9 +180,17 @@ async function renderActor(actorId, actorName = "", reset = true, jobType = 'cas
                 const chunk = movies.slice(i, Math.min(i + 20, maxToCheck));
                 const results = await Promise.all(chunk.map(async m => {
                     try {
-                        const res = await fetch(`${BASE_URL}/movie/${m.id}?api_key=${API_KEY}&language=tr-TR`, { signal: routeContext?.signal });
-                        const detail = await res.json();
-                        const rt = detail.runtime || 0;
+                        let rt;
+                        if (actorRuntimeCache.has(m.id)) {
+                            rt = actorRuntimeCache.get(m.id);
+                        } else {
+                            const res = await fetch(`${BASE_URL}/movie/${m.id}?api_key=${API_KEY}&language=tr-TR`, { signal: routeContext?.signal });
+                            const detail = await res.json();
+                            rt = detail.runtime || 0;
+                            if (res.ok) {
+                                actorRuntimeCache.set(m.id, rt);
+                            }
+                        }
                         if (runtimeFilter == '90' && rt <= 90 && rt > 0) return m;
                         if (runtimeFilter == '120' && rt > 90 && rt <= 105) return m;
                         if (runtimeFilter == '150' && rt > 105 && rt <= 135) return m;
