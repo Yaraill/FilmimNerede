@@ -2,5 +2,10 @@
   "dependencies": {
     "jsdom": "^30.0.1",
     "puppeteer": "^25.4.0"
+  },
+  "scripts": {
+    "test": "npm run test:static && npm run test:browser",
+    "test:static": "node tests/static-smoke.js",
+    "test:browser": "node tests/browser-smoke.js"
   }
 }
