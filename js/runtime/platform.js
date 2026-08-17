@@ -37,7 +37,7 @@ function resetPlatformView(routeContext = null) {
 
 function applyPlatformFilters() {
     if (currentMode === "actor") {
-        openActorDetails(currentActorId, document.getElementById('searchInput').value, true, currentJobType, 0, true);
+        renderActor(currentActorId, document.getElementById('searchInput').value, true, currentJobType, 0, true);
     } else if (currentMode === "search") {
         searchMovie(true, true);
     } else {
