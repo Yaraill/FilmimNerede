@@ -450,6 +450,73 @@ async function runTest() {
             check(window.location.hash === '', 'A7: invalid actor normalizes to empty/home hash');
             check(document.getElementById('now-playing').classList.contains('active-tab'), 'A7: now-playing (home) tab active');
 
+            // B) REAL BACK/FORWARD NAVIGATION
+            // 1. Establish stable baseline
+            window.navigate("platform"); await waitRender();
+            
+            // Push next route
+            window.navigate("movie/77777/movie"); await waitRender();
+            
+            // Push next route
+            window.navigate("actor/77777"); await waitRender();
+            
+            // 2. No unintended extra history entry
+            const initialIndex = history.state && history.state.filmRehberiRouter ? history.state.filmRehberiRouter.index : -1;
+            check(initialIndex >= 2, 'B: Router index should reflect sequential pushes');
+            
+            // 3. FIRST REAL BACK
+            history.back();
+            for(let i=0; i<20; i++){
+                if(window.location.hash === '#movie/77777/movie') break;
+                await wait(100);
+            }
+            await waitRender(); // Wait for DOM condition/title
+            check(window.location.hash === '#movie/77777/movie', 'B: First Back expected hash');
+            check(document.getElementById('details-modal').style.display === 'flex', 'B: First Back modal open');
+            check(document.getElementById('details-title').innerText === 'Fast Movie', 'B: First Back title restored');
+            
+            // 4. SECOND REAL BACK
+            history.back();
+            for(let i=0; i<20; i++){
+                if(window.location.hash === '#platform') break;
+                await wait(100);
+            }
+            await waitRender();
+            check(window.location.hash === '#platform', 'B: Second Back expected hash');
+            check(document.getElementById('platform').classList.contains('active-tab'), 'B: Second Back route DOM restored');
+            check(document.getElementById('details-modal').style.display === 'none' || document.getElementById('details-modal').style.display === '', 'B: Second Back stale modal hidden');
+            
+            // 5. REAL FORWARD
+            history.forward();
+            for(let i=0; i<20; i++){
+                if(window.location.hash === '#movie/77777/movie') break;
+                await wait(100);
+            }
+            await waitRender();
+            check(window.location.hash === '#movie/77777/movie', 'B: Forward expected hash restored');
+            check(document.getElementById('details-title').innerText === 'Fast Movie', 'B: Forward title restored');
+            const fwIndex = history.state && history.state.filmRehberiRouter ? history.state.filmRehberiRouter.index : -1;
+            check(fwIndex === initialIndex - 1, 'B: Forward index matches expected entry');
+            
+            // 6. No loop / no phantom navigation
+            await wait(1000); // settling period
+            check(window.location.hash === '#movie/77777/movie', 'B: No phantom navigation after settle');
+            const settleIndex = history.state && history.state.filmRehberiRouter ? history.state.filmRehberiRouter.index : -1;
+            check(settleIndex === fwIndex, 'B: No state changes after settle');
+            
+            // 7. Stale overwrite safety
+            window.navigate("movie/88888/movie"); // slow
+            await wait(100); 
+            history.back(); 
+            for(let i=0; i<20; i++){
+                if(window.location.hash === '#movie/77777/movie') break;
+                await wait(100);
+            }
+            await wait(1000); // wait for slow to resolve
+            check(window.location.hash === '#movie/77777/movie', 'B: Stale overwrite safety preserved hash');
+            check(document.getElementById('details-title').innerText === 'Fast Movie', 'B: Stale overwrite safety preserved DOM');
+            document.getElementById('details-modal').style.display = 'none';
+
             // C) ROUTE GENERATION + ABORT
             window.location.hash = "#movie/88888/movie"; // slow
             await wait(100); 
