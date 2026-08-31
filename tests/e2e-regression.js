@@ -76,6 +76,9 @@ async function runE2E() {
 
         const networkRequests = [];
         let liveTMDBEscapeCount = 0;
+        // TV traversal detection — set in request handler, used for network-type assertions
+        let tvTraversalStartIndex = -1;
+        let tvTraversalDetected = false;
 
         page.on('request', request => {
             const url = request.url();
@@ -85,6 +88,12 @@ async function runE2E() {
                 // If it wasn't intercepted by the mock rules, count as escape if we allowed it, 
                 // but we will intercept everything here.
                 liveTMDBEscapeCount++;
+            }
+            
+            // Auto-detect TV traversal start: first /tv/80001 detail request (not watch/providers)
+            if (!tvTraversalDetected && url.includes('/tv/80001') && !url.includes('/watch/providers')) {
+                tvTraversalDetected = true;
+                tvTraversalStartIndex = networkRequests.length - 1; // index of this request
             }
 
             if (request.method() === 'OPTIONS') {
@@ -227,6 +236,10 @@ async function runE2E() {
                 if (_errors.length > 0) return _errors;
                 
                 // C. OPEN MOVIE
+                // Capture pre-movie state for exact Back assertions
+                const preMovieHash = window.location.hash;
+                const preMovieRouterIndex = history.state?.filmRehberiRouter?.index ?? null;
+                
                 const poster = movieCard.querySelector('.movie-poster');
                 if (poster) poster.click();
                 else _errors.push('Cannot find .movie-poster in movieCard');
@@ -267,6 +280,10 @@ async function runE2E() {
                 await waitRender();
                 check(document.querySelectorAll('#search-results .movie-card').length >= 2, 'Back: Search results restored');
                 check(document.getElementById('details-modal').style.display === 'none' || document.getElementById('details-modal').style.display === '', 'Back: Modal hidden');
+                // Exact route/history restore assertions
+                check(window.location.hash === preMovieHash, 'Back: Hash restored to pre-movie hash (expected: ' + preMovieHash + ', actual: ' + window.location.hash + ')');
+                const postBackRouterIndex = history.state?.filmRehberiRouter?.index ?? null;
+                check(postBackRouterIndex === preMovieRouterIndex, 'Back: Router index restored (expected: ' + preMovieRouterIndex + ', actual: ' + postBackRouterIndex + ')');
                 
                 if (_errors.length > 0) return _errors;
                 
@@ -358,6 +375,18 @@ async function runE2E() {
             return;
         } else {
             console.log('[PASS] Pre-refresh E2E Assertions succeeded');
+        }
+
+        // Typed TV network-type assertions: verify TV detail used /tv/80001 and not /movie/80001
+        if (tvTraversalStartIndex >= 0) {
+            const tvTraversalRequests = networkRequests.slice(tvTraversalStartIndex);
+            const tvApiCount = tvTraversalRequests.filter(u => u.includes('api.themoviedb.org') && u.includes('/tv/80001')).length;
+            const movieApiCount = tvTraversalRequests.filter(u => u.includes('api.themoviedb.org') && u.includes('/movie/80001')).length;
+            check(tvApiCount > 0, 'Typed TV: /tv/80001 endpoint called at least once (count: ' + tvApiCount + ')');
+            check(movieApiCount === 0, 'Typed TV: /movie/80001 endpoint NOT called (count: ' + movieApiCount + ')');
+            console.log('[PASS] Typed TV network-type assertions: /tv/80001=' + tvApiCount + ', /movie/80001=' + movieApiCount);
+        } else {
+            check(false, 'Typed TV: tvTraversalStartIndex not set — __snapshotTvStart was never called');
         }
 
         // I. REFRESH
