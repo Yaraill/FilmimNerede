@@ -1,4 +1,14 @@
 function resetPlatformView(routeContext = null) {
+    if (window.isHistoryRestoration && currentMode === "search" && document.getElementById('search-results').children.length > 0) {
+        // Preserve existing search results on history back/forward
+        document.querySelectorAll('.tab-content').forEach(tab => tab.classList.remove('active-tab'));
+        document.querySelectorAll('.nav-links a').forEach(link => link.classList.remove('active'));
+        document.getElementById('platform').classList.add('active-tab');
+        const platformLink = document.querySelector('a[onclick*="platform"]');
+        if (platformLink) platformLink.classList.add('active');
+        return;
+    }
+    
     document.getElementById('searchInput').value = "";
     
     // Fallbacks for removed filters

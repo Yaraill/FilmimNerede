@@ -76,6 +76,9 @@ function navigate(route, options = {}) {
     } else {
         history.pushState(newState, "", url);
     }
+    
+    window._justNavigated = true;
+    currentRouterIndex = currentIndex;
 
     handleRoute();
 }
@@ -157,9 +160,21 @@ function parseRoute() {
     };
 }
 
+window.isHistoryRestoration = false;
+let currentRouterIndex = -1;
 let lastRenderedHash = null;
 
 function handleRoute() {
+    const newIndex = history.state?.filmRehberiRouter?.index ?? 0;
+    if (currentRouterIndex === -1) {
+        currentRouterIndex = newIndex;
+        window.isHistoryRestoration = false;
+    } else if (!window._justNavigated) {
+        window.isHistoryRestoration = (newIndex !== currentRouterIndex);
+        currentRouterIndex = newIndex;
+    }
+    window._justNavigated = false;
+    
     const route = parseRoute();
 
     const currentHash =
@@ -195,6 +210,9 @@ function handleRoute() {
     if (detailsModal) {
         detailsModal.style.display = 'none';
         detailsModal.classList.remove('active');
+
+        const dt = document.getElementById('details-title');
+        if (dt) dt.innerText = "";
 
         const p =
             document.getElementById('modal-providers');

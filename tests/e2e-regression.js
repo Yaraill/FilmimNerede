@@ -199,15 +199,27 @@ async function runE2E() {
         check(homeQa, 'Home: now-playing tab active');
         
         // B. SEARCH
-        await page.evaluate(() => {
-            const input = document.getElementById('searchInput');
-            input.value = 'E2E_JOURNEY';
-            console.log('Search input value before click:', input.value);
-            const btn = Array.from(document.querySelectorAll('button')).find(b => b.innerText.includes('Ara'));
-            if (btn) btn.click();
-            else console.log('Ara button not found!');
+        await page.waitForFunction(() => {
+            const el = document.getElementById('loading');
+            return !el || el.style.display === 'none';
         });
-        await new Promise(r => setTimeout(r, 2000));
+        
+        // Navigate to Platform tab where the search box actually lives to make it visible
+        await page.evaluate(() => {
+            const tabs = Array.from(document.querySelectorAll('.nav-links a'));
+            const platformTab = tabs.find(t => t.getAttribute('onclick')?.includes('platform'));
+            if (platformTab) platformTab.click();
+        });
+        await page.waitForSelector('#searchInput', { visible: true });
+        
+        // Genuine keyboard interaction
+        await page.click('#searchInput', { clickCount: 3 });
+        await page.keyboard.press('Backspace');
+        await page.type('#searchInput', 'E2E_JOURNEY');
+        await page.keyboard.press('Enter');
+        
+        // Condition-based wait for search results
+        await page.waitForFunction(() => document.querySelectorAll('#search-results .movie-card').length >= 2);
         
         const qaResult = await page.evaluate(async () => {
             const _errors = [];
@@ -274,7 +286,7 @@ async function runE2E() {
                 // D. BACK to Search
                 window.history.back();
                 for(let i=0; i<50; i++){
-                    if(document.querySelectorAll('#search-results .movie-card').length >= 2) break;
+                    if(window.location.hash === preMovieHash) break;
                     await wait(100);
                 }
                 await waitRender();

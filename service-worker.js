@@ -1,14 +1,14 @@
-const CACHE_NAME = 'filmimnerede-v86';
+const CACHE_NAME = 'filmimnerede-v87';
 const ASSETS_TO_CACHE = [
   '/',
   '/index.html',
   '/style.css?v=50',
   '/js/runtime/config.js?v=1',
   '/js/runtime/state.js?v=1',
-  '/js/runtime/router.js?v=2',
+  '/js/runtime/router.js?v=3',
   '/js/runtime/shared-ui.js?v=3',
   '/js/runtime/providers.js?v=2',
-  '/js/runtime/platform.js?v=5',
+  '/js/runtime/platform.js?v=6',
   '/js/runtime/search.js?v=3',
   '/js/runtime/movie.js?v=5',
   '/js/runtime/actor.js?v=7',
