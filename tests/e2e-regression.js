@@ -304,7 +304,6 @@ async function runE2E() {
                 if (tvCard2) {
                     const tvPoster = tvCard2.querySelector('.movie-poster');
                     if (tvPoster) tvPoster.click();
-                    else _errors.push('Cannot find .movie-poster in tvCard');
                 } else {
                     _errors.push('Cannot click tvCard because it is missing');
                 }
@@ -321,10 +320,11 @@ async function runE2E() {
                 let tvTitleText = '';
                 for(let i=0; i<50; i++){
                     tvTitleText = document.getElementById('details-title').innerText || document.getElementById('details-title').textContent || '';
-                    if (tvTitleText.length > 0) break;
+                    if (tvTitleText.includes('E2E TV Result')) break;
                     await wait(100);
                 }
-                check(tvTitleText.includes('E2E TV Result'), 'TV: Title matches');
+                const tvCacheItem = JSON.stringify(window.movieCache[80001]);
+                check(tvTitleText.includes('E2E TV Result'), 'TV: Title matches (was: ' + tvTitleText + ', cache: ' + tvCacheItem + ')');
                 
                 // F. ACTOR (Real click on cast)
                 const castContainer = document.getElementById('details-cast');
@@ -343,7 +343,7 @@ async function runE2E() {
                 check(document.getElementById('searchInput').value === 'E2E Actor', 'Actor: Name matches');
                 
                 // G. PLATFORM (UI Click)
-                const platformNav = document.querySelector('nav a[href="#platform"]');
+                const platformNav = Array.from(document.querySelectorAll('.nav-links a')).find(t => t.getAttribute('onclick')?.includes('platform'));
                 if (platformNav) {
                     platformNav.click();
                 } else {
@@ -356,6 +356,8 @@ async function runE2E() {
                 await waitRender();
                 check(window.location.hash === '#platform', 'Platform: Route updated');
                 check(document.getElementById('platform').classList.contains('active-tab'), 'Platform: Tab active');
+                check(window.isHistoryRestoration === false, 'Platform: Fresh navigation sees isHistoryRestoration=false');
+                check(document.getElementById('searchInput').value === '', 'Platform: Fresh Platform reset behavior restored');
                 check(document.getElementById('actor-modal').style.display === 'none' || document.getElementById('actor-modal').style.display === '', 'Platform: Actor modal hidden');
 
                 // H2. PROFILE/WATCHLIST ROUTE

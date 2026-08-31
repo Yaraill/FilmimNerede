@@ -78,6 +78,7 @@ function navigate(route, options = {}) {
     }
     
     window._justNavigated = true;
+    window.isHistoryRestoration = false;
     currentRouterIndex = currentIndex;
 
     handleRoute();
