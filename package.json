@@ -4,10 +4,11 @@
     "puppeteer": "^25.4.0"
   },
   "scripts": {
-  "test": "npm run test:static && npm run test:browser && npm run test:xss && npm run test:e2e",
+  "test": "npm run test:static && npm run test:browser && npm run test:xss && npm run test:home-performance && npm run test:e2e",
   "test:static": "node tests/static-smoke.js",
   "test:browser": "node tests/browser-smoke.js",
   "test:xss": "node tests/xss-regression.js",
+  "test:home-performance": "node tests/home-performance-regression.js",
   "test:e2e": "node tests/e2e-regression.js"
 }
 }

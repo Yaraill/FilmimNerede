@@ -1,6 +1,659 @@
 let trendingActorsAutoScrollInterval = null;
 let curatedCollectionsAutoScrollInterval = null;
 
+const HOME_TRENDING_ACTORS_CONCURRENCY = 3;
+const HOME_COLLECTION_CONCURRENCY = 4;
+
+const HOME_TRENDING_ACTORS_TTL_MS =
+    5 * 60 * 1000;
+
+const HOME_COLLECTION_TTL_MS =
+    10 * 60 * 1000;
+
+let trendingActorsCache = {
+    timestamp: 0,
+    actors: null
+};
+
+let trendingActorsInFlight = null;
+
+const curatedCollectionCache =
+    new Map();
+
+const curatedCollectionInFlight =
+    new Map();
+
+function createHomeAbortError() {
+    const error =
+        new Error('Aborted');
+
+    error.name =
+        'AbortError';
+
+    return error;
+}
+
+async function runHomeTasksWithConcurrency(
+    items,
+    limit,
+    worker
+) {
+    const results =
+        new Array(items.length);
+
+    let nextIndex = 0;
+
+    const workerCount =
+        Math.min(
+            limit,
+            items.length
+        );
+
+    const runners =
+        Array.from(
+            {
+                length:
+                    workerCount
+            },
+            async () => {
+                while (true) {
+                    const index =
+                        nextIndex++;
+
+                    if (
+                        index >=
+                        items.length
+                    ) {
+                        return;
+                    }
+
+                    results[index] =
+                        await worker(
+                            items[index],
+                            index
+                        );
+                }
+            }
+        );
+
+    await Promise.all(
+        runners
+    );
+
+    return results;
+}
+
+function createSharedHomeTask(
+    taskFactory,
+    onFinally
+) {
+    const controller =
+        new AbortController();
+
+    const entry = {
+        controller,
+        consumers: 0,
+        settled: false,
+        promise: null
+    };
+
+    entry.promise =
+        Promise.resolve()
+            .then(
+                () =>
+                    taskFactory(
+                        controller.signal
+                    )
+            )
+            .finally(
+                () => {
+                    entry.settled =
+                        true;
+
+                    if (onFinally) {
+                        onFinally(
+                            entry
+                        );
+                    }
+                }
+            );
+
+    return entry;
+}
+
+function consumeSharedHomeTask(
+    entry,
+    signal = null
+) {
+    if (
+        signal?.aborted
+    ) {
+        return Promise.reject(
+            createHomeAbortError()
+        );
+    }
+
+    entry.consumers++;
+
+    return new Promise(
+        (
+            resolve,
+            reject
+        ) => {
+            let released =
+                false;
+
+            const release =
+                wasAborted => {
+                    if (released) {
+                        return;
+                    }
+
+                    released =
+                        true;
+
+                    if (signal) {
+                        signal
+                            .removeEventListener(
+                                'abort',
+                                onAbort
+                            );
+                    }
+
+                    entry.consumers =
+                        Math.max(
+                            0,
+                            entry
+                                .consumers -
+                                1
+                        );
+
+                    if (
+                        wasAborted &&
+                        entry
+                            .consumers ===
+                            0 &&
+                        !entry.settled &&
+                        !entry
+                            .controller
+                            .signal
+                            .aborted
+                    ) {
+                        entry.controller
+                            .abort();
+                    }
+                };
+
+            const onAbort =
+                () => {
+                    release(
+                        true
+                    );
+
+                    reject(
+                        createHomeAbortError()
+                    );
+                };
+
+            if (signal) {
+                signal.addEventListener(
+                    'abort',
+                    onAbort,
+                    {
+                        once: true
+                    }
+                );
+            }
+
+            entry.promise.then(
+                value => {
+                    release(
+                        false
+                    );
+
+                    resolve(
+                        value
+                    );
+                },
+                error => {
+                    release(
+                        false
+                    );
+
+                    reject(
+                        error
+                    );
+                }
+            );
+        }
+    );
+}
+
+async function fetchTrendingActorsData(
+    signal
+) {
+    const pages =
+        Array.from(
+            {
+                length: 8
+            },
+            (
+                _,
+                index
+            ) =>
+                index + 1
+        );
+
+    const pageResults =
+        await runHomeTasksWithConcurrency(
+            pages,
+            HOME_TRENDING_ACTORS_CONCURRENCY,
+            async page => {
+                try {
+                    const response =
+                        await fetch(
+                            `${BASE_URL}/person/popular?api_key=${API_KEY}&language=tr-TR&page=${page}`,
+                            {
+                                signal
+                            }
+                        );
+
+                    if (
+                        !response.ok
+                    ) {
+                        console.warn(
+                            `Trending actor page ${page} alınamadı: HTTP ${response.status}`
+                        );
+
+                        return {
+                            ok: false,
+                            results: []
+                        };
+                    }
+
+                    const data =
+                        await response
+                            .json();
+
+                    return {
+                        ok: true,
+                        results:
+                            Array.isArray(
+                                data
+                                    ?.results
+                            )
+                                ? data
+                                    .results
+                                : []
+                    };
+                } catch (error) {
+                    if (
+                        error.name ===
+                        'AbortError'
+                    ) {
+                        throw error;
+                    }
+
+                    console.warn(
+                        `Trending actor page ${page} alınamadı:`,
+                        error
+                    );
+
+                    return {
+                        ok: false,
+                        results: []
+                    };
+                }
+            }
+        );
+
+    const successfulPages =
+        pageResults.filter(
+            result =>
+                result?.ok
+        );
+
+    if (
+        successfulPages.length ===
+        0
+    ) {
+        throw new Error(
+            'Trending actor pages unavailable'
+        );
+    }
+
+    const allActors =
+        successfulPages.flatMap(
+            result =>
+                result.results
+        );
+
+    const actors = [];
+    const seenActorIds =
+        new Set();
+
+    allActors.forEach(actor => {
+        if (
+            !actor ||
+            actor.adult === true
+        ) {
+            return;
+        }
+
+        const actorId =
+            normalizeTmdbId(
+                actor.id
+            );
+
+        if (
+            !actorId ||
+            seenActorIds.has(
+                actorId
+            )
+        ) {
+            return;
+        }
+
+        if (
+            typeof actor.name !==
+                'string' ||
+            !actor.name.trim()
+        ) {
+            return;
+        }
+
+        const knownFor =
+            Array.isArray(
+                actor.known_for
+            )
+                ? actor
+                    .known_for
+                : [];
+
+        if (
+            knownFor.length ===
+            0
+        ) {
+            return;
+        }
+
+        if (
+            knownFor.some(
+                work =>
+                    work?.adult ===
+                    true
+            )
+        ) {
+            return;
+        }
+
+        seenActorIds.add(
+            actorId
+        );
+
+        actors.push({
+            id: actorId,
+            name:
+                actor.name
+                    .trim(),
+            profile_path:
+                isValidTmdbImagePath(
+                    actor
+                        .profile_path
+                )
+                    ? actor
+                        .profile_path
+                    : null
+        });
+    });
+
+    return actors.slice(
+        0,
+        20
+    );
+}
+
+function getTrendingActorsData(
+    signal = null
+) {
+    if (
+        signal?.aborted
+    ) {
+        return Promise.reject(
+            createHomeAbortError()
+        );
+    }
+
+    const cacheAge =
+        Date.now() -
+        trendingActorsCache
+            .timestamp;
+
+    if (
+        Array.isArray(
+            trendingActorsCache
+                .actors
+        ) &&
+        cacheAge >= 0 &&
+        cacheAge <
+            HOME_TRENDING_ACTORS_TTL_MS
+    ) {
+        return Promise.resolve(
+            trendingActorsCache
+                .actors
+        );
+    }
+
+    if (
+        trendingActorsInFlight
+            ?.controller
+            .signal
+            .aborted
+    ) {
+        trendingActorsInFlight =
+            null;
+    }
+
+    if (
+        !trendingActorsInFlight
+    ) {
+        let entry = null;
+
+        entry =
+            createSharedHomeTask(
+                async sharedSignal => {
+                    const actors =
+                        await fetchTrendingActorsData(
+                            sharedSignal
+                        );
+
+                    trendingActorsCache = {
+                        timestamp:
+                            Date.now(),
+                        actors
+                    };
+
+                    return actors;
+                },
+                settledEntry => {
+                    if (
+                        trendingActorsInFlight ===
+                        settledEntry
+                    ) {
+                        trendingActorsInFlight =
+                            null;
+                    }
+                }
+            );
+
+        trendingActorsInFlight =
+            entry;
+    }
+
+    return consumeSharedHomeTask(
+        trendingActorsInFlight,
+        signal
+    );
+}
+
+function getCachedCuratedCollection(
+    collectionId
+) {
+    const cached =
+        curatedCollectionCache.get(
+            collectionId
+        );
+
+    if (!cached) {
+        return null;
+    }
+
+    const age =
+        Date.now() -
+        cached.timestamp;
+
+    if (
+        age >= 0 &&
+        age <
+            HOME_COLLECTION_TTL_MS
+    ) {
+        return cached.data;
+    }
+
+    curatedCollectionCache.delete(
+        collectionId
+    );
+
+    return null;
+}
+
+async function fetchCuratedCollectionData(
+    collectionId,
+    signal
+) {
+    const response =
+        await fetch(
+            `${BASE_URL}/collection/${collectionId}?api_key=${API_KEY}&language=tr-TR`,
+            {
+                signal
+            }
+        );
+
+    if (!response.ok) {
+        throw new Error(
+            `Collection HTTP ${response.status}`
+        );
+    }
+
+    const data =
+        await response.json();
+
+    const responseCollectionId =
+        normalizeTmdbId(
+            data?.id
+        );
+
+    if (
+        responseCollectionId !==
+            collectionId ||
+        !Array.isArray(
+            data?.parts
+        )
+    ) {
+        console.warn(
+            `Collection ${collectionId} için geçersiz TMDB cevabı alındı.`
+        );
+
+        return null;
+    }
+
+    curatedCollectionCache.set(
+        collectionId,
+        {
+            timestamp:
+                Date.now(),
+            data
+        }
+    );
+
+    return data;
+}
+
+function getCuratedCollectionData(
+    collectionId,
+    signal = null
+) {
+    if (
+        signal?.aborted
+    ) {
+        return Promise.reject(
+            createHomeAbortError()
+        );
+    }
+
+    const cached =
+        getCachedCuratedCollection(
+            collectionId
+        );
+
+    if (cached) {
+        return Promise.resolve(
+            cached
+        );
+    }
+
+    let entry =
+        curatedCollectionInFlight.get(
+            collectionId
+        );
+
+    if (
+        entry
+            ?.controller
+            .signal
+            .aborted
+    ) {
+        curatedCollectionInFlight.delete(
+            collectionId
+        );
+
+        entry = null;
+    }
+
+    if (!entry) {
+        entry =
+            createSharedHomeTask(
+                sharedSignal =>
+                    fetchCuratedCollectionData(
+                        collectionId,
+                        sharedSignal
+                    ),
+                settledEntry => {
+                    if (
+                        curatedCollectionInFlight.get(
+                            collectionId
+                        ) ===
+                        settledEntry
+                    ) {
+                        curatedCollectionInFlight.delete(
+                            collectionId
+                        );
+                    }
+                }
+            );
+
+        curatedCollectionInFlight.set(
+            collectionId,
+            entry
+        );
+    }
+
+    return consumeSharedHomeTask(
+        entry,
+        signal
+    );
+}
+
 async function loadTop10Trending(
     routeContext = null,
     expectedPage = null
@@ -343,29 +996,19 @@ async function loadTrendingActors(
     }
 
     try {
-        const promises = [];
+        const actors =
+            await getTrendingActorsData(
+                routeContext
+                    ?.signal
+            );
 
-        for (
-            let page = 1;
-            page <= 8;
-            page++
+        if (
+            routeContext
+                ?.signal
+                ?.aborted
         ) {
-            promises.push(
-                fetch(
-                    `${BASE_URL}/person/popular?api_key=${API_KEY}&language=tr-TR&page=${page}`,
-                    {
-                        signal:
-                            routeContext
-                                ?.signal
-                    }
-                )
-            );
+            return;
         }
-
-        const responses =
-            await Promise.all(
-                promises
-            );
 
         if (
             routeContext &&
@@ -378,50 +1021,17 @@ async function loadTrendingActors(
             return;
         }
 
-        let allActors = [];
+        const fragment =
+            document
+                .createDocumentFragment();
 
-        for (
-            const response
-            of responses
-        ) {
-            const data =
-                await response.json();
-
-            if (
-                Array.isArray(
-                    data?.results
-                )
-            ) {
-                allActors =
-                    allActors.concat(
-                        data.results
-                    );
-            }
-        }
-
-        const uniqueActors = [];
-        const seenActorIds =
-            new Set();
-
-        allActors.forEach(actor => {
-            if (
-                !actor ||
-                actor.adult === true
-            ) {
-                return;
-            }
-
+        actors.forEach(actor => {
             const actorId =
                 normalizeTmdbId(
-                    actor.id
+                    actor?.id
                 );
 
-            if (
-                !actorId ||
-                seenActorIds.has(
-                    actorId
-                )
-            ) {
+            if (!actorId) {
                 return;
             }
 
@@ -433,126 +1043,97 @@ async function loadTrendingActors(
                 return;
             }
 
-            const knownFor =
-                Array.isArray(
-                    actor.known_for
-                )
-                    ? actor.known_for
-                    : [];
+            const actorName =
+                actor.name.trim();
 
-            if (
-                knownFor.length === 0
-            ) {
-                return;
-            }
+            const profile =
+                getSafeTmdbImageUrl(
+                    actor
+                        .profile_path,
+                    IMAGE_BASE,
+                    'https://via.placeholder.com/150x225?text=Yok'
+                );
 
-            if (
-                knownFor.some(
-                    work =>
-                        work?.adult ===
-                        true
-                )
-            ) {
-                return;
-            }
-
-            seenActorIds.add(
-                actorId
-            );
-
-            uniqueActors.push({
-                actor,
-                actorId
-            });
-        });
-
-        const actors =
-            uniqueActors.slice(
-                0,
-                20
-            );
-
-        const fragment =
-            document
-                .createDocumentFragment();
-
-        actors.forEach(
-            ({
-                actor,
-                actorId
-            }) => {
-                const actorName =
-                    actor.name.trim();
-
-                const profile =
-                    getSafeTmdbImageUrl(
-                        actor.profile_path,
-                        IMAGE_BASE,
-                        'https://via.placeholder.com/150x225?text=Yok'
+            const card =
+                document
+                    .createElement(
+                        'div'
                     );
 
-                const card =
-                    document
-                        .createElement(
-                            'div'
-                        );
+            card.className =
+                'story-item';
 
-                card.className =
-                    'story-item';
+            const image =
+                document
+                    .createElement(
+                        'img'
+                    );
 
-                const image =
-                    document
-                        .createElement(
-                            'img'
-                        );
+            image.src =
+                profile;
 
-                image.src =
-                    profile;
+            image.alt =
+                actorName;
 
-                image.alt =
-                    actorName;
+            image.className =
+                'story-img';
 
-                image.className =
-                    'story-img';
+            image.loading =
+                'lazy';
 
-                image.loading =
-                    'lazy';
+            const name =
+                document
+                    .createElement(
+                        'div'
+                    );
 
-                const name =
-                    document
-                        .createElement(
-                            'div'
-                        );
+            name.className =
+                'story-name';
 
-                name.className =
-                    'story-name';
+            name.title =
+                actorName;
 
-                name.title =
-                    actorName;
+            name.textContent =
+                actorName;
 
-                name.textContent =
-                    actorName;
+            card.append(
+                image,
+                name
+            );
 
-                card.append(
-                    image,
-                    name
-                );
+            card.addEventListener(
+                'click',
+                () => {
+                    openActorDetails(
+                        actorId,
+                        actorName
+                    );
+                }
+            );
 
-                card.addEventListener(
-                    'click',
-                    () => {
-                        openActorDetails(
-                            actorId,
-                            actorName
-                        );
-                    }
-                );
+            fragment.appendChild(
+                card
+            );
+        });
 
-                fragment.appendChild(
-                    card
-                );
-            }
-        );
+        if (
+            routeContext
+                ?.signal
+                ?.aborted
+        ) {
+            return;
+        }
+
+        if (
+            routeContext &&
+            expectedPage &&
+            !isRouteContextCurrent(
+                routeContext,
+                expectedPage
+            )
+        ) {
+            return;
+        }
 
         container.replaceChildren(
             fragment
@@ -607,10 +1188,26 @@ async function loadTrendingActors(
         makeScrollable(
             container
         );
-    } catch (e) {
+    } catch (error) {
         if (
-            e.name ===
+            error.name ===
             'AbortError'
+        ) {
+            return;
+        }
+
+        console.error(
+            'Trending actors yüklenemedi:',
+            error
+        );
+
+        if (
+            routeContext &&
+            expectedPage &&
+            !isRouteContextCurrent(
+                routeContext,
+                expectedPage
+            )
         ) {
             return;
         }
@@ -667,51 +1264,83 @@ async function loadCuratedCollections(
         { id: 86066, title: "Çılgın Hırsız Serisi" }
     ];
 
-    const fetchPromises =
-        collections.map(c => {
-            const collectionId =
-                normalizeTmdbId(
-                    c.id
-                );
-
-            if (!collectionId) {
-                return Promise.resolve(
-                    null
-                );
-            }
-
-            return fetch(
-                `${BASE_URL}/collection/${collectionId}?api_key=${API_KEY}&language=tr-TR`,
-                {
-                    signal:
-                        routeContext
-                            ?.signal
-                }
-            )
-                .then(response =>
-                    response.json()
-                )
-                .then(data => ({
-                    data,
-                    c
-                }))
-                .catch(error => {
-                    if (
-                        error.name ===
-                        'AbortError'
-                    ) {
-                        throw error;
-                    }
-
-                    return null;
-                });
-        });
-
     try {
         const results =
-            await Promise.all(
-                fetchPromises
+            await runHomeTasksWithConcurrency(
+                collections,
+                HOME_COLLECTION_CONCURRENCY,
+                async c => {
+                    const collectionId =
+                        normalizeTmdbId(
+                            c?.id
+                        );
+
+                    if (!collectionId) {
+                        return null;
+                    }
+
+                    try {
+                        const data =
+                            await getCuratedCollectionData(
+                                collectionId,
+                                routeContext
+                                    ?.signal
+                            );
+
+                        if (!data) {
+                            return null;
+                        }
+
+                        if (
+                            routeContext
+                                ?.signal
+                                ?.aborted
+                        ) {
+                            throw createHomeAbortError();
+                        }
+
+                        const responseCollectionId =
+                            normalizeTmdbId(
+                                data?.id
+                            );
+
+                        if (
+                            responseCollectionId !==
+                            collectionId
+                        ) {
+                            return null;
+                        }
+
+                        return {
+                            data,
+                            c,
+                            collectionId
+                        };
+                    } catch (error) {
+                        if (
+                            error.name ===
+                            'AbortError'
+                        ) {
+                            throw error;
+                        }
+
+                        console.warn(
+                            `Collection ${collectionId} yüklenemedi:`,
+                            error
+                        );
+
+                        return null;
+                    }
+                }
             );
+
+        if (
+            routeContext
+                ?.signal
+                ?.aborted
+        ) {
+            return;
+        }
 
         if (
             routeContext &&
@@ -736,8 +1365,23 @@ async function loadCuratedCollections(
                 return;
             }
 
-            const data =
-                result.data;
+            const {
+                data,
+                c,
+                collectionId
+            } = result;
+
+            const responseCollectionId =
+                normalizeTmdbId(
+                    data?.id
+                );
+
+            if (
+                responseCollectionId !==
+                collectionId
+            ) {
+                return;
+            }
 
             const parts =
                 Array.isArray(
@@ -747,25 +1391,8 @@ async function loadCuratedCollections(
                     : [];
 
             if (
-                parts.length === 0
-            ) {
-                return;
-            }
-
-            const collectionId =
-                normalizeTmdbId(
-                    result.c?.id
-                );
-
-            const responseCollectionId =
-                normalizeTmdbId(
-                    data?.id
-                );
-
-            if (
-                !collectionId ||
-                responseCollectionId !==
-                    collectionId
+                parts.length ===
+                0
             ) {
                 return;
             }
@@ -773,7 +1400,7 @@ async function loadCuratedCollections(
             const collectionName =
                 String(
                     data.name ||
-                    result.c.title ||
+                    c.title ||
                     'Koleksiyon'
                 );
 
@@ -848,9 +1475,8 @@ async function loadCuratedCollections(
                 'font-size:1.1rem;' +
                 'color:var(--text-color);';
 
-            // Statik, application-controlled başlık.
             title.textContent =
-                result.c.title;
+                c.title;
 
             const count =
                 document
@@ -888,6 +1514,25 @@ async function loadCuratedCollections(
                 card
             );
         });
+
+        if (
+            routeContext
+                ?.signal
+                ?.aborted
+        ) {
+            return;
+        }
+
+        if (
+            routeContext &&
+            expectedPage &&
+            !isRouteContextCurrent(
+                routeContext,
+                expectedPage
+            )
+        ) {
+            return;
+        }
 
         container.replaceChildren(
             fragment
@@ -942,9 +1587,9 @@ async function loadCuratedCollections(
         makeScrollable(
             container
         );
-    } catch (e) {
+    } catch (error) {
         if (
-            e.name ===
+            error.name ===
             'AbortError'
         ) {
             return;
@@ -952,7 +1597,7 @@ async function loadCuratedCollections(
 
         console.error(
             'Collections error:',
-            e
+            error
         );
     }
 }

@@ -175,6 +175,43 @@ async function runE2E() {
                     return;
                 }
                 
+                const collectionMatch =
+    url.match(
+        /\/collection\/(\d+)/
+    );
+
+if (collectionMatch) {
+    const collectionId =
+        Number(
+            collectionMatch[1]
+        );
+
+    request.respond({
+        status: 200,
+        headers: {
+            'Access-Control-Allow-Origin':
+                '*'
+        },
+        contentType:
+            'application/json',
+        body:
+            JSON.stringify({
+                id:
+                    collectionId,
+                name:
+                    `E2E Collection ${collectionId}`,
+                backdrop_path:
+                    null,
+                poster_path:
+                    null,
+                parts:
+                    []
+            })
+    });
+
+    return;
+}
+                
                 // Fallbacks for Home/Trending/Discover
                 request.respond({ status: 200, headers: { 'Access-Control-Allow-Origin': '*' }, contentType: 'application/json', body: JSON.stringify({ results: [], genres: [] }) });
                 
@@ -218,34 +255,161 @@ async function runE2E() {
         await page.type('#searchInput', 'E2E_JOURNEY');
         await page.keyboard.press('Enter');
         
-        // Condition-based wait for search results
-        await page.waitForFunction(() => document.querySelectorAll('#search-results .movie-card').length >= 2);
-        
-        const qaResult = await page.evaluate(async () => {
-            const _errors = [];
-            function check(cond, msg) {
-                if (!cond) _errors.push(msg);
-            }
-            const wait = (ms) => new Promise(r => setTimeout(r, ms));
-            const waitRender = () => new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
+        // Gerçek search sonuçlarını bekle.
+        // Skeleton'lar da .movie-card kullandığı için
+        // yalnız kart sayısını kontrol etmek yeterli değil.
+        await page.waitForFunction(
+            () => {
+                const titles =
+                    Array.from(
+                        document.querySelectorAll(
+                            '#search-results .movie-title'
+                        )
+                    ).map(
+                        element =>
+                            element.textContent ||
+                            ''
+                    );
 
-            try {
-                for(let i=0; i<50; i++){
-                    if(document.querySelectorAll('#search-results .movie-card').length >= 2) break;
-                    await wait(100);
-                }
-                await waitRender();
+                return (
+                    titles.some(
+                        title =>
+                            title.includes(
+                                'E2E Movie Result'
+                            )
+                    ) &&
+                    titles.some(
+                        title =>
+                            title.includes(
+                                'E2E TV Result'
+                            )
+                    )
+                );
+            }
+        );
                 
-                const cards = Array.from(document.querySelectorAll('#search-results .movie-card'));
-                check(cards.length >= 2, 'Search: Returned 2 results (found ' + cards.length + ')');
-                
-                const movieCard = cards.find(c => c.innerHTML.includes('E2E Movie Result'));
-                check(movieCard != null, 'Search: Movie result rendered');
-                
-                const tvCard = cards.find(c => c.innerHTML.includes('E2E TV Result'));
-                check(tvCard != null, 'Search: TV result rendered');
-                
-                if (_errors.length > 0) return _errors;
+        const qaResult = await page.evaluate(async () => {
+    const _errors = [];
+
+    function check(cond, msg) {
+        if (!cond) {
+            _errors.push(msg);
+        }
+    }
+
+    const wait =
+        (ms) =>
+            new Promise(
+                resolve =>
+                    setTimeout(
+                        resolve,
+                        ms
+                    )
+            );
+
+    const waitRender =
+        () =>
+            new Promise(
+                resolve =>
+                    requestAnimationFrame(
+                        () =>
+                            requestAnimationFrame(
+                                resolve
+                            )
+                    )
+            );
+
+    try {
+        for (
+            let i = 0;
+            i < 50;
+            i++
+        ) {
+            const titles =
+                Array.from(
+                    document.querySelectorAll(
+                        '#search-results .movie-title'
+                    )
+                ).map(
+                    element =>
+                        element.textContent ||
+                        ''
+                );
+
+            const hasMovie =
+                titles.some(
+                    title =>
+                        title.includes(
+                            'E2E Movie Result'
+                        )
+                );
+
+            const hasTv =
+                titles.some(
+                    title =>
+                        title.includes(
+                            'E2E TV Result'
+                        )
+                );
+
+            if (
+                hasMovie &&
+                hasTv
+            ) {
+                break;
+            }
+
+            await wait(100);
+        }
+
+        await waitRender();
+
+        const cards =
+            Array.from(
+                document.querySelectorAll(
+                    '#search-results .movie-card'
+                )
+            );
+
+        const movieCard =
+            cards.find(
+                card =>
+                    card
+                        .querySelector(
+                            '.movie-title'
+                        )
+                        ?.textContent
+                        ?.includes(
+                            'E2E Movie Result'
+                        )
+            );
+
+        check(
+            movieCard != null,
+            'Search: Movie result rendered'
+        );
+
+        const tvCard =
+            cards.find(
+                card =>
+                    card
+                        .querySelector(
+                            '.movie-title'
+                        )
+                        ?.textContent
+                        ?.includes(
+                            'E2E TV Result'
+                        )
+            );
+
+        check(
+            tvCard != null,
+            'Search: TV result rendered'
+        );
+
+        if (_errors.length > 0) {
+            return _errors;
+        }
                 
                 // C. OPEN MOVIE
                 // Capture pre-movie state for exact Back assertions
