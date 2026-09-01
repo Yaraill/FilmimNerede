@@ -1,46 +1,239 @@
 let trendingActorsAutoScrollInterval = null;
 let curatedCollectionsAutoScrollInterval = null;
 
-async function loadTop10Trending(routeContext = null, expectedPage = null) {
+async function loadTop10Trending(
+    routeContext = null,
+    expectedPage = null
+) {
     try {
-        const res = await fetch(`${BASE_URL}/trending/all/week?api_key=${API_KEY}&language=tr-TR`, { signal: routeContext?.signal });
-        const data = await res.json();
-        if (routeContext && expectedPage && !isRouteContextCurrent(routeContext, expectedPage)) return;
-        const top10 = data.results.slice(0, 10);
-        
-        const container = document.getElementById('top10-grid');
-        if (container) {
-            document.getElementById('top10-section').style.display = 'block';
-            container.innerHTML = top10.map((item, index) => {
-                const title = item.title || item.name;
-                const poster = item.poster_path ? IMAGE_BASE + item.poster_path : 'https://via.placeholder.com/500x750?text=Yok';
-                
-                // Cache it
-                window.movieCache[item.id] = {
-                    id: item.id,
-                    title: title,
-                    name: title,
-                    release_date: item.release_date || item.first_air_date,
-                    poster_path: item.poster_path,
-                    backdrop_path: item.backdrop_path,
-                    overview: item.overview,
-                    vote_average: item.vote_average,
-                    genre_ids: item.genre_ids,
-                    media_type: item.media_type
-                };
-                
-                return `
-                    <div class="recommendation-card top10-card" onclick="openDetails(${item.id}, '${item.media_type}')" style="position:relative; width:140px; margin-left: 20px;">
-                        <span class="top10-number">${index + 1}</span>
-                        <img src="${poster}" alt="${title}" style="width: 100%; height: 210px; object-fit: cover; border-radius: 10px; box-shadow: 0 5px 15px rgba(0,0,0,0.5);" loading="lazy">
-                    </div>
-                `;
-            }).join('');
-            makeScrollable(container);
+        const res =
+            await fetch(
+                `${BASE_URL}/trending/all/week?api_key=${API_KEY}&language=tr-TR`,
+                {
+                    signal:
+                        routeContext
+                            ?.signal
+                }
+            );
+
+        const data =
+            await res.json();
+
+        if (
+            routeContext &&
+            expectedPage &&
+            !isRouteContextCurrent(
+                routeContext,
+                expectedPage
+            )
+        ) {
+            return;
         }
+
+        const results =
+            Array.isArray(
+                data?.results
+            )
+                ? data.results
+                : [];
+
+        const top10 =
+            results
+                .map(item => {
+                    const itemId =
+                        normalizeTmdbId(
+                            item?.id
+                        );
+
+                    const mediaType =
+                        normalizeMediaType(
+                            item
+                                ?.media_type
+                        );
+
+                    if (
+                        !itemId ||
+                        !mediaType
+                    ) {
+                        return null;
+                    }
+
+                    const title =
+                        String(
+                            item.title ||
+                            item.name ||
+                            'Bilinmiyor'
+                        );
+
+                    return {
+                        item,
+                        itemId,
+                        mediaType,
+                        title
+                    };
+                })
+                .filter(Boolean)
+                .slice(0, 10);
+
+        const container =
+            document.getElementById(
+                'top10-grid'
+            );
+
+        if (!container) {
+            return;
+        }
+
+        const section =
+            document.getElementById(
+                'top10-section'
+            );
+
+        if (section) {
+            section.style.display =
+                'block';
+        }
+
+        const fragment =
+            document
+                .createDocumentFragment();
+
+        top10.forEach(
+            (
+                {
+                    item,
+                    itemId,
+                    mediaType,
+                    title
+                },
+                index
+            ) => {
+                const poster =
+                    getSafeTmdbImageUrl(
+                        item.poster_path,
+                        IMAGE_BASE,
+                        'https://via.placeholder.com/500x750?text=Yok'
+                    );
+
+                window.movieCache[
+                    itemId
+                ] = {
+                    id: itemId,
+                    title,
+                    name: title,
+                    release_date:
+                        item
+                            .release_date ||
+                        item
+                            .first_air_date,
+                    poster_path:
+                        item.poster_path,
+                    backdrop_path:
+                        item.backdrop_path,
+                    overview:
+                        item.overview,
+                    vote_average:
+                        item.vote_average,
+                    genre_ids:
+                        Array.isArray(
+                            item.genre_ids
+                        )
+                            ? item.genre_ids
+                            : [],
+                    media_type:
+                        mediaType
+                };
+
+                const card =
+                    document
+                        .createElement(
+                            'div'
+                        );
+
+                card.className =
+                    'recommendation-card top10-card';
+
+                card.style.cssText =
+                    'position:relative;' +
+                    'width:140px;' +
+                    'margin-left:20px;';
+
+                const number =
+                    document
+                        .createElement(
+                            'span'
+                        );
+
+                number.className =
+                    'top10-number';
+
+                number.textContent =
+                    String(
+                        index + 1
+                    );
+
+                const image =
+                    document
+                        .createElement(
+                            'img'
+                        );
+
+                image.src =
+                    poster;
+
+                image.alt =
+                    title;
+
+                image.loading =
+                    'lazy';
+
+                image.style.cssText =
+                    'width:100%;' +
+                    'height:210px;' +
+                    'object-fit:cover;' +
+                    'border-radius:10px;' +
+                    'box-shadow:0 5px 15px rgba(0,0,0,0.5);';
+
+                card.append(
+                    number,
+                    image
+                );
+
+                card.addEventListener(
+                    'click',
+                    () => {
+                        openDetails(
+                            itemId,
+                            mediaType
+                        );
+                    }
+                );
+
+                fragment.appendChild(
+                    card
+                );
+            }
+        );
+
+        container.replaceChildren(
+            fragment
+        );
+
+        makeScrollable(
+            container
+        );
     } catch (e) {
-        if (e.name === 'AbortError') return;
-        console.error("Top 10 fetching failed", e);
+        if (
+            e.name ===
+            'AbortError'
+        ) {
+            return;
+        }
+
+        console.error(
+            'Top 10 fetching failed',
+            e
+        );
     }
 }
 
@@ -61,15 +254,35 @@ async function loadNowPlaying(routeContext = null, expectedPage = null) {
         
         if (routeContext && expectedPage && !isRouteContextCurrent(routeContext, expectedPage)) return;
         
-        let html = "";
-        data.results.forEach(movie => {
-            html += createMovieCard(movie, "movie", "now-playing");
+        const results =
+    Array.isArray(
+        data?.results
+    )
+        ? data.results
+        : [];
+
+        let html = '';
+
+        results.forEach(movie => {
+            html +=
+                createMovieCard(
+                    movie,
+                    'movie',
+                    'now-playing'
+                );
         });
-        container.innerHTML = html;
-        
+
+        container.innerHTML =
+            html;
+
         // Fetch providers for each movie after rendering cards
-        data.results.forEach(movie => {
-            fetchAndInjectProviders(movie.id, "movie", null, routeContext);
+        results.forEach(movie => {
+            fetchAndInjectProviders(
+                movie?.id,
+                'movie',
+                null,
+                routeContext
+            );
         });
     } catch (error) {
         if (error.name === 'AbortError') return;
@@ -90,108 +303,336 @@ async function loadUpcomingMovies(routeContext = null) {
         
         if (routeContext && !isRouteContextCurrent(routeContext, "vizyon")) return;
         
-        let html = "";
-        data.results.forEach(movie => {
-            html += createMovieCard(movie, "movie", "upcoming");
-        });
-        container.innerHTML = html;
+        const results =
+    Array.isArray(
+        data?.results
+    )
+        ? data.results
+        : [];
+
+let html = '';
+
+results.forEach(movie => {
+    html +=
+        createMovieCard(
+            movie,
+            'movie',
+            'upcoming'
+        );
+});
+
+container.innerHTML =
+    html;
     } catch (error) {
         if (error.name === 'AbortError') return;
         container.innerHTML = "<div class='loading'>Hata oluştu.</div>";
     }
 }
 
-async function loadTrendingActors(routeContext = null, expectedPage = null) {
-    const container = document.getElementById('trending-actors-list');
-    if (!container) return;
-    
+async function loadTrendingActors(
+    routeContext = null,
+    expectedPage = null
+) {
+    const container =
+        document.getElementById(
+            'trending-actors-list'
+        );
+
+    if (!container) {
+        return;
+    }
+
     try {
         const promises = [];
-        for(let p = 1; p <= 8; p++) {
-            promises.push(fetch(`${BASE_URL}/person/popular?api_key=${API_KEY}&language=tr-TR&page=${p}`, { signal: routeContext?.signal }));
+
+        for (
+            let page = 1;
+            page <= 8;
+            page++
+        ) {
+            promises.push(
+                fetch(
+                    `${BASE_URL}/person/popular?api_key=${API_KEY}&language=tr-TR&page=${page}`,
+                    {
+                        signal:
+                            routeContext
+                                ?.signal
+                    }
+                )
+            );
         }
-        const responses = await Promise.all(promises);
-        if (routeContext && expectedPage && !isRouteContextCurrent(routeContext, expectedPage)) return;
-        
+
+        const responses =
+            await Promise.all(
+                promises
+            );
+
+        if (
+            routeContext &&
+            expectedPage &&
+            !isRouteContextCurrent(
+                routeContext,
+                expectedPage
+            )
+        ) {
+            return;
+        }
+
         let allActors = [];
-        for(const res of responses) {
-            const data = await res.json();
-            if(data.results) allActors = allActors.concat(data.results);
-        }
-        
-        let html = "";
-        
-        // Yalnızca TMDB'nin gerçek adult flag'ini kullan.
-        // Dil, alfabe veya known_for varlığı adult-content ölçütü değildir.
-        const filteredActors = allActors.filter(
-            actor => actor && actor.adult !== true
-        );
-        
-        // Remove duplicates just in case since we fetched 2 pages
-        const uniqueActors = [];
-        filteredActors.forEach(a => {
-            if(!uniqueActors.find(ua => ua.id === a.id)) uniqueActors.push(a);
-        });
-        
-        const actors = uniqueActors.slice(0, 20);
-        
-        actors.forEach(actor => {
-            const profile = actor.profile_path
-                ? IMAGE_BASE + actor.profile_path
-                : 'https://via.placeholder.com/150x225?text=Yok';
 
-            html += `
-                <div
-                    class="story-item"
-                    onclick="openActorDetails(${actor.id})"
-                >
-                    <img
-                        src="${escapeHtml(profile)}"
-                        alt="${escapeHtml(actor.name || '')}"
-                        class="story-img"
-                        loading="lazy"
-                    >
+        for (
+            const response
+            of responses
+        ) {
+            const data =
+                await response.json();
 
-                    <div
-                        class="story-name"
-                        title="${escapeHtml(actor.name || '')}"
-                    >
-                        ${escapeHtml(actor.name || 'Bilinmiyor')}
-                    </div>
-                </div>
-            `;
-        });
-        container.innerHTML = html;
-        
-        // Add auto-scroll
-        let direction = 1;
-        if (trendingActorsAutoScrollInterval !== null) {
-            clearInterval(trendingActorsAutoScrollInterval);
-        }
-        trendingActorsAutoScrollInterval = setInterval(() => {
-            if(!container.classList.contains('active')) {
-                container.scrollLeft += direction;
-                if (container.scrollLeft >= (container.scrollWidth - container.clientWidth - 1)) {
-                    direction = -1;
-                } else if (container.scrollLeft <= 0) {
-                    direction = 1;
-                }
+            if (
+                Array.isArray(
+                    data?.results
+                )
+            ) {
+                allActors =
+                    allActors.concat(
+                        data.results
+                    );
             }
-        }, 30);
-        
-        // Add drag to scroll
-        makeScrollable(container);
+        }
+
+        const uniqueActors = [];
+        const seenActorIds =
+            new Set();
+
+        allActors.forEach(actor => {
+            if (
+                !actor ||
+                actor.adult === true
+            ) {
+                return;
+            }
+
+            const actorId =
+                normalizeTmdbId(
+                    actor.id
+                );
+
+            if (
+                !actorId ||
+                seenActorIds.has(
+                    actorId
+                )
+            ) {
+                return;
+            }
+
+            if (
+                typeof actor.name !==
+                    'string' ||
+                !actor.name.trim()
+            ) {
+                return;
+            }
+
+            const knownFor =
+                Array.isArray(
+                    actor.known_for
+                )
+                    ? actor.known_for
+                    : [];
+
+            if (
+                knownFor.length === 0
+            ) {
+                return;
+            }
+
+            if (
+                knownFor.some(
+                    work =>
+                        work?.adult ===
+                        true
+                )
+            ) {
+                return;
+            }
+
+            seenActorIds.add(
+                actorId
+            );
+
+            uniqueActors.push({
+                actor,
+                actorId
+            });
+        });
+
+        const actors =
+            uniqueActors.slice(
+                0,
+                20
+            );
+
+        const fragment =
+            document
+                .createDocumentFragment();
+
+        actors.forEach(
+            ({
+                actor,
+                actorId
+            }) => {
+                const actorName =
+                    actor.name.trim();
+
+                const profile =
+                    getSafeTmdbImageUrl(
+                        actor.profile_path,
+                        IMAGE_BASE,
+                        'https://via.placeholder.com/150x225?text=Yok'
+                    );
+
+                const card =
+                    document
+                        .createElement(
+                            'div'
+                        );
+
+                card.className =
+                    'story-item';
+
+                const image =
+                    document
+                        .createElement(
+                            'img'
+                        );
+
+                image.src =
+                    profile;
+
+                image.alt =
+                    actorName;
+
+                image.className =
+                    'story-img';
+
+                image.loading =
+                    'lazy';
+
+                const name =
+                    document
+                        .createElement(
+                            'div'
+                        );
+
+                name.className =
+                    'story-name';
+
+                name.title =
+                    actorName;
+
+                name.textContent =
+                    actorName;
+
+                card.append(
+                    image,
+                    name
+                );
+
+                card.addEventListener(
+                    'click',
+                    () => {
+                        openActorDetails(
+                            actorId,
+                            actorName
+                        );
+                    }
+                );
+
+                fragment.appendChild(
+                    card
+                );
+            }
+        );
+
+        container.replaceChildren(
+            fragment
+        );
+
+        let direction = 1;
+
+        if (
+            trendingActorsAutoScrollInterval !==
+            null
+        ) {
+            clearInterval(
+                trendingActorsAutoScrollInterval
+            );
+        }
+
+        trendingActorsAutoScrollInterval =
+            setInterval(
+                () => {
+                    if (
+                        !container
+                            .classList
+                            .contains(
+                                'active'
+                            )
+                    ) {
+                        container.scrollLeft +=
+                            direction;
+
+                        if (
+                            container.scrollLeft >=
+                            (
+                                container.scrollWidth -
+                                container.clientWidth -
+                                1
+                            )
+                        ) {
+                            direction =
+                                -1;
+                        } else if (
+                            container.scrollLeft <=
+                            0
+                        ) {
+                            direction =
+                                1;
+                        }
+                    }
+                },
+                30
+            );
+
+        makeScrollable(
+            container
+        );
     } catch (e) {
-        if (e.name === 'AbortError') return;
-        container.innerHTML = "<div style='color:red'>Oyuncular yüklenemedi.</div>";
+        if (
+            e.name ===
+            'AbortError'
+        ) {
+            return;
+        }
+
+        container.innerHTML =
+            "<div style='color:red'>Oyuncular yüklenemedi.</div>";
     }
 }
 
-async function loadCuratedCollections(routeContext = null, expectedPage = null) {
-    const container = document.getElementById('curated-collections-list');
-    if (!container) return;
-    
-    // True TMDB Collection IDs
+async function loadCuratedCollections(
+    routeContext = null,
+    expectedPage = null
+) {
+    const container =
+        document.getElementById(
+            'curated-collections-list'
+        );
+
+    if (!container) {
+        return;
+    }
+
     const collections = [
         { id: 86311, title: "Marvel Sinematik Evreni" },
         { id: 1241, title: "Harry Potter Serisi" },
@@ -225,210 +666,1180 @@ async function loadCuratedCollections(routeContext = null, expectedPage = null) 
         { id: 1570, title: "Zor Ölüm (Die Hard) Serisi" },
         { id: 86066, title: "Çılgın Hırsız Serisi" }
     ];
-    
-    const fetchPromises = collections.map(c => 
-        fetch(`${BASE_URL}/collection/${c.id}?api_key=${API_KEY}&language=tr-TR`, { signal: routeContext?.signal })
-            .then(res => res.json())
-            .then(data => ({ data, c }))
-            .catch((e) => { if (e.name === 'AbortError') throw e; return null; })
-    );
-    
-    try {
-        const results = await Promise.all(fetchPromises);
-        if (routeContext && expectedPage && !isRouteContextCurrent(routeContext, expectedPage)) return;
-    
-    let html = "";
-    for (let res of results) {
-        if (res && res.data && res.data.parts && res.data.parts.length > 0) {
-            const data = res.data;
-            const c = res.c;
-            const poster = data.backdrop_path ? BACKDROP_BASE + data.backdrop_path : (data.poster_path ? IMAGE_BASE + data.poster_path : 'https://via.placeholder.com/300x170?text=Koleksiyon');
-            html += `
-                <div class="movie-card" style="width: 250px; flex-shrink: 0; cursor:pointer;" onclick="openCollection(${data.id})">
-                    <img src="${poster}" style="width: 100%; aspect-ratio: 16/9; object-fit: cover;" alt="${data.name}" loading="lazy">
-                    <div class="movie-info">
-                        <h4 style="margin: 10px 0; font-size:1.1rem; color:var(--text-color);">${c.title}</h4>
-                        <p style="font-size:0.8rem; color:var(--text-muted);">${data.parts.length} Film</p>
-                    </div>
-                </div>
-            `;
-        }
-    }
-    
-    container.innerHTML = html;
-    
-    // Add auto-scroll
-    let direction = 1;
-    if (curatedCollectionsAutoScrollInterval !== null) {
-        clearInterval(curatedCollectionsAutoScrollInterval);
-    }
-    curatedCollectionsAutoScrollInterval = setInterval(() => {
-        if(!container.classList.contains('active')) {
-            container.scrollLeft += direction;
-            if (container.scrollLeft >= (container.scrollWidth - container.clientWidth - 1)) {
-                direction = -1;
-            } else if (container.scrollLeft <= 0) {
-                direction = 1;
+
+    const fetchPromises =
+        collections.map(c => {
+            const collectionId =
+                normalizeTmdbId(
+                    c.id
+                );
+
+            if (!collectionId) {
+                return Promise.resolve(
+                    null
+                );
             }
-        }
-    }, 30);
-    
-    makeScrollable(container);
-    } catch(e) {
-        if (e.name === 'AbortError') return;
-        console.error("Collections error:", e);
-    }
-}
 
-async function openCollection(collectionId) {
-    const routeContext = {
-        generation: routeGeneration,
-        signal: currentAbortController?.signal
-    };
-    window.scrollTo({ top: 0, behavior: 'smooth' });
-    closeDetails(null, true);
-    currentMode = "search";
-    currentPage = 1;
-    
-    document.querySelectorAll('.tab-content').forEach(tab => tab.classList.remove('active-tab'));
-    document.getElementById('platform').classList.add('active-tab');
-    document.getElementById('top10-section').style.display = 'none';
-    const platformFilters = document.querySelector('.platform-filters');
-    if (platformFilters) platformFilters.style.display = 'none';
-    const filterControls = document.querySelector('.filter-controls');
-    if (filterControls) filterControls.style.display = 'none';
-    
-    const container = document.getElementById('search-results');
-    container.innerHTML = "";
-    showSkeletons('search-results', 10);
-    
+            return fetch(
+                `${BASE_URL}/collection/${collectionId}?api_key=${API_KEY}&language=tr-TR`,
+                {
+                    signal:
+                        routeContext
+                            ?.signal
+                }
+            )
+                .then(response =>
+                    response.json()
+                )
+                .then(data => ({
+                    data,
+                    c
+                }))
+                .catch(error => {
+                    if (
+                        error.name ===
+                        'AbortError'
+                    ) {
+                        throw error;
+                    }
+
+                    return null;
+                });
+        });
+
     try {
-        const res = await fetch(
-            `${BASE_URL}/collection/${collectionId}?api_key=${API_KEY}&language=tr-TR`,
-            { signal: routeContext.signal }
+        const results =
+            await Promise.all(
+                fetchPromises
+            );
+
+        if (
+            routeContext &&
+            expectedPage &&
+            !isRouteContextCurrent(
+                routeContext,
+                expectedPage
+            )
+        ) {
+            return;
+        }
+
+        const fragment =
+            document
+                .createDocumentFragment();
+
+        results.forEach(result => {
+            if (
+                !result ||
+                !result.data
+            ) {
+                return;
+            }
+
+            const data =
+                result.data;
+
+            const parts =
+                Array.isArray(
+                    data.parts
+                )
+                    ? data.parts
+                    : [];
+
+            if (
+                parts.length === 0
+            ) {
+                return;
+            }
+
+            const collectionId =
+                normalizeTmdbId(
+                    result.c?.id
+                );
+
+            const responseCollectionId =
+                normalizeTmdbId(
+                    data?.id
+                );
+
+            if (
+                !collectionId ||
+                responseCollectionId !==
+                    collectionId
+            ) {
+                return;
+            }
+
+            const collectionName =
+                String(
+                    data.name ||
+                    result.c.title ||
+                    'Koleksiyon'
+                );
+
+            const posterFallback =
+                getSafeTmdbImageUrl(
+                    data.poster_path,
+                    IMAGE_BASE,
+                    'https://via.placeholder.com/300x170?text=Koleksiyon'
+                );
+
+            const poster =
+                getSafeTmdbImageUrl(
+                    data.backdrop_path,
+                    BACKDROP_BASE,
+                    posterFallback
+                );
+
+            const card =
+                document
+                    .createElement(
+                        'div'
+                    );
+
+            card.className =
+                'movie-card';
+
+            card.title =
+                collectionName;
+
+            card.style.cssText =
+                'width:250px;' +
+                'flex-shrink:0;' +
+                'cursor:pointer;';
+
+            const image =
+                document
+                    .createElement(
+                        'img'
+                    );
+
+            image.src =
+                poster;
+
+            image.alt =
+                collectionName;
+
+            image.loading =
+                'lazy';
+
+            image.style.cssText =
+                'width:100%;' +
+                'aspect-ratio:16/9;' +
+                'object-fit:cover;';
+
+            const info =
+                document
+                    .createElement(
+                        'div'
+                    );
+
+            info.className =
+                'movie-info';
+
+            const title =
+                document
+                    .createElement(
+                        'h4'
+                    );
+
+            title.style.cssText =
+                'margin:10px 0;' +
+                'font-size:1.1rem;' +
+                'color:var(--text-color);';
+
+            // Statik, application-controlled başlık.
+            title.textContent =
+                result.c.title;
+
+            const count =
+                document
+                    .createElement(
+                        'p'
+                    );
+
+            count.style.cssText =
+                'font-size:0.8rem;' +
+                'color:var(--text-muted);';
+
+            count.textContent =
+                `${parts.length} Film`;
+
+            info.append(
+                title,
+                count
+            );
+
+            card.append(
+                image,
+                info
+            );
+
+            card.addEventListener(
+                'click',
+                () => {
+                    openCollection(
+                        collectionId
+                    );
+                }
+            );
+
+            fragment.appendChild(
+                card
+            );
+        });
+
+        container.replaceChildren(
+            fragment
         );
-        const data = await res.json();
-        
+
+        let direction = 1;
+
         if (
-            routeContext.signal?.aborted ||
-            routeContext.generation !== routeGeneration
-        ) return;
-        
-        let cleanName = data.name.replace(/\s*(Serisi|Koleksiyonu|Collection|Üçlemesi|Efsanesi|\[Seri\])$/gi, '').trim();
-        
-        container.innerHTML = `
-            <div style="grid-column: 1/-1; margin-bottom: 20px; background:var(--card-bg); padding:20px; border-radius:15px; border:1px solid var(--glass-border);">
-                <h2 style="color:var(--primary-color); font-size: 2rem; margin-bottom:10px;">${cleanName}</h2>
-                <p style="color:var(--text-muted); font-size:1.1rem;">${data.overview || ''}</p>
-            </div>
-        `;
-        
-        let html = "";
-        
-        // Sort by release_date
-        data.parts.sort((a, b) => {
-            const d1 = new Date(a.release_date || "2100-01-01");
-            const d2 = new Date(b.release_date || "2100-01-01");
-            return d1 - d2;
-        });
-        
-        data.parts.forEach(item => {
-            html += createMovieCard(item, 'movie', "");
-        });
-        container.innerHTML += html;
-        
-        data.parts.forEach(item => {
-            fetchAndInjectProviders(item.id, 'movie', item, routeContext);
-        });
+            curatedCollectionsAutoScrollInterval !==
+            null
+        ) {
+            clearInterval(
+                curatedCollectionsAutoScrollInterval
+            );
+        }
+
+        curatedCollectionsAutoScrollInterval =
+            setInterval(
+                () => {
+                    if (
+                        !container
+                            .classList
+                            .contains(
+                                'active'
+                            )
+                    ) {
+                        container.scrollLeft +=
+                            direction;
+
+                        if (
+                            container.scrollLeft >=
+                            (
+                                container.scrollWidth -
+                                container.clientWidth -
+                                1
+                            )
+                        ) {
+                            direction =
+                                -1;
+                        } else if (
+                            container.scrollLeft <=
+                            0
+                        ) {
+                            direction =
+                                1;
+                        }
+                    }
+                },
+                30
+            );
+
+        makeScrollable(
+            container
+        );
     } catch (e) {
-        if (e.name === 'AbortError') return;
         if (
-            routeContext.signal?.aborted ||
-            routeContext.generation !== routeGeneration
-        ) return;
-        container.innerHTML = "<div style='color:red'>Hata oluştu.</div>";
+            e.name ===
+            'AbortError'
+        ) {
+            return;
+        }
+
+        console.error(
+            'Collections error:',
+            e
+        );
     }
 }
 
-async function loadSmartRecommendations(routeContext = null, expectedPage = null) {
-    let rated = JSON.parse(localStorage.getItem('ratedMovies')) || [];
-    let ratings = JSON.parse(localStorage.getItem('movieRatings')) || {};
-    
-    if (rated.length === 0) {
-        document.getElementById('smart-recommendations-section').style.display = 'block';
-        document.getElementById('smart-recommendations-list').innerHTML = "<p style='color:var(--text-muted); width:100%; text-align:center; padding:20px; grid-column: 1/-1;'>Henüz hiç film puanlamadınız. Profilinize gidip izlediğiniz filmlere puan vererek size özel öneriler alabilirsiniz.</p>";
+async function openCollection(
+    collectionId
+) {
+    const safeCollectionId =
+        normalizeTmdbId(
+            collectionId
+        );
+
+    if (!safeCollectionId) {
         return;
     }
-    
-    document.getElementById('smart-recommendations-section').style.display = 'block';
-    showSkeletons('smart-recommendations-list', 14);
-    
+
+    const routeContext = {
+        generation:
+            routeGeneration,
+        signal:
+            currentAbortController
+                ?.signal
+    };
+
+    window.scrollTo({
+        top: 0,
+        behavior: 'smooth'
+    });
+
+    closeDetails(
+        null,
+        true
+    );
+
+    currentMode =
+        'search';
+
+    currentPage =
+        1;
+
+    document
+        .querySelectorAll(
+            '.tab-content'
+        )
+        .forEach(tab =>
+            tab.classList.remove(
+                'active-tab'
+            )
+        );
+
+    const platform =
+        document.getElementById(
+            'platform'
+        );
+
+    if (platform) {
+        platform.classList.add(
+            'active-tab'
+        );
+    }
+
+    const top10Section =
+        document.getElementById(
+            'top10-section'
+        );
+
+    if (top10Section) {
+        top10Section.style.display =
+            'none';
+    }
+
+    const platformFilters =
+        document.querySelector(
+            '.platform-filters'
+        );
+
+    if (platformFilters) {
+        platformFilters.style.display =
+            'none';
+    }
+
+    const filterControls =
+        document.querySelector(
+            '.filter-controls'
+        );
+
+    if (filterControls) {
+        filterControls.style.display =
+            'none';
+    }
+
+    const container =
+        document.getElementById(
+            'search-results'
+        );
+
+    if (!container) {
+        return;
+    }
+
+    container.replaceChildren();
+
+    showSkeletons(
+        'search-results',
+        10
+    );
+
     try {
-        // En yüksek puanlanan 5 filmi al
-        let ratedWithScores = rated.map(m => ({ ...m, user_rating: ratings[m.id] || 5 }));
-        ratedWithScores.sort((a, b) => b.user_rating - a.user_rating);
-        let topMovies = ratedWithScores.slice(0, 5);
-        
+        const res =
+            await fetch(
+                `${BASE_URL}/collection/${safeCollectionId}?api_key=${API_KEY}&language=tr-TR`,
+                {
+                    signal:
+                        routeContext.signal
+                }
+            );
+
+        const data =
+            await res.json();
+
+        if (
+            routeContext
+                .signal
+                ?.aborted ||
+            routeContext
+                .generation !==
+                routeGeneration
+        ) {
+            return;
+        }
+
+        const rawName =
+            typeof data?.name ===
+                'string'
+                ? data.name
+                : '';
+
+        const cleanName =
+            rawName
+                .replace(
+                    /\s*(Serisi|Koleksiyonu|Collection|Üçlemesi|Efsanesi|\[Seri\])$/gi,
+                    ''
+                )
+                .trim() ||
+            'Koleksiyon';
+
+        const overview =
+            typeof data?.overview ===
+                'string'
+                ? data.overview
+                : '';
+
+        const parts =
+            Array.isArray(
+                data?.parts
+            )
+                ? [...data.parts]
+                : [];
+
+        parts.sort(
+            (a, b) => {
+                const dateA =
+                    new Date(
+                        a?.release_date ||
+                        '2100-01-01'
+                    );
+
+                const dateB =
+                    new Date(
+                        b?.release_date ||
+                        '2100-01-01'
+                    );
+
+                const timeA =
+                    Number.isNaN(
+                        dateA.getTime()
+                    )
+                        ? Date.parse(
+                            '2100-01-01'
+                        )
+                        : dateA
+                            .getTime();
+
+                const timeB =
+                    Number.isNaN(
+                        dateB.getTime()
+                    )
+                        ? Date.parse(
+                            '2100-01-01'
+                        )
+                        : dateB
+                            .getTime();
+
+                return (
+                    timeA -
+                    timeB
+                );
+            }
+        );
+
+        const header =
+            document.createElement(
+                'div'
+            );
+
+        header.style.cssText =
+            'grid-column:1/-1;' +
+            'margin-bottom:20px;' +
+            'background:var(--card-bg);' +
+            'padding:20px;' +
+            'border-radius:15px;' +
+            'border:1px solid var(--glass-border);';
+
+        const heading =
+            document.createElement(
+                'h2'
+            );
+
+        heading.style.cssText =
+            'color:var(--primary-color);' +
+            'font-size:2rem;' +
+            'margin-bottom:10px;';
+
+        heading.textContent =
+            cleanName;
+
+        const overviewElement =
+            document.createElement(
+                'p'
+            );
+
+        overviewElement.style.cssText =
+            'color:var(--text-muted);' +
+            'font-size:1.1rem;';
+
+        overviewElement.textContent =
+            overview;
+
+        header.append(
+            heading,
+            overviewElement
+        );
+
+        container.replaceChildren(
+            header
+        );
+
+        let cardsHtml = '';
+
+        parts.forEach(item => {
+            cardsHtml +=
+                createMovieCard(
+                    item,
+                    'movie',
+                    ''
+                );
+        });
+
+        if (cardsHtml) {
+            const template =
+                document.createElement(
+                    'template'
+                );
+
+            // Trusted renderer:
+            // createMovieCard() 2A'da
+            // external değerler için sertleştirildi.
+            template.innerHTML =
+                cardsHtml;
+
+            container.appendChild(
+                template.content
+            );
+        }
+
+        parts.forEach(item => {
+            fetchAndInjectProviders(
+                item?.id,
+                'movie',
+                item,
+                routeContext
+            );
+        });
+    } catch (e) {
+        if (
+            e.name ===
+            'AbortError'
+        ) {
+            return;
+        }
+
+        if (
+            routeContext
+                .signal
+                ?.aborted ||
+            routeContext
+                .generation !==
+                routeGeneration
+        ) {
+            return;
+        }
+
+        container.innerHTML =
+            "<div style='color:red'>Hata oluştu.</div>";
+    }
+}
+
+async function loadSmartRecommendations(
+    routeContext = null,
+    expectedPage = null
+) {
+    let rated = [];
+    let ratings = {};
+
+    try {
+        const parsedRated =
+            JSON.parse(
+                localStorage.getItem(
+                    'ratedMovies'
+                ) ||
+                '[]'
+            );
+
+        if (
+            Array.isArray(
+                parsedRated
+            )
+        ) {
+            rated =
+                parsedRated;
+        }
+    } catch (error) {
+        console.warn(
+            'Rated movies okunamadı:',
+            error
+        );
+    }
+
+    try {
+        const parsedRatings =
+            JSON.parse(
+                localStorage.getItem(
+                    'movieRatings'
+                ) ||
+                '{}'
+            );
+
+        if (
+            parsedRatings !== null &&
+            typeof parsedRatings ===
+                'object' &&
+            !Array.isArray(
+                parsedRatings
+            )
+        ) {
+            ratings =
+                parsedRatings;
+        }
+    } catch (error) {
+        console.warn(
+            'Movie ratings okunamadı:',
+            error
+        );
+    }
+
+    const section =
+        document.getElementById(
+            'smart-recommendations-section'
+        );
+
+    const list =
+        document.getElementById(
+            'smart-recommendations-list'
+        );
+
+    const showNoRatings =
+        () => {
+            if (section) {
+                section.style.display =
+                    'block';
+            }
+
+            if (list) {
+                list.innerHTML =
+                    "<p style='color:var(--text-muted); width:100%; text-align:center; padding:20px; grid-column: 1/-1;'>Henüz hiç film puanlamadınız. Profilinize gidip izlediğiniz filmlere puan vererek size özel öneriler alabilirsiniz.</p>";
+            }
+        };
+
+    if (rated.length === 0) {
+        showNoRatings();
+        return;
+    }
+
+    const ratedWithScores =
+        rated
+            .map(movie => {
+                const movieId =
+                    normalizeTmdbId(
+                        movie?.id
+                    );
+
+                if (!movieId) {
+                    return null;
+                }
+
+                const mediaType =
+                    normalizeMediaType(
+                        movie
+                            ?.media_type,
+                        'movie'
+                    );
+
+                if (!mediaType) {
+                    return null;
+                }
+
+                const ratingKey =
+                    String(movieId);
+
+                const storedRating =
+                    Object.prototype
+                        .hasOwnProperty
+                        .call(
+                            ratings,
+                            ratingKey
+                        )
+                        ? ratings[
+                            ratingKey
+                        ]
+                        : null;
+
+                const userRating =
+                    normalizeUserRating(
+                        storedRating
+                    ) ?? 5;
+
+                return {
+                    ...movie,
+                    id: movieId,
+                    media_type:
+                        mediaType,
+                    user_rating:
+                        userRating
+                };
+            })
+            .filter(Boolean);
+
+    if (
+        ratedWithScores.length ===
+        0
+    ) {
+        showNoRatings();
+        return;
+    }
+
+    if (section) {
+        section.style.display =
+            'block';
+    }
+
+    showSkeletons(
+        'smart-recommendations-list',
+        14
+    );
+
+    try {
+        ratedWithScores.sort(
+            (a, b) =>
+                b.user_rating -
+                a.user_rating
+        );
+
+        const topMovies =
+            ratedWithScores.slice(
+                0,
+                5
+            );
+
         let recommendedMovies = [];
-        for (let movie of topMovies) {
-            let mediaType = movie.media_type || 'movie';
-            let res = await fetch(`${BASE_URL}/${mediaType}/${movie.id}/recommendations?api_key=${API_KEY}&language=tr-TR`, { signal: routeContext?.signal });
-            let data = await res.json();
-            if (data.results) {
-                recommendedMovies.push(...data.results);
+
+        for (
+            const movie
+            of topMovies
+        ) {
+            const movieId =
+                normalizeTmdbId(
+                    movie.id
+                );
+
+            const mediaType =
+                normalizeMediaType(
+                    movie.media_type,
+                    'movie'
+                );
+
+            if (
+                !movieId ||
+                !mediaType
+            ) {
+                continue;
+            }
+
+            const res =
+                await fetch(
+                    `${BASE_URL}/${mediaType}/${movieId}/recommendations?api_key=${API_KEY}&language=tr-TR`,
+                    {
+                        signal:
+                            routeContext
+                                ?.signal
+                    }
+                );
+
+            const data =
+                await res.json();
+
+            if (
+                Array.isArray(
+                    data?.results
+                )
+            ) {
+                recommendedMovies.push(
+                    ...data.results
+                );
             }
         }
-        
-        // Belgeselleri, making-of içerikleri ve yetişkin içerikleri filtrele
-        const blockedGenres = [99, 10767, 10763, 10764];
-        const blockedTitleWords = ["making of", "behind the scenes", "assembled", "the making", "xxx", "erotic", "sex"];
-        recommendedMovies = recommendedMovies.filter(m => {
-            if (m.genre_ids && blockedGenres.some(g => m.genre_ids.includes(g))) return false;
-            const title = (m.title || m.name || "").toLowerCase();
-            if (blockedTitleWords.some(w => title.includes(w))) return false;
-            if (!m.poster_path) return false;
-            if (m.adult) return false;
-            if ((m.vote_average || 0) < 5.0) return false;
-            return true;
-        });
-        
-        // Tekrarları ve zaten puanlanmış filmleri kaldır
-        const seen = new Set();
-        recommendedMovies = recommendedMovies.filter(m => {
-            const isDup = seen.has(m.id);
-            seen.add(m.id);
-            return !isDup && !ratings[m.id];
-        });
-        
-        // Kaliteye göre sırala (puan * log(oy sayısı))
-        recommendedMovies.sort((a, b) => {
-            const scoreA = (a.vote_average || 0) * Math.log10((a.vote_count || 0) + 1);
-            const scoreB = (b.vote_average || 0) * Math.log10((b.vote_count || 0) + 1);
-            return scoreB - scoreA;
-        });
-        
-        let finalMovies = recommendedMovies.slice(0, 14);
-        
-        // Eğer 14'ten az çıktıysa, popüler ve yüksek puanlı filmlerle doldur
-        if (finalMovies.length < 14) {
-            let res = await fetch(`${BASE_URL}/discover/movie?api_key=${API_KEY}&language=tr-TR&sort_by=vote_average.desc&vote_count.gte=1000&without_genres=99`, { signal: routeContext?.signal });
-            let data = await res.json();
-            if (data.results) {
-                let extra = data.results.filter(m => !seen.has(m.id) && !ratings[m.id] && m.poster_path && !m.adult && m.vote_average >= 7.0);
-                finalMovies.push(...extra.slice(0, 14 - finalMovies.length));
+
+        const blockedGenres = [
+            99,
+            10767,
+            10763,
+            10764
+        ];
+
+        const blockedTitleWords = [
+            'making of',
+            'behind the scenes',
+            'assembled',
+            'the making',
+            'xxx',
+            'erotic',
+            'sex'
+        ];
+
+        recommendedMovies =
+            recommendedMovies.filter(
+                movie => {
+                    const movieId =
+                        normalizeTmdbId(
+                            movie?.id
+                        );
+
+                    if (!movieId) {
+                        return false;
+                    }
+
+                    if (
+                        Array.isArray(
+                            movie
+                                .genre_ids
+                        ) &&
+                        blockedGenres.some(
+                            genre =>
+                                movie
+                                    .genre_ids
+                                    .includes(
+                                        genre
+                                    )
+                        )
+                    ) {
+                        return false;
+                    }
+
+                    const title =
+                        String(
+                            movie.title ||
+                            movie.name ||
+                            ''
+                        )
+                            .toLowerCase();
+
+                    if (
+                        blockedTitleWords
+                            .some(word =>
+                                title.includes(
+                                    word
+                                )
+                            )
+                    ) {
+                        return false;
+                    }
+
+                    if (
+                        !movie.poster_path
+                    ) {
+                        return false;
+                    }
+
+                    if (
+                        movie.adult ===
+                        true
+                    ) {
+                        return false;
+                    }
+
+                    const voteAverage =
+                        Number(
+                            movie
+                                .vote_average
+                        );
+
+                    if (
+                        !Number.isFinite(
+                            voteAverage
+                        ) ||
+                        voteAverage < 5
+                    ) {
+                        return false;
+                    }
+
+                    movie.id =
+                        movieId;
+
+                    return true;
+                }
+            );
+
+        const seen =
+            new Set();
+
+        recommendedMovies =
+            recommendedMovies.filter(
+                movie => {
+                    const movieId =
+                        normalizeTmdbId(
+                            movie.id
+                        );
+
+                    if (!movieId) {
+                        return false;
+                    }
+
+                    if (
+                        seen.has(
+                            movieId
+                        )
+                    ) {
+                        return false;
+                    }
+
+                    seen.add(
+                        movieId
+                    );
+
+                    const alreadyRated =
+                        normalizeUserRating(
+                            ratings[
+                                String(
+                                    movieId
+                                )
+                            ]
+                        ) !== null;
+
+                    return (
+                        !alreadyRated
+                    );
+                }
+            );
+
+        recommendedMovies.sort(
+            (a, b) => {
+                const scoreA =
+                    (
+                        Number(
+                            a
+                                .vote_average
+                        ) ||
+                        0
+                    ) *
+                    Math.log10(
+                        (
+                            Number(
+                                a
+                                    .vote_count
+                            ) ||
+                            0
+                        ) +
+                        1
+                    );
+
+                const scoreB =
+                    (
+                        Number(
+                            b
+                                .vote_average
+                        ) ||
+                        0
+                    ) *
+                    Math.log10(
+                        (
+                            Number(
+                                b
+                                    .vote_count
+                            ) ||
+                            0
+                        ) +
+                        1
+                    );
+
+                return (
+                    scoreB -
+                    scoreA
+                );
             }
+        );
+
+        let finalMovies =
+            recommendedMovies.slice(
+                0,
+                14
+            );
+
+        if (
+            finalMovies.length <
+            14
+        ) {
+            const res =
+                await fetch(
+                    `${BASE_URL}/discover/movie?api_key=${API_KEY}&language=tr-TR&sort_by=vote_average.desc&vote_count.gte=1000&without_genres=99`,
+                    {
+                        signal:
+                            routeContext
+                                ?.signal
+                    }
+                );
+
+            const data =
+                await res.json();
+
+            const extraResults =
+                Array.isArray(
+                    data?.results
+                )
+                    ? data.results
+                    : [];
+
+            const extra =
+                extraResults.filter(
+                    movie => {
+                        const movieId =
+                            normalizeTmdbId(
+                                movie?.id
+                            );
+
+                        if (!movieId) {
+                            return false;
+                        }
+
+                        if (
+                            seen.has(
+                                movieId
+                            )
+                        ) {
+                            return false;
+                        }
+
+                        if (
+                            normalizeUserRating(
+                                ratings[
+                                    String(
+                                        movieId
+                                    )
+                                ]
+                            ) !== null
+                        ) {
+                            return false;
+                        }
+
+                        if (
+                            !movie.poster_path ||
+                            movie.adult ===
+                                true
+                        ) {
+                            return false;
+                        }
+
+                        const voteAverage =
+                            Number(
+                                movie
+                                    .vote_average
+                            );
+
+                        if (
+                            !Number.isFinite(
+                                voteAverage
+                            ) ||
+                            voteAverage <
+                                7
+                        ) {
+                            return false;
+                        }
+
+                        movie.id =
+                            movieId;
+
+                        seen.add(
+                            movieId
+                        );
+
+                        return true;
+                    }
+                );
+
+            finalMovies.push(
+                ...extra.slice(
+                    0,
+                    14 -
+                    finalMovies.length
+                )
+            );
         }
-        
+
         let html = '';
+
         finalMovies.forEach(item => {
-            html += createMovieCard(item, item.media_type || 'movie', 'smart');
+            const itemId =
+                normalizeTmdbId(
+                    item?.id
+                );
+
+            if (!itemId) {
+                return;
+            }
+
+            const mediaType =
+                normalizeMediaType(
+                    item
+                        ?.media_type,
+                    'movie'
+                );
+
+            if (!mediaType) {
+                return;
+            }
+
+            item.id =
+                itemId;
+
+            item.media_type =
+                mediaType;
+
+            html +=
+                createMovieCard(
+                    item,
+                    mediaType,
+                    'smart'
+                );
         });
-        
-        if (routeContext && expectedPage && !isRouteContextCurrent(routeContext, expectedPage)) return;
-        
-        document.getElementById('smart-recommendations-list').innerHTML = html;
-    } catch(e) {
-        if (e.name === 'AbortError') return;
-        console.error("Smart Recommendation error", e);
+
+        if (
+            routeContext &&
+            expectedPage &&
+            !isRouteContextCurrent(
+                routeContext,
+                expectedPage
+            )
+        ) {
+            return;
+        }
+
+        if (list) {
+            // Trusted renderer:
+            // createMovieCard() 2A'da
+            // external veriler için sertleştirildi.
+            list.innerHTML =
+                html;
+        }
+    } catch (e) {
+        if (
+            e.name ===
+            'AbortError'
+        ) {
+            return;
+        }
+
+        console.error(
+            'Smart Recommendation error',
+            e
+        );
     }
 }

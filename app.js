@@ -138,50 +138,206 @@ document.addEventListener('DOMContentLoaded', () => {
 
 });
 
-
-
-
-
-
-
-
-
-
 async function loadGenres() {
     try {
-        const [movieRes, tvRes] = await Promise.all([
-            fetch(`${BASE_URL}/genre/movie/list?api_key=${API_KEY}&language=tr-TR`),
-            fetch(`${BASE_URL}/genre/tv/list?api_key=${API_KEY}&language=tr-TR`)
-        ]);
-        const movieData = await movieRes.json();
-        const tvData = await tvRes.json();
-        
-        // Populate global cache
-        window.genresCache = { movie: movieData.genres, tv: tvData.genres };
-        
-        movieData.genres.forEach(g => genreMap[g.id] = g.name);
-        tvData.genres.forEach(g => genreMap[g.id] = g.name);
-        
-        // Populate Discover Modal Genres
-        const discoverGenres = document.getElementById('discover-genres');
-        if (discoverGenres) {
-            let html = "";
-            const uniqueGenres = [];
-            [...movieData.genres, ...tvData.genres].forEach(g => {
-                if(!uniqueGenres.find(ug => ug.id === g.id)) uniqueGenres.push(g);
-            });
-            uniqueGenres.sort((a,b) => a.name.localeCompare(b.name)).forEach(g => {
-                html += `
-                    <label class="genre-pill-checkbox">
-                        <input type="checkbox" value="${g.id}" class="discover-genre-cb">
-                        <span class="genre-pill-text">${g.name}</span>
-                    </label>
-                `;
-            });
-            discoverGenres.innerHTML = html;
+        const [
+            movieRes,
+            tvRes
+        ] =
+            await Promise.all([
+                fetch(
+                    `${BASE_URL}/genre/movie/list?api_key=${API_KEY}&language=tr-TR`
+                ),
+                fetch(
+                    `${BASE_URL}/genre/tv/list?api_key=${API_KEY}&language=tr-TR`
+                )
+            ]);
+
+        const movieData =
+            await movieRes.json();
+
+        const tvData =
+            await tvRes.json();
+
+        const normalizeGenres =
+            value => {
+                const genres =
+                    Array.isArray(value)
+                        ? value
+                        : [];
+
+                return genres
+                    .map(genre => {
+                        const genreId =
+                            normalizeTmdbId(
+                                genre?.id
+                            );
+
+                        const genreName =
+                            String(
+                                genre?.name ||
+                                ''
+                            ).trim();
+
+                        if (
+                            !genreId ||
+                            !genreName
+                        ) {
+                            return null;
+                        }
+
+                        return {
+                            id: genreId,
+                            name:
+                                genreName
+                        };
+                    })
+                    .filter(Boolean);
+            };
+
+        const movieGenres =
+            normalizeGenres(
+                movieData
+                    ?.genres
+            );
+
+        const tvGenres =
+            normalizeGenres(
+                tvData
+                    ?.genres
+            );
+
+        window.genresCache = {
+            movie:
+                movieGenres,
+            tv:
+                tvGenres
+        };
+
+        genreMap = {};
+
+        movieGenres.forEach(
+            genre => {
+                genreMap[
+                    genre.id
+                ] =
+                    genre.name;
+            }
+        );
+
+        tvGenres.forEach(
+            genre => {
+                genreMap[
+                    genre.id
+                ] =
+                    genre.name;
+            }
+        );
+
+        const discoverGenres =
+            document.getElementById(
+                'discover-genres'
+            );
+
+        if (!discoverGenres) {
+            return;
         }
+
+        const uniqueGenres =
+            new Map();
+
+        [
+            ...movieGenres,
+            ...tvGenres
+        ].forEach(genre => {
+            if (
+                !uniqueGenres.has(
+                    genre.id
+                )
+            ) {
+                uniqueGenres.set(
+                    genre.id,
+                    genre
+                );
+            }
+        });
+
+        const sortedGenres =
+            Array.from(
+                uniqueGenres.values()
+            )
+                .sort(
+                    (a, b) =>
+                        a.name.localeCompare(
+                            b.name,
+                            'tr'
+                        )
+                );
+
+        const fragment =
+            document
+                .createDocumentFragment();
+
+        sortedGenres.forEach(
+            genre => {
+                const label =
+                    document
+                        .createElement(
+                            'label'
+                        );
+
+                label.className =
+                    'genre-pill-checkbox';
+
+                const input =
+                    document
+                        .createElement(
+                            'input'
+                        );
+
+                input.type =
+                    'checkbox';
+
+                input.value =
+                    String(
+                        genre.id
+                    );
+
+                input.className =
+                    'discover-genre-cb';
+
+                const text =
+                    document
+                        .createElement(
+                            'span'
+                        );
+
+                text.className =
+                    'genre-pill-text';
+
+                text.textContent =
+                    genre.name;
+
+                label.append(
+                    input,
+                    text
+                );
+
+                fragment.appendChild(
+                    label
+                );
+            }
+        );
+
+        discoverGenres
+            .replaceChildren(
+                fragment
+            );
     } catch (e) {
-        console.error("Türler çekilemedi", e);
+        console.error(
+            'Türler çekilemedi',
+            e
+        );
     }
 }
 
