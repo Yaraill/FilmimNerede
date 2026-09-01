@@ -121,24 +121,11 @@ async function loadTrendingActors(routeContext = null, expectedPage = null) {
         
         let html = "";
         
-        // Asya yapımı içeriklerle veya +18 (adult) içeriklerle tanınanları filtrele
-        const filteredActors = allActors.filter(actor => {
-            if (actor.adult) return false;
-            
-            // Eğer isminde Latin alfabesi (ve Türkçe karakterler) harici (Çince, Japonca, Kiril, Arapça vb.) bir harf varsa direkt ele
-            if (!/^[-a-zA-Z0-9\s.,'şğüöçıŞĞÜÖÇİäöüßéèêëàâäôûçñ]+$/.test(actor.name)) return false;
-            
-            // Eğer bilinen yapımları (known_for) boşsa veya hiç yoksa, bu genelde gizli +18 oyuncusu olduğu anlamına gelir. Bunu da ele.
-            if (!actor.known_for || actor.known_for.length === 0) return false;
-            
-            const hasAsianOrAdultContent = actor.known_for.some(m => {
-                const lang = m.original_language;
-                const isAsian = ['ko', 'ja', 'zh', 'cn', 'hi', 'th', 'vi', 'tl'].includes(lang);
-                const isAdult = m.adult === true;
-                return isAsian || isAdult;
-            });
-            return !hasAsianOrAdultContent;
-        });
+        // Yalnızca TMDB'nin gerçek adult flag'ini kullan.
+        // Dil, alfabe veya known_for varlığı adult-content ölçütü değildir.
+        const filteredActors = allActors.filter(
+            actor => actor && actor.adult !== true
+        );
         
         // Remove duplicates just in case since we fetched 2 pages
         const uniqueActors = [];
@@ -149,11 +136,28 @@ async function loadTrendingActors(routeContext = null, expectedPage = null) {
         const actors = uniqueActors.slice(0, 20);
         
         actors.forEach(actor => {
-            const profile = actor.profile_path ? IMAGE_BASE + actor.profile_path : 'https://via.placeholder.com/150x225?text=Yok';
+            const profile = actor.profile_path
+                ? IMAGE_BASE + actor.profile_path
+                : 'https://via.placeholder.com/150x225?text=Yok';
+
             html += `
-                <div class="story-item" onclick="openActorDetails(${actor.id}, '${actor.name.replace(/'/g, "\\'")}')">
-                    <img src="${profile}" alt="${actor.name}" class="story-img" loading="lazy">
-                    <div class="story-name" title="${actor.name}">${actor.name}</div>
+                <div
+                    class="story-item"
+                    onclick="openActorDetails(${actor.id})"
+                >
+                    <img
+                        src="${escapeHtml(profile)}"
+                        alt="${escapeHtml(actor.name || '')}"
+                        class="story-img"
+                        loading="lazy"
+                    >
+
+                    <div
+                        class="story-name"
+                        title="${escapeHtml(actor.name || '')}"
+                    >
+                        ${escapeHtml(actor.name || 'Bilinmiyor')}
+                    </div>
                 </div>
             `;
         });

@@ -7,6 +7,7 @@ const ROOT_DIR = path.resolve(__dirname, '..');
 
 const activeScripts = [
     'js/runtime/config.js',
+    'js/runtime/security.js',
     'js/runtime/state.js',
     'js/runtime/router.js',
     'js/runtime/shared-ui.js',

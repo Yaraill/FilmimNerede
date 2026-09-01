@@ -152,8 +152,32 @@ function loadProfile(routeContext = null) {
     
     const watchlist = JSON.parse(localStorage.getItem('watchlist') || '[]');
     const ratedMovies = JSON.parse(localStorage.getItem('ratedMovies') || '[]');
-    const favoriteActors = JSON.parse(localStorage.getItem('favoriteActors') || '[]');
-    
+    let favoriteActors = [];
+
+    try {
+        const parsedFavoriteActors =
+            JSON.parse(
+                localStorage.getItem(
+                    'favoriteActors'
+                ) ||
+                '[]'
+            );
+
+        if (
+            Array.isArray(
+                parsedFavoriteActors
+            )
+        ) {
+            favoriteActors =
+                parsedFavoriteActors;
+        }
+    } catch (error) {
+        console.warn(
+            'Favorite actors okunamadı:',
+            error
+        );
+    }
+        
     // Stats Calculation
     let totalWatchTimeMinutes = 0;
     let needsFetch = false;
@@ -215,7 +239,7 @@ function loadProfile(routeContext = null) {
         </div>
         <div class="stat-card" style="border-top: 2px solid #9b59b6; position:relative; overflow:hidden;">
             <i class="fas fa-heart" style="position:absolute; right:-10px; bottom:-10px; font-size:4rem; color:rgba(128,128,128,0.1);"></i>
-            <div class="stat-value" style="font-size:1.5rem; line-height:2.5rem; background: -webkit-linear-gradient(45deg, #9b59b6, #8e44ad); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">${favoriteGenre}</div>
+            <div class="stat-value" style="font-size:1.5rem; line-height:2.5rem; background: -webkit-linear-gradient(45deg, #9b59b6, #8e44ad); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">${escapeHtml(favoriteGenre)}</div>
             <div class="stat-label" style="font-weight:600; letter-spacing:1px; font-size:0.9rem;">Favori Tür</div>
         </div>
     `;
@@ -271,21 +295,137 @@ function loadProfile(routeContext = null) {
     }
     
     // Render Actors
-    if (favoriteActors.length === 0) {
-        actorsGrid.innerHTML = "<div class='no-provider' style='grid-column: 1/-1;'>Favori oyuncunuz yok.</div>";
+    const validFavoriteActors =
+        favoriteActors.filter(
+            actor =>
+                actor &&
+                normalizeTmdbId(
+                    actor.id
+                )
+        );
+
+    if (
+        validFavoriteActors.length === 0
+    ) {
+        actorsGrid.innerHTML =
+            "<div class='no-provider' style='grid-column: 1/-1;'>Favori oyuncunuz yok.</div>";
     } else {
-        actorsGrid.innerHTML = favoriteActors.map(actor => {
-            const profile = actor.profile_path ? IMAGE_BASE + actor.profile_path : 'https://via.placeholder.com/150x225?text=Yok';
-            return `
-                <div class="fav-actor-card" onclick="openActorDetails(${actor.id}, '${actor.name}')">
-                    <img src="${profile}" alt="${actor.name}" loading="lazy">
-                    <h4>${actor.name}</h4>
-                    <button class="btn-actor-heart active" onclick="event.stopPropagation(); toggleActorFavorite(this, ${actor.id}, '${actor.name}', '${actor.profile_path}')">
-                        <i class="fas fa-heart"></i>
-                    </button>
-                </div>
-            `;
-        }).join('');
+        actorsGrid.replaceChildren();
+
+        validFavoriteActors.forEach(
+            actor => {
+                const actorId =
+                    normalizeTmdbId(
+                        actor.id
+                    );
+
+                const actorName =
+                    String(
+                        actor.name ||
+                        'Bilinmiyor'
+                    );
+
+                const profilePath =
+                    isValidTmdbImagePath(
+                        actor.profile_path
+                    )
+                        ? actor.profile_path
+                        : null;
+
+                const profileUrl =
+                    getSafeTmdbImageUrl(
+                        profilePath,
+                        IMAGE_BASE,
+                        'https://via.placeholder.com/150x225?text=Yok'
+                    );
+
+                const card =
+                    document.createElement(
+                        'div'
+                    );
+
+                card.className =
+                    'fav-actor-card';
+
+                const img =
+                    document.createElement(
+                        'img'
+                    );
+
+                img.src =
+                    profileUrl;
+
+                img.alt =
+                    actorName;
+
+                img.loading =
+                    'lazy';
+
+                const title =
+                    document.createElement(
+                        'h4'
+                    );
+
+                title.textContent =
+                    actorName;
+
+                const heart =
+                    document.createElement(
+                        'button'
+                    );
+
+                heart.type =
+                    'button';
+
+                heart.className =
+                    'btn-actor-heart active';
+
+                const heartIcon =
+                    document.createElement(
+                        'i'
+                    );
+
+                heartIcon.className =
+                    'fas fa-heart';
+
+                heart.appendChild(
+                    heartIcon
+                );
+
+                card.addEventListener(
+                    'click',
+                    () => {
+                        openActorDetails(
+                            actorId
+                        );
+                    }
+                );
+
+                heart.addEventListener(
+                    'click',
+                    event => {
+                        event.stopPropagation();
+
+                        toggleActorFavorite(
+                            heart,
+                            actorId,
+                            actorName,
+                            profilePath
+                        );
+                    }
+                );
+
+                card.append(
+                    img,
+                    title,
+                    heart
+                );
+
+                actorsGrid.appendChild(
+                    card
+                );
+            }
+        );
     }
     
     [...watchlist, ...ratedMovies].forEach(item => {

@@ -93,72 +93,259 @@ function buyTicket(movieId) {
 
 
 function createMovieCard(item, mediaType = "movie", tabContext = "") {
-    const title = item.title || item.name;
-    const year = (item.release_date || item.first_air_date || "").split('-')[0];
-    const titleWithYear = year ? `${title} (${year})` : title;
-    
-    const poster = item.poster_path ? IMAGE_BASE + item.poster_path : 'https://placehold.co/500x750/1a1a2e/ffffff?text=Afis+Yok';
-    const rating = item.vote_average ? item.vote_average.toFixed(1) : "N/A";
-    
-    const allGenres = (item.genre_ids || []).map(id => genreMap[id]).filter(Boolean);
-    const genres = allGenres.slice(0, 3).join(', ') + (allGenres.length > 3 ? '...' : '');
+    if (!item || typeof item !== 'object') {
+        return '';
+    }
 
-    let watchlist = JSON.parse(localStorage.getItem('watchlist')) || [];
-    const isSaved = watchlist.find(w => w.id === item.id) ? "active" : "";
+    const itemId =
+        normalizeTmdbId(item.id);
 
-    // Hata Çözümü: Veriyi string yapmak yerine objeye atıyoruz
-    window.movieCache[item.id] = {
-        id: item.id,
+    if (!itemId) {
+        return '';
+    }
+
+    const normalizedMediaType =
+        normalizeMediaType(
+            mediaType,
+            normalizeMediaType(
+                item.media_type,
+                'movie'
+            )
+        );
+
+    const title = String(
+        item.title ||
+        item.name ||
+        'Bilinmiyor'
+    );
+
+    const releaseDate = String(
+        item.release_date ||
+        item.first_air_date ||
+        ''
+    );
+
+    const year =
+        releaseDate.split('-')[0];
+
+    const titleWithYear =
+        year
+            ? `${title} (${year})`
+            : title;
+
+    const poster =
+        getSafeTmdbImageUrl(
+            item.poster_path,
+            IMAGE_BASE,
+            'https://placehold.co/500x750/1a1a2e/ffffff?text=Afis+Yok'
+        );
+
+    const allGenres =
+        Array.isArray(item.genre_ids)
+            ? item.genre_ids
+                .map(id => genreMap[id])
+                .filter(Boolean)
+                .map(name => String(name))
+            : [];
+
+    const genres =
+        allGenres.slice(0, 3).join(', ') +
+        (
+            allGenres.length > 3
+                ? '...'
+                : ''
+        );
+
+    let watchlist = [];
+
+    try {
+        const storedWatchlist =
+            JSON.parse(
+                localStorage.getItem('watchlist') ||
+                '[]'
+            );
+
+        if (Array.isArray(storedWatchlist)) {
+            watchlist = storedWatchlist;
+        }
+    } catch (error) {
+        console.warn(
+            'Watchlist okunamadı:',
+            error
+        );
+    }
+
+    const isSaved =
+        watchlist.some(
+            entry =>
+                normalizeTmdbId(entry?.id) ===
+                itemId
+        )
+            ? 'active'
+            : '';
+
+    window.movieCache[itemId] = {
+        id: itemId,
         title: title,
         name: title,
-        release_date: item.release_date || item.first_air_date,
-        poster_path: item.poster_path,
-        backdrop_path: item.backdrop_path,
-        overview: item.overview,
-        vote_average: item.vote_average,
-        genre_ids: item.genre_ids,
-        media_type: mediaType
+        release_date:
+            item.release_date ||
+            item.first_air_date,
+        poster_path:
+            item.poster_path,
+        backdrop_path:
+            item.backdrop_path,
+        overview:
+            item.overview,
+        vote_average:
+            item.vote_average,
+        genre_ids:
+            Array.isArray(item.genre_ids)
+                ? item.genre_ids
+                : [],
+        media_type:
+            normalizedMediaType
     };
 
-    let dateOrProviderHtml = "";
-    if (tabContext === "upcoming" && item.release_date) {
-        const d = new Date(item.release_date);
-        const formattedDate = d.toLocaleDateString('tr-TR', { day: 'numeric', month: 'long', year: 'numeric' });
-        dateOrProviderHtml = `<div class="movie-date" style="color:var(--primary-color)">Vizyon: ${formattedDate}</div>`;
+    let dateOrProviderHtml = '';
+
+    if (
+        tabContext === 'upcoming' &&
+        item.release_date
+    ) {
+        const date =
+            new Date(item.release_date);
+
+        const formattedDate =
+            date.toLocaleDateString(
+                'tr-TR',
+                {
+                    day: 'numeric',
+                    month: 'long',
+                    year: 'numeric'
+                }
+            );
+
+        dateOrProviderHtml = `
+            <div
+                class="movie-date"
+                style="color:var(--primary-color)"
+            >
+                Vizyon: ${escapeHtml(formattedDate)}
+            </div>
+        `;
     } else {
-        dateOrProviderHtml = `<div class="movie-date providers-container providers-${item.id}"><span style="font-size:0.8rem; color:var(--text-muted)">Platformlar aranıyor...</span></div>`;
+        dateOrProviderHtml = `
+            <div
+                class="movie-date providers-container providers-${itemId}"
+            >
+                <span
+                    style="font-size:0.8rem; color:var(--text-muted)"
+                >
+                    Platformlar aranıyor...
+                </span>
+            </div>
+        `;
     }
 
-    let buyTicketHtml = "";
-    if (tabContext === "now-playing" && mediaType === "movie") {
-        buyTicketHtml = `<button class="action-btn btn-buy-ticket-card" onclick="buyTicket(${item.id})"><i class="fas fa-ticket-alt"></i> Bilet Al</button>`;
+    let buyTicketHtml = '';
+
+    if (
+        tabContext === 'now-playing' &&
+        normalizedMediaType === 'movie'
+    ) {
+        buyTicketHtml = `
+            <button
+                class="action-btn btn-buy-ticket-card"
+                onclick="buyTicket(${itemId})"
+            >
+                <i class="fas fa-ticket-alt"></i>
+                Bilet Al
+            </button>
+        `;
     }
 
-    const mediaBadgeLabel = mediaType === "tv" ? "Dizi" : "Film";
+    const mediaBadgeLabel =
+        normalizedMediaType === 'tv'
+            ? 'Dizi'
+            : 'Film';
+
+    const overview =
+        typeof item.overview === 'string' &&
+        item.overview.trim().length > 0
+            ? item.overview
+            : 'Konu özeti bulunmuyor.';
 
     return `
-        <div class="movie-card" style="position:relative">
-            <div class="media-type-badge">${mediaBadgeLabel}</div>
-            <button class="btn-heart ${isSaved}" onclick="toggleWatchlist(this, ${item.id})" title="Listeme Ekle/Çıkar">
+        <div
+            class="movie-card"
+            style="position:relative"
+        >
+            <div class="media-type-badge">
+                ${mediaBadgeLabel}
+            </div>
+
+            <button
+                class="btn-heart ${isSaved}"
+                onclick="toggleWatchlist(this, ${itemId})"
+                title="Listeme Ekle/Çıkar"
+            >
                 <i class="fas fa-heart"></i>
             </button>
-            <img src="${poster}" alt="${title}" class="movie-poster" style="cursor:pointer" onclick="openDetails(${item.id}, '${mediaType}')"
-                onmouseenter="startHoverSlideshow(this, ${item.id})" 
-                onmouseleave="stopHoverSlideshow(this, '${poster}')">
+
+            <img
+                src="${escapeHtml(poster)}"
+                alt="${escapeHtml(title)}"
+                class="movie-poster"
+                style="cursor:pointer"
+                onclick="openDetails(${itemId}, '${normalizedMediaType}')"
+                onmouseenter="startHoverSlideshow(this, ${itemId})"
+                onmouseleave="stopHoverSlideshow(this)"
+            >
+
             <div class="movie-info">
                 <div class="movie-meta">
-                    <span class="genre-list">${genres}</span>
+                    <span class="genre-list">
+                        ${escapeHtml(genres)}
+                    </span>
                 </div>
-                <div class="movie-title" title="${title}" style="cursor:pointer" onclick="openDetails(${item.id}, '${mediaType}')">${titleWithYear}</div>
+
+                <div
+                    class="movie-title"
+                    title="${escapeHtml(title)}"
+                    style="cursor:pointer"
+                    onclick="openDetails(${itemId}, '${normalizedMediaType}')"
+                >
+                    ${escapeHtml(titleWithYear)}
+                </div>
+
                 <div class="list-view-overview">
-                    ${(item.overview && item.overview.trim().length > 0) ? item.overview : "Konu özeti bulunmuyor."}
+                    ${escapeHtml(overview)}
                 </div>
-                <div class="bottom-group" style="margin-top: auto; display: flex; flex-direction: column; gap: 10px; padding-top: 10px; width: 100%; max-width: 280px;">
+
+                <div
+                    class="bottom-group"
+                    style="
+                        margin-top:auto;
+                        display:flex;
+                        flex-direction:column;
+                        gap:10px;
+                        padding-top:10px;
+                        width:100%;
+                        max-width:280px;
+                    "
+                >
                     ${dateOrProviderHtml}
+
                     <div class="card-actions">
-                        <button class="action-btn btn-trailer" onclick="openTrailer(${item.id}, '${mediaType}')">
-                            <i class="fas fa-play"></i> Fragman
+                        <button
+                            class="action-btn btn-trailer"
+                            onclick="openTrailer(${itemId}, '${normalizedMediaType}')"
+                        >
+                            <i class="fas fa-play"></i>
+                            Fragman
                         </button>
+
                         ${buyTicketHtml}
                     </div>
                 </div>
@@ -171,8 +358,20 @@ function createMovieCard(item, mediaType = "movie", tabContext = "") {
 let hoverSlideshowTimer = null;
 let hoverSlideshowInterval = null;
 async function startHoverSlideshow(imgElement, movieId) {
-    if (!movieId) return;
+    const safeMovieId =
+        normalizeTmdbId(movieId);
+
+    if (!imgElement || !safeMovieId) {
+        return;
+    }
+
+    if (!imgElement.dataset.originalSrc) {
+        imgElement.dataset.originalSrc =
+            imgElement.src;
+    }
+
     imgElement.dataset.isHovered = 'true';
+    movieId = safeMovieId;
     
     hoverSlideshowTimer = setTimeout(async () => {
         if (imgElement.dataset.isHovered !== 'true') return;
@@ -185,10 +384,24 @@ async function startHoverSlideshow(imgElement, movieId) {
             if (!window.movieImagesCache[movieId]) {
                 try {
                     const item = window.movieCache[movieId];
-                    const type = item ? (item.media_type || 'movie') : 'movie';
+                    const type =
+                        normalizeMediaType(
+                            item?.media_type,
+                            'movie'
+                        );
                     const res = await fetch(`${BASE_URL}/${type}/${movieId}/images?api_key=${API_KEY}`);
                     const data = await res.json();
-                    const extraImages = (data.backdrops || []).slice(0, 5).map(b => BACKDROP_BASE + b.file_path);
+                    const extraImages =
+                        (data.backdrops || [])
+                            .slice(0, 5)
+                            .map(backdrop =>
+                                getSafeTmdbImageUrl(
+                                    backdrop?.file_path,
+                                    BACKDROP_BASE,
+                                    null
+                                )
+                            )
+                            .filter(Boolean);
                     if (extraImages.length > 0) {
                         images = extraImages;
                     }
@@ -217,24 +430,45 @@ async function startHoverSlideshow(imgElement, movieId) {
 }
 
 
-function stopHoverSlideshow(imgElement, originalSrc) {
-    imgElement.dataset.isHovered = 'false';
+function stopHoverSlideshow(imgElement) {
+    if (!imgElement) return;
+
+    imgElement.dataset.isHovered =
+        'false';
+
     if (hoverSlideshowTimer) {
-        clearTimeout(hoverSlideshowTimer);
+        clearTimeout(
+            hoverSlideshowTimer
+        );
+
         hoverSlideshowTimer = null;
     }
+
     if (hoverSlideshowInterval) {
-        clearInterval(hoverSlideshowInterval);
+        clearInterval(
+            hoverSlideshowInterval
+        );
+
         hoverSlideshowInterval = null;
     }
-    if (imgElement.src !== originalSrc) {
-        imgElement.src = originalSrc;
-        imgElement.style.transition = "transform 0.3s ease";
-        imgElement.style.objectFit = 'cover';
-        imgElement.style.backgroundColor = 'transparent';
-    }
-}
 
+    const originalSrc =
+        imgElement.dataset.originalSrc;
+
+    if (originalSrc) {
+        imgElement.src =
+            originalSrc;
+    }
+
+    imgElement.style.transition =
+        'transform 0.3s ease';
+
+    imgElement.style.objectFit =
+        'cover';
+
+    imgElement.style.backgroundColor =
+        'transparent';
+}
 
 
 // =========================================
@@ -281,7 +515,23 @@ document.addEventListener('DOMContentLoaded', () => {
         const selectedOption = select.options[select.selectedIndex];
         let triggerText = selectedOption ? selectedOption.text : "Seçiniz...";
         
-        trigger.innerHTML = `<span>${triggerText}</span> <i class="fas fa-chevron-down"></i>`;
+        const triggerLabel =
+            document.createElement('span');
+
+        triggerLabel.textContent =
+            String(triggerText ?? '');
+
+        const triggerIcon =
+            document.createElement('i');
+
+        triggerIcon.className =
+            'fas fa-chevron-down';
+
+        trigger.append(
+            triggerLabel,
+            document.createTextNode(' '),
+            triggerIcon
+        );
         
         const optionsWrapper = document.createElement('div');
         optionsWrapper.className = 'custom-options-wrapper';

@@ -101,15 +101,49 @@ async function searchMovie(reset = true, isFilterChange = false, routeContext = 
             document.getElementById('loadMoreBtn').style.display = 'none';
         }
         document.getElementById('search-results').style.minHeight = '';
-    } catch (error) {
-        if (error.name === 'AbortError') return;
-        if (requestGeneration !== searchRequestGeneration) return;
-        if (routeContext && (routeContext.signal?.aborted || routeContext.generation !== routeGeneration)) return;
-        if (!reset) throw error;
-        document.getElementById('search-results').style.minHeight = '';
-        console.error("searchMovie error:", error);
-        if (reset) document.getElementById('search-results').innerHTML = `<div class='loading' style='color:red;'>Arama Hatası: ${error.message}</div>`;
-    } finally {
+        } catch (error) {
+            if (error.name === 'AbortError') {
+                return;
+            }
+
+            if (
+                requestGeneration !==
+                searchRequestGeneration
+            ) {
+                return;
+            }
+
+            if (
+                routeContext &&
+                (
+                    routeContext.signal?.aborted ||
+                    routeContext.generation !==
+                        routeGeneration
+                )
+            ) {
+                return;
+            }
+
+            if (!reset) {
+                throw error;
+            }
+
+            const container =
+                document.getElementById(
+                    'search-results'
+                );
+
+            if (container) {
+                container.style.minHeight = '';
+            }
+
+            renderSafeError(
+                'search-results',
+                'Arama sırasında bir sorun oluştu. Lütfen tekrar deneyin.',
+                error
+            );
+        }
+     finally {
         if (requestGeneration === searchRequestGeneration) {
             const spinner = document.getElementById('infinite-spinner');
             if (spinner) spinner.style.display = 'none';
@@ -161,38 +195,167 @@ async function handleSearchInput(event) {
                 return;
             }
             
-            if(box) {
-                box.innerHTML = "";
-                results.slice(0, 5).forEach(item => {
-                    const title = item.title || item.name || "Bilinmiyor";
-                    const poster = item.poster_path || item.profile_path ? IMAGE_BASE + (item.poster_path || item.profile_path) : 'https://via.placeholder.com/40x60?text=Yok';
-                    let typeStr = "Film";
-                    if(item.media_type === "tv") typeStr = "Dizi";
-                    if(item.media_type === "person") typeStr = "Oyuncu";
-                    
-                    const div = document.createElement('div');
-                    div.className = 'suggestion-item';
-                    div.innerHTML = `
-                        <img src="${poster}" class="suggestion-img" loading="lazy">
-                        <div class="suggestion-info">
-                            <span class="suggestion-title">${title}</span>
-                            <span class="suggestion-meta">${typeStr}</span>
-                        </div>
-                    `;
-                    
-                    div.onclick = () => {
-                        box.style.display = 'none';
-                        if (item.media_type === "person") {
-                            openActorDetails(item.id, title);
-                        } else {
-                            window.movieCache[item.id] = item;
-                            openDetails(item.id, item.media_type);
+            if (box) {
+                box.replaceChildren();
+
+                let appendedCount = 0;
+
+                results
+                    .slice(0, 5)
+                    .forEach(item => {
+                        const itemId =
+                            normalizeTmdbId(
+                                item?.id
+                            );
+
+                        if (!itemId) {
+                            return;
                         }
-                    };
-                    
-                    box.appendChild(div);
-                });
-                box.style.display = 'block';
+
+                        const isPerson =
+                            item.media_type ===
+                            'person';
+
+                        const mediaType =
+                            isPerson
+                                ? null
+                                : normalizeMediaType(
+                                    item.media_type
+                                );
+
+                        if (
+                            !isPerson &&
+                            !mediaType
+                        ) {
+                            return;
+                        }
+
+                        const title =
+                            String(
+                                item.title ||
+                                item.name ||
+                                'Bilinmiyor'
+                            );
+
+                        const imagePath =
+                            item.poster_path ||
+                            item.profile_path;
+
+                        const poster =
+                            getSafeTmdbImageUrl(
+                                imagePath,
+                                IMAGE_BASE,
+                                'https://via.placeholder.com/40x60?text=Yok'
+                            );
+
+                        let typeStr =
+                            'Film';
+
+                        if (
+                            mediaType === 'tv'
+                        ) {
+                            typeStr = 'Dizi';
+                        } else if (isPerson) {
+                            typeStr = 'Oyuncu';
+                        }
+
+                        const div =
+                            document.createElement(
+                                'div'
+                            );
+
+                        div.className =
+                            'suggestion-item';
+
+                        const img =
+                            document.createElement(
+                                'img'
+                            );
+
+                        img.src = poster;
+                        img.className =
+                            'suggestion-img';
+                        img.loading = 'lazy';
+                        img.alt = '';
+
+                        const info =
+                            document.createElement(
+                                'div'
+                            );
+
+                        info.className =
+                            'suggestion-info';
+
+                        const titleSpan =
+                            document.createElement(
+                                'span'
+                            );
+
+                        titleSpan.className =
+                            'suggestion-title';
+
+                        titleSpan.textContent =
+                            title;
+
+                        const metaSpan =
+                            document.createElement(
+                                'span'
+                            );
+
+                        metaSpan.className =
+                            'suggestion-meta';
+
+                        metaSpan.textContent =
+                            typeStr;
+
+                        info.append(
+                            titleSpan,
+                            metaSpan
+                        );
+
+                        div.append(
+                            img,
+                            info
+                        );
+
+                        div.addEventListener(
+                            'click',
+                            () => {
+                                box.style.display =
+                                    'none';
+
+                                if (isPerson) {
+                                    openActorDetails(
+                                        itemId
+                                    );
+
+                                    return;
+                                }
+
+                                window.movieCache[
+                                    itemId
+                                ] = {
+                                    ...item,
+                                    id: itemId,
+                                    media_type:
+                                        mediaType
+                                };
+
+                                openDetails(
+                                    itemId,
+                                    mediaType
+                                );
+                            }
+                        );
+
+                        box.appendChild(div);
+                        appendedCount++;
+                    });
+
+                box.style.display =
+                    appendedCount > 0
+                        ? 'block'
+                        : 'none';
             }
         } catch (e) {
             if (e.name === 'AbortError') return;

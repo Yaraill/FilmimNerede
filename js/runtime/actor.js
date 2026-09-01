@@ -538,51 +538,138 @@ async function handleActorAutocomplete(event, actorNum) {
 }
 
 async function findCommonMovies() {
-    const actor1 = document.getElementById('actor1-input').value.trim();
-    const actor2 = document.getElementById('actor2-input').value.trim();
+    const actor1 = document
+        .getElementById('actor1-input')
+        .value
+        .trim();
+
+    const actor2 = document
+        .getElementById('actor2-input')
+        .value
+        .trim();
+
     if (!actor1 || !actor2) {
         alert("Lütfen iki oyuncu adı da giriniz.");
         return;
     }
-    
-    document.getElementById('common-movies-result').style.display = 'block';
+
+    const grid =
+        document.getElementById('common-movies-grid');
+
+    document
+        .getElementById('common-movies-result')
+        .style.display = 'block';
+
     showSkeletons('common-movies-grid', 5);
-    
+
     try {
-        // Find actor 1 ID
         let id1 = selectedActor1Id;
+
         if (!id1) {
-            let res1 = await fetch(`${BASE_URL}/search/person?api_key=${API_KEY}&query=${encodeURIComponent(actor1)}&language=tr-TR`);
-            let data1 = await res1.json();
-            if (!data1.results || data1.results.length === 0) throw new Error(actor1 + " bulunamadı");
+            const res1 = await fetch(
+                `${BASE_URL}/search/person?api_key=${API_KEY}` +
+                `&query=${encodeURIComponent(actor1)}` +
+                `&language=tr-TR`
+            );
+
+            const data1 = await res1.json();
+
+            if (
+                !data1.results ||
+                data1.results.length === 0
+            ) {
+                renderSafeError(
+                    grid,
+                    `${actor1} bulunamadı.`,
+                    null,
+                    'no-provider'
+                );
+                return;
+            }
+
             id1 = data1.results[0].id;
         }
-        
-        // Find actor 2 ID
+
         let id2 = selectedActor2Id;
+
         if (!id2) {
-            let res2 = await fetch(`${BASE_URL}/search/person?api_key=${API_KEY}&query=${encodeURIComponent(actor2)}&language=tr-TR`);
-            let data2 = await res2.json();
-            if (!data2.results || data2.results.length === 0) throw new Error(actor2 + " bulunamadı");
+            const res2 = await fetch(
+                `${BASE_URL}/search/person?api_key=${API_KEY}` +
+                `&query=${encodeURIComponent(actor2)}` +
+                `&language=tr-TR`
+            );
+
+            const data2 = await res2.json();
+
+            if (
+                !data2.results ||
+                data2.results.length === 0
+            ) {
+                renderSafeError(
+                    grid,
+                    `${actor2} bulunamadı.`,
+                    null,
+                    'no-provider'
+                );
+                return;
+            }
+
             id2 = data2.results[0].id;
         }
-        
-        // Discover movies with both
-        let res3 = await fetch(`${BASE_URL}/discover/movie?api_key=${API_KEY}&with_people=${id1},${id2}&sort_by=popularity.desc&language=tr-TR`);
-        let data3 = await res3.json();
-        
+
+        id1 = Number(id1);
+        id2 = Number(id2);
+
+        if (
+            !Number.isSafeInteger(id1) ||
+            id1 <= 0 ||
+            !Number.isSafeInteger(id2) ||
+            id2 <= 0
+        ) {
+            renderSafeError(
+                grid,
+                'Geçersiz oyuncu bilgisi.',
+                null,
+                'no-provider'
+            );
+            return;
+        }
+
+        const res3 = await fetch(
+            `${BASE_URL}/discover/movie?api_key=${API_KEY}` +
+            `&with_people=${id1},${id2}` +
+            `&sort_by=popularity.desc` +
+            `&language=tr-TR`
+        );
+
+        const data3 = await res3.json();
+
         let html = '';
-        if (!data3.results || data3.results.length === 0) {
+
+        if (
+            !data3.results ||
+            data3.results.length === 0
+        ) {
             html = "<p>Ortak film bulunamadı.</p>";
         } else {
             data3.results.forEach(item => {
-                html += createMovieCard(item, 'movie', 'common');
+                html += createMovieCard(
+                    item,
+                    'movie',
+                    'common'
+                );
             });
         }
-        document.getElementById('common-movies-grid').innerHTML = html;
-        makeScrollable(document.getElementById('common-movies-grid'));
-        
-    } catch(e) {
-        document.getElementById('common-movies-grid').innerHTML = "<p style='color:red;'>Hata: " + e.message + "</p>";
+
+        grid.innerHTML = html;
+        makeScrollable(grid);
+
+    } catch (e) {
+        renderSafeError(
+            grid,
+            'Ortak filmler aranırken bir sorun oluştu. Lütfen tekrar deneyin.',
+            e,
+            'no-provider'
+        );
     }
 }

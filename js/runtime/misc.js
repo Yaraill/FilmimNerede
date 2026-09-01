@@ -240,10 +240,41 @@ async function executeDiscover() {
             fetchAndInjectProviders(item.id, type, item);
         });
     } catch (e) {
-        console.error("executeDiscover error:", e);
-        const container = document.getElementById('search-results');
-        container.innerHTML = `<div class='no-provider' style='color:red;'>Keşfet Hatası: ${e.message}</div>`;
+        renderSafeError(
+            'search-results',
+            'Keşif sonuçları yüklenirken bir sorun oluştu. Lütfen tekrar deneyin.',
+            e,
+            'no-provider'
+        );
     }
+}
+
+function setGameIconText(
+    elementId,
+    iconClass,
+    text
+) {
+    const element =
+        document.getElementById(
+            elementId
+        );
+
+    if (!element) {
+        return;
+    }
+
+    const icon =
+        document.createElement('i');
+
+    icon.className =
+        iconClass;
+
+    element.replaceChildren(
+        icon,
+        document.createTextNode(
+            ` ${String(text ?? '')}`
+        )
+    );
 }
 
 // --- MINI OYUN (AFİŞTEN TAHMİN) ---
@@ -298,23 +329,64 @@ async function startNewGame() {
         currentGameOptions = allOptions.sort(() => 0.5 - Math.random());
 
         // Posteri yükle (Dikey afiş tercih et)
-        const posterUrl = currentGameMovie.poster_path ? IMAGE_BASE + currentGameMovie.poster_path : (currentGameMovie.backdrop_path ? BACKDROP_BASE + currentGameMovie.backdrop_path : '');
-        const posterEl = document.getElementById('game-poster');
-        posterEl.src = posterUrl;
+        const posterUrl =
+            isValidTmdbImagePath(
+                currentGameMovie.poster_path
+            )
+                ? getSafeTmdbImageUrl(
+                    currentGameMovie.poster_path,
+                    IMAGE_BASE,
+                    ''
+                )
+                : getSafeTmdbImageUrl(
+                    currentGameMovie.backdrop_path,
+                    BACKDROP_BASE,
+                    ''
+                );
+
+        const posterEl =
+            document.getElementById(
+                'game-poster'
+            );
+
+        posterEl.src =
+            posterUrl;
         posterEl.onclick = null;
         posterEl.style.cursor = 'default';
 
         // İpuçlarını hazırla
         const releaseYear = currentGameMovie.release_date ? currentGameMovie.release_date.split('-')[0] : 'Bilinmiyor';
-        document.getElementById('clue-1').innerHTML = `<i class='far fa-calendar-alt'></i> Yıl: ${releaseYear}`;
+        setGameIconText(
+            'clue-1',
+            'far fa-calendar-alt',
+            `Yıl: ${releaseYear}`
+        );
         
         // Oyuncu ipucunu çek
         const castRes = await fetch(`${BASE_URL}/movie/${currentGameMovie.id}/credits?api_key=${API_KEY}&language=tr-TR`);
         const castData = await castRes.json();
-        if(castData.cast && castData.cast.length > 0) {
-            document.getElementById('clue-2').innerHTML = `<i class='fas fa-user'></i> Oyuncu: ${castData.cast[0].name}`;
+        if (
+            Array.isArray(castData.cast) &&
+            castData.cast.length > 0
+        ) {
+            setGameIconText(
+                'clue-2',
+                'fas fa-user',
+                `Oyuncu: ${
+                    castData.cast[0]?.name ||
+                    'Bilinmiyor'
+                }`
+            );
         } else {
-            document.getElementById('clue-2').innerHTML = `<i class='fas fa-star'></i> Puan: ${currentGameMovie.vote_average}`;
+            setGameIconText(
+                'clue-2',
+                'fas fa-star',
+                `Puan: ${
+                    currentGameMovie
+                        .vote_average ??
+                    'N/A'
+                }`
+            );
         }
 
         // Seçenekleri ekrana bas
@@ -357,7 +429,11 @@ function makeGameGuess(guessedId, btn) {
         document.getElementById('clue-2').style.display = 'inline-block';
         const overlayText = document.getElementById('game-overlay-text');
         if (overlayText) {
-            overlayText.innerHTML = currentGameMovie.title;
+            overlayText.textContent =
+                String(
+                    currentGameMovie.title ||
+                    'Bilinmiyor'
+                );
             overlayText.style.display = 'block';
             overlayText.style.fontSize = '1.2rem';
             overlayText.style.background = 'rgba(0,0,0,0.7)';
@@ -395,7 +471,45 @@ function makeGameGuess(guessedId, btn) {
             document.getElementById('clue-2').style.display = 'inline-block';
         } else {
             // Kaybetti
-            document.getElementById('game-result').innerHTML = '<span style="color:#f44336"><i class="fas fa-skull-crossbones"></i> Bilemedin! Cevap: ' + currentGameMovie.title + '</span>';
+            const gameResult =
+                document.getElementById(
+                    'game-result'
+                );
+
+            if (gameResult) {
+                const message =
+                    document.createElement(
+                        'span'
+                    );
+
+                message.style.color =
+                    '#f44336';
+
+                const icon =
+                    document.createElement(
+                        'i'
+                    );
+
+                icon.className =
+                    'fas fa-skull-crossbones';
+
+                message.append(
+                    icon,
+                    document.createTextNode(
+                        ` Bilemedin! Cevap: ${
+                            String(
+                                currentGameMovie
+                                    .title ||
+                                'Bilinmiyor'
+                            )
+                        }`
+                    )
+                );
+
+                gameResult.replaceChildren(
+                    message
+                );
+            }
             const posterEl = document.getElementById('game-poster');
             posterEl.style.filter = 'blur(0px)';
             posterEl.style.cursor = 'pointer';
