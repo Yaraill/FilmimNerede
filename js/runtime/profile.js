@@ -180,20 +180,65 @@ function loadProfile(routeContext = null) {
         
     // Stats Calculation
     let totalWatchTimeMinutes = 0;
-    let needsFetch = false;
+let needsFetch = false;
 
-    ratedMovies.forEach(m => {
-        if (m.exact_runtime_mins_v2 !== undefined) {
-            totalWatchTimeMinutes += m.exact_runtime_mins_v2;
-        } else {
-            let type = m.media_type;
-            if (!type || type === "undefined") {
-                type = (m.first_air_date || (m.name && !m.title)) ? "tv" : "movie";
-            }
-            totalWatchTimeMinutes += type === "tv" ? 900 : 120; // Approximate 15h per series, 2h per movie
-            needsFetch = true;
-        }
-    });
+ratedMovies.forEach(m => {
+    const itemId =
+        normalizeTmdbId(
+            m?.id
+        );
+
+    if (!itemId) {
+        return;
+    }
+
+    const inferredMediaType =
+        (
+            m?.first_air_date ||
+            (
+                m?.name &&
+                !m?.title
+            )
+        )
+            ? 'tv'
+            : 'movie';
+
+    const mediaType =
+        normalizeMediaType(
+            m?.media_type,
+            inferredMediaType
+        );
+
+    if (!mediaType) {
+        return;
+    }
+
+    const cachedRuntime =
+        typeof m
+            ?.exact_runtime_mins_v2 ===
+            'number' &&
+        Number.isFinite(
+            m.exact_runtime_mins_v2
+        ) &&
+        m.exact_runtime_mins_v2 > 0
+            ? m.exact_runtime_mins_v2
+            : null;
+
+    if (cachedRuntime !== null) {
+        totalWatchTimeMinutes +=
+            cachedRuntime;
+
+        return;
+    }
+
+    totalWatchTimeMinutes +=
+        mediaType === 'tv'
+            ? 900
+            : 120;
+
+    needsFetch =
+        true;
+});
     
     let displayHours = Math.floor(totalWatchTimeMinutes / 60);
     let displayMins = totalWatchTimeMinutes % 60;
@@ -246,15 +291,66 @@ function loadProfile(routeContext = null) {
 
     // Asynchronously calculate exact watch time
     if (needsFetch) {
-        calculateExactWatchTime(ratedMovies).then(exactMinutes => {
-            const watchTimeElem = document.getElementById('profile-watch-time');
-            if (watchTimeElem && exactMinutes > 0) {
-                let hours = Math.floor(exactMinutes / 60);
-                let mins = exactMinutes % 60;
-                watchTimeElem.innerText = `${hours}s ${mins > 0 ? mins + 'd' : ''}`;
+    calculateExactWatchTime(
+        ratedMovies,
+        routeContext?.signal
+    )
+        .then(exactMinutes => {
+            if (
+                routeContext
+                    ?.signal
+                    ?.aborted
+            ) {
+                return;
             }
+
+            if (
+                routeContext &&
+                !isRouteContextCurrent(
+                    routeContext,
+                    'profile'
+                )
+            ) {
+                return;
+            }
+
+            const watchTimeElem =
+                document.getElementById(
+                    'profile-watch-time'
+                );
+
+            if (
+                watchTimeElem &&
+                exactMinutes > 0
+            ) {
+                const hours =
+                    Math.floor(
+                        exactMinutes /
+                        60
+                    );
+
+                const mins =
+                    exactMinutes %
+                    60;
+
+                watchTimeElem.innerText =
+                    `${hours}s ${mins > 0 ? mins + 'd' : ''}`;
+            }
+        })
+        .catch(error => {
+            if (
+                error.name ===
+                'AbortError'
+            ) {
+                return;
+            }
+
+            console.warn(
+                'İzleme süresi hesaplanamadı:',
+                error
+            );
         });
-    }
+}
     
     // Render Recently Viewed
     renderRecentlyViewed(routeContext);
@@ -435,51 +531,389 @@ function loadProfile(routeContext = null) {
     });
 }
 
-async function calculateExactWatchTime(ratedMovies) {
-    let exactTimeMinutes = 0;
-    let updated = false;
+const WATCH_TIME_CONCURRENCY =
+    4;
 
-    for (let m of ratedMovies) {
-        if (m.exact_runtime_mins_v2 !== undefined) {
-            exactTimeMinutes += m.exact_runtime_mins_v2;
-            continue;
-        }
+async function runWatchTimeTasksWithConcurrency(
+    items,
+    limit,
+    worker
+) {
+    const results =
+        new Array(
+            items.length
+        );
 
-        let type = m.media_type;
-        if (!type || type === "undefined") {
-            type = (m.first_air_date || (m.name && !m.title)) ? "tv" : "movie";
-        }
-        
-        try {
-            const res = await fetch(`https://api.themoviedb.org/3/${type}/${m.id}?api_key=${API_KEY}&language=tr-TR`);
-            if (!res.ok) {
-                throw new Error(`API Error: ${res.status}`);
+    let nextIndex = 0;
+
+    const workerCount =
+        Math.min(
+            limit,
+            items.length
+        );
+
+    const runners =
+        Array.from(
+            {
+                length:
+                    workerCount
+            },
+            async () => {
+                while (true) {
+                    const index =
+                        nextIndex++;
+
+                    if (
+                        index >=
+                        items.length
+                    ) {
+                        return;
+                    }
+
+                    results[index] =
+                        await worker(
+                            items[index],
+                            index
+                        );
+                }
             }
-            const data = await res.json();
-            if (data.success === false) {
-                throw new Error(`API Data Error: ${data.status_message}`);
-            }
-            
-            let minutes = 0;
-            if (type === "movie") {
-                minutes = data.runtime || 120;
-            } else {
-                let epTime = (data.episode_run_time && data.episode_run_time.length > 0) ? data.episode_run_time[0] : 45;
-                let episodes = data.number_of_episodes || (data.number_of_seasons ? data.number_of_seasons * 10 : 20);
-                minutes = epTime * episodes;
-            }
-            
-            m.exact_runtime_mins_v2 = minutes;
-            exactTimeMinutes += minutes;
-            updated = true;
-        } catch (e) {
-            console.error("Watch time fetch error", e);
-            exactTimeMinutes += type === "tv" ? 900 : 120; // fallback 15h / 2h
-        }
+        );
+
+    await Promise.all(
+        runners
+    );
+
+    return results;
+}
+
+function getPositiveWatchTimeNumber(
+    value
+) {
+    return (
+        typeof value ===
+            'number' &&
+        Number.isFinite(
+            value
+        ) &&
+        value > 0
+    )
+        ? value
+        : null;
+}
+
+function getPositiveWatchTimeInteger(
+    value
+) {
+    return (
+        Number.isSafeInteger(
+            value
+        ) &&
+        value > 0
+    )
+        ? value
+        : null;
+}
+
+function calculateMovieWatchMinutes(
+    data
+) {
+    return (
+        getPositiveWatchTimeNumber(
+            data?.runtime
+        ) ??
+        120
+    );
+}
+
+function calculateTvWatchMinutes(
+    data
+) {
+    const episodeRuntime =
+        Array.isArray(
+            data?.episode_run_time
+        )
+            ? getPositiveWatchTimeNumber(
+                data
+                    .episode_run_time[
+                    0
+                ]
+            )
+            : null;
+
+    const minutesPerEpisode =
+        episodeRuntime ??
+        45;
+
+    let episodeCount =
+        getPositiveWatchTimeInteger(
+            data
+                ?.number_of_episodes
+        );
+
+    if (!episodeCount) {
+        const seasonCount =
+            getPositiveWatchTimeInteger(
+                data
+                    ?.number_of_seasons
+            );
+
+        episodeCount =
+            seasonCount
+                ? seasonCount * 10
+                : 20;
     }
 
+    const totalMinutes =
+        minutesPerEpisode *
+        episodeCount;
+
+    return (
+        getPositiveWatchTimeNumber(
+            totalMinutes
+        ) ??
+        900
+    );
+}
+
+async function calculateExactWatchTime(
+    ratedMovies,
+    signal = null
+) {
+    if (
+        !Array.isArray(
+            ratedMovies
+        ) ||
+        ratedMovies.length ===
+            0
+    ) {
+        return 0;
+    }
+
+    if (signal?.aborted) {
+        const error =
+            new Error('Aborted');
+
+        error.name =
+            'AbortError';
+
+        throw error;
+    }
+
+    let updated = false;
+
+    // Aynı hesaplama invocation'ı
+    // içinde mediaType:id dedup.
+    const detailRequests =
+        new Map();
+
+    const fetchDetail =
+        (
+            mediaType,
+            itemId
+        ) => {
+            const key =
+                `${mediaType}:${itemId}`;
+
+            if (
+                detailRequests.has(
+                    key
+                )
+            ) {
+                return detailRequests.get(
+                    key
+                );
+            }
+
+            const request =
+                fetch(
+                    `${BASE_URL}/${mediaType}/${itemId}?api_key=${API_KEY}&language=tr-TR`,
+                    {
+                        signal
+                    }
+                )
+                    .then(
+                        async response => {
+                            if (
+                                !response.ok
+                            ) {
+                                throw new Error(
+                                    `TMDB detail HTTP ${response.status}`
+                                );
+                            }
+
+                            const data =
+                                await response
+                                    .json();
+
+                            if (
+                                data
+                                    ?.success ===
+                                false
+                            ) {
+                                throw new Error(
+                                    'TMDB detail response failed'
+                                );
+                            }
+
+                            return data;
+                        }
+                    )
+                    .catch(error => {
+                        if (
+                            error.name ===
+                            'AbortError'
+                        ) {
+                            throw error;
+                        }
+
+                        console.warn(
+                            `Watch time detail ${key} alınamadı:`,
+                            error
+                        );
+
+                        return null;
+                    });
+
+            detailRequests.set(
+                key,
+                request
+            );
+
+            return request;
+        };
+
+    const minutesPerItem =
+        await runWatchTimeTasksWithConcurrency(
+            ratedMovies,
+            WATCH_TIME_CONCURRENCY,
+            async item => {
+                if (signal?.aborted) {
+                    const error =
+                        new Error(
+                            'Aborted'
+                        );
+
+                    error.name =
+                        'AbortError';
+
+                    throw error;
+                }
+
+                const itemId =
+                    normalizeTmdbId(
+                        item?.id
+                    );
+
+                if (!itemId) {
+                    return 0;
+                }
+
+                const inferredMediaType =
+                    (
+                        item
+                            ?.first_air_date ||
+                        (
+                            item?.name &&
+                            !item?.title
+                        )
+                    )
+                        ? 'tv'
+                        : 'movie';
+
+                const mediaType =
+                    normalizeMediaType(
+                        item
+                            ?.media_type,
+                        inferredMediaType
+                    );
+
+                if (!mediaType) {
+                    return 0;
+                }
+
+                const cachedMinutes =
+                    getPositiveWatchTimeNumber(
+                        item
+                            ?.exact_runtime_mins_v2
+                    );
+
+                if (
+                    cachedMinutes !==
+                    null
+                ) {
+                    return cachedMinutes;
+                }
+
+                const data =
+                    await fetchDetail(
+                        mediaType,
+                        itemId
+                    );
+
+                if (!data) {
+                    return (
+                        mediaType ===
+                            'tv'
+                            ? 900
+                            : 120
+                    );
+                }
+
+                const minutes =
+                    mediaType ===
+                        'tv'
+                        ? calculateTvWatchMinutes(
+                            data
+                        )
+                        : calculateMovieWatchMinutes(
+                            data
+                        );
+
+                item.exact_runtime_mins_v2 =
+                    minutes;
+
+                updated = true;
+
+                return minutes;
+            }
+        );
+
+    const exactTimeMinutes =
+        minutesPerItem.reduce(
+            (
+                total,
+                value
+            ) => {
+                const minutes =
+                    getPositiveWatchTimeNumber(
+                        value
+                    );
+
+                return (
+                    total +
+                    (
+                        minutes ??
+                        0
+                    )
+                );
+            },
+            0
+        );
+
     if (updated) {
-        localStorage.setItem('ratedMovies', JSON.stringify(ratedMovies));
+        try {
+            localStorage.setItem(
+                'ratedMovies',
+                JSON.stringify(
+                    ratedMovies
+                )
+            );
+        } catch (error) {
+            console.warn(
+                'Watch time cache yazılamadı:',
+                error
+            );
+        }
     }
 
     return exactTimeMinutes;

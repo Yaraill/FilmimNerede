@@ -967,55 +967,75 @@ if (imdbId) {
             validCachedImdb
         );
     } else {
-        fetch(
-            `https://www.omdbapi.com/?apikey=cfcb7364&i=${imdbId}`,
-            {
-                signal:
-                    routeContext?.signal
+    const params =
+        new URLSearchParams();
+
+    params.set(
+        'i',
+        imdbId
+    );
+
+    fetch(
+        `/.netlify/functions/omdb?${params.toString()}`,
+        {
+            signal:
+                routeContext
+                    ?.signal
+        }
+    )
+        .then(response => {
+            if (!response.ok) {
+                throw new Error(
+                    'OMDb proxy request failed'
+                );
             }
-        )
-            .then(response =>
-                response.json()
-            )
-            .then(omdbData => {
-                if (
-                    !isRouteContextCurrent(
-                        routeContext,
-                        'movie',
-                        movieId
-                    )
-                ) {
-                    return;
-                }
 
-                const imdbRating =
-                    normalizeImdbRating(
-                        omdbData
-                            ?.imdbRating
-                    );
+            return response.json();
+        })
+        .then(omdbData => {
+            if (
+                !isRouteContextCurrent(
+                    routeContext,
+                    'movie',
+                    movieId
+                )
+            ) {
+                return;
+            }
 
-                if (!imdbRating) {
-                    return;
-                }
-
-                renderImdbBadge(
-                    imdbRating
+            const imdbRating =
+                normalizeImdbRating(
+                    omdbData
+                        ?.imdbRating
                 );
 
-                localStorage.setItem(
-                    'imdb_' + imdbId,
-                    imdbRating
-                );
-            })
-            .catch(error => {
-                if (
-                    error.name ===
-                    'AbortError'
-                ) {
-                    return;
-                }
-            });
-    }
+            if (!imdbRating) {
+                return;
+            }
+
+            renderImdbBadge(
+                imdbRating
+            );
+
+            localStorage.setItem(
+                'imdb_' + imdbId,
+                imdbRating
+            );
+        })
+        .catch(error => {
+            if (
+                error.name ===
+                'AbortError'
+            ) {
+                return;
+            }
+
+            console.warn(
+                'IMDb puanı alınamadı:',
+                error
+            );
+        });
+}
 }
 
             // Video Background (Only PC)

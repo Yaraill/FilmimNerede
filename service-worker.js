@@ -36,6 +36,14 @@ self.addEventListener('fetch', event => {
     return;
   }
 
+  const requestUrl = new URL(event.request.url);
+
+  // Server-side OMDb proxy response'ları
+  // application offline cache'ine alınmaz.
+  if (requestUrl.pathname === '/.netlify/functions/omdb') {
+    return;
+  }
+
   event.respondWith(
     fetch(event.request)
       .then(response => {
