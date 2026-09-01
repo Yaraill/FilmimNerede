@@ -1,12 +1,45 @@
-function openActorDetails(actorId, actorName, reset = true, jobType = 'cast', filterGenre = 0, isFilterChange = false) {
-    navigate('actor/' + actorId);
+function openActorDetails(
+    actorId,
+    actorName,
+    reset = true,
+    jobType = 'cast',
+    filterGenre = 0,
+    isFilterChange = false
+) {
+    const safeActorId =
+        normalizeTmdbId(actorId);
+
+    if (!safeActorId) {
+        return;
+    }
+
+    navigate(
+        'actor/' + safeActorId
+    );
 }
 
 let actorRequestGeneration = 0;
 const actorRuntimeCache = new Map();
 const actorProviderFilterCache = new Map();
 
-async function renderActor(actorId, actorName = "", reset = true, jobType = 'cast', filterGenre = 0, isFilterChange = false, routeContext = null) {
+async function renderActor(
+    actorId,
+    actorName = "",
+    reset = true,
+    jobType = 'cast',
+    filterGenre = 0,
+    isFilterChange = false,
+    routeContext = null
+) {
+    const safeActorId =
+        normalizeTmdbId(actorId);
+
+    if (!safeActorId) {
+        return;
+    }
+
+    actorId = safeActorId;
+
     const requestGeneration = reset
         ? ++actorRequestGeneration
         : actorRequestGeneration;
@@ -97,7 +130,19 @@ async function renderActor(actorId, actorName = "", reset = true, jobType = 'cas
             jobType = 'Director';
         }
         
-        const filterProvId = parseInt(document.getElementById('providerFilter')?.value || "0");
+    const rawFilterProvId =
+        document.getElementById(
+            'providerFilter'
+        )?.value || '0';
+
+    const filterProvId =
+        rawFilterProvId === '0'
+            ? 0
+            : (
+                normalizeTmdbId(
+                    rawFilterProvId
+                ) || 0
+            );
         
         const creditsRes = await fetch(`${BASE_URL}/person/${currentActorId}/combined_credits?api_key=${API_KEY}&language=tr-TR`, { signal: routeContext?.signal });
         let data = await creditsRes.json();
@@ -179,26 +224,121 @@ async function renderActor(actorId, actorName = "", reset = true, jobType = 'cas
             const maxToCheck = Math.min(movies.length, 60);
             for (let i = 0; i < maxToCheck; i += 20) {
                 const chunk = movies.slice(i, Math.min(i + 20, maxToCheck));
-                const results = await Promise.all(chunk.map(async m => {
-                    try {
-                        let rt;
-                        if (actorRuntimeCache.has(m.id)) {
-                            rt = actorRuntimeCache.get(m.id);
-                        } else {
-                            const res = await fetch(`${BASE_URL}/movie/${m.id}?api_key=${API_KEY}&language=tr-TR`, { signal: routeContext?.signal });
-                            const detail = await res.json();
-                            rt = detail.runtime || 0;
-                            if (res.ok) {
-                                actorRuntimeCache.set(m.id, rt);
+                const results =
+                    await Promise.all(
+                        chunk.map(async m => {
+                            try {
+                                const movieId =
+                                    normalizeTmdbId(
+                                        m?.id
+                                    );
+
+                                const movieMediaType =
+                                    normalizeMediaType(
+                                        m?.media_type
+                                    );
+
+                                if (
+                                    !movieId ||
+                                    movieMediaType !==
+                                        'movie'
+                                ) {
+                                    return null;
+                                }
+
+                                const cacheKey =
+                                    `movie:${movieId}`;
+
+                                let rt;
+
+                                if (
+                                    actorRuntimeCache.has(
+                                        cacheKey
+                                    )
+                                ) {
+                                    rt =
+                                        actorRuntimeCache.get(
+                                            cacheKey
+                                        );
+                                } else {
+                                    const res =
+                                        await fetch(
+                                            `${BASE_URL}/movie/${movieId}?api_key=${API_KEY}&language=tr-TR`,
+                                            {
+                                                signal:
+                                                    routeContext
+                                                        ?.signal
+                                            }
+                                        );
+
+                                    const detail =
+                                        await res.json();
+
+                                    const rawRuntime =
+                                        detail?.runtime;
+
+                                    rt =
+                                        typeof rawRuntime ===
+                                            'number' &&
+                                        Number.isFinite(
+                                            rawRuntime
+                                        ) &&
+                                        rawRuntime > 0
+                                            ? rawRuntime
+                                            : 0;
+
+                                    if (res.ok) {
+                                        actorRuntimeCache.set(
+                                            cacheKey,
+                                            rt
+                                        );
+                                    }
+                                }
+
+                                if (
+                                    runtimeFilter == '90' &&
+                                    rt <= 90 &&
+                                    rt > 0
+                                ) {
+                                    return m;
+                                }
+
+                                if (
+                                    runtimeFilter == '120' &&
+                                    rt > 90 &&
+                                    rt <= 105
+                                ) {
+                                    return m;
+                                }
+
+                                if (
+                                    runtimeFilter == '150' &&
+                                    rt > 105 &&
+                                    rt <= 135
+                                ) {
+                                    return m;
+                                }
+
+                                if (
+                                    runtimeFilter == '180' &&
+                                    rt > 135
+                                ) {
+                                    return m;
+                                }
+                            } catch (e) {
+                                if (
+                                    e.name ===
+                                    'AbortError'
+                                ) {
+                                    throw e;
+                                }
+
+                                return null;
                             }
-                        }
-                        if (runtimeFilter == '90' && rt <= 90 && rt > 0) return m;
-                        if (runtimeFilter == '120' && rt > 90 && rt <= 105) return m;
-                        if (runtimeFilter == '150' && rt > 105 && rt <= 135) return m;
-                        if (runtimeFilter == '180' && rt > 135) return m;
-                    } catch (e) { if (e.name === 'AbortError') throw e; return null; }
-                    return null;
-                }));
+
+                            return null;
+                        })
+                    );
                 if (requestGeneration !== actorRequestGeneration) return;
                 validMovies.push(...results.filter(Boolean));
                 if (!isRouteContextCurrent(routeContext, "actor", actorId)) return;
@@ -239,7 +379,6 @@ async function renderActor(actorId, actorName = "", reset = true, jobType = 'cas
                         const mediaType = m.media_type;
                         const cacheKey = `${mediaType}:${m.id}`;
                         let data;
-
                         if (actorProviderFilterCache.has(cacheKey)) {
                             data = actorProviderFilterCache.get(cacheKey);
                         } else {
@@ -248,12 +387,10 @@ async function renderActor(actorId, actorName = "", reset = true, jobType = 'cas
                                 { signal: routeContext?.signal }
                             );
                             data = await res.json();
-
                             if (res.ok) {
                                 actorProviderFilterCache.set(cacheKey, data);
                             }
                         }
-
                         const tr = data.results && data.results[regionStr] ? data.results[regionStr] : null;
                         if (tr && tr.flatrate && tr.flatrate.some(p => p.provider_id === filterProvId)) return m;
                     } catch (e) { if (e.name === 'AbortError') throw e; return null; }
@@ -274,72 +411,430 @@ async function renderActor(actorId, actorName = "", reset = true, jobType = 'cas
         
         const container = document.getElementById('search-results');
         
-        let bioCardHtml = "";
-        if (reset) {
-            let bioText = personData.biography ? personData.biography : "";
-            const birthDate = personData.birthday ? new Date(personData.birthday).getFullYear() : "";
-            const birthPlace = personData.place_of_birth || "";
-            let bioHtml = "";
-            if(birthDate || birthPlace) bioHtml += `<strong>Doğum:</strong> ${birthDate} ${birthPlace} <br>`;
-            bioHtml += bioText;
-            
-            // Check if favorite
-            let favs = JSON.parse(localStorage.getItem('favoriteActors') || '[]');
-            const isFav = favs.some(a => a.id === currentActorId);
-            const favText = isFav ? "Favorilerden Çıkar" : "Favorilere Ekle";
-            const favClass = isFav ? "active" : "inactive";
-            
-            if (!isFilterChange) {
-                if (!isRouteContextCurrent(routeContext, "actor", actorId)) return;
-                container.innerHTML = "";
-                if (bioText || birthDate || true) { // Always show bio card even if empty bio, to show favorite button
-                    bioCardHtml = `
-                    <div id="actor-bio-card-container" class="actor-bio-card" style="grid-column: 1 / -1; width: 100%; max-width: 800px; margin: 0 auto 20px auto; padding: 20px; background: var(--card-bg); border-radius: 15px; border: 1px solid var(--glass-border); color: var(--text-muted); font-size: 0.95rem;">
-                        <div style="display:flex; align-items:flex-start; gap: 20px; margin-bottom: 10px;">
-                            <img src="${personData.profile_path ? IMAGE_BASE + personData.profile_path : 'https://via.placeholder.com/60x90'}" style="width: 80px; height: 120px; border-radius: 10px; object-fit: cover; flex-shrink: 0; user-select: none; -webkit-user-drag: none;" loading="lazy">
-                            <div style="flex: 1; min-width: 0;">
-                                <div style="display:flex; justify-content: flex-start; align-items: center; margin-bottom: 10px; gap: 10px;">
-                                    <h3 style="color: var(--text-color); margin: 0; font-size: 1.5rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: inline-block; max-width: calc(100% - 60px);">${personData.name}</h3>
-                                    <button id="modal-actor-fav-btn" class="btn-watchlist ${favClass}" style="position:relative; z-index:10; margin-top:0; flex-shrink:0; border-radius:50%; width:35px; height:35px; padding:0; display:flex; align-items:center; justify-content:center; border:none; cursor:pointer;" onclick="toggleActorFavorite(this, ${personData.id}, '${personData.name.replace(/'/g, "\\'")}', '${personData.profile_path}')">
-                                        <i class="fas fa-heart" style="font-size:1.2rem;"></i>
-                                    </button>
-                                </div>
-                                <div style="max-height: 110px; overflow-y: auto; padding-right: 5px;">
-                                    ${bioHtml}
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                `;
-                    container.innerHTML = bioCardHtml;
-                }
-            }
+        if (
+    reset &&
+    !isFilterChange
+) {
+    if (
+        !isRouteContextCurrent(
+            routeContext,
+            'actor',
+            actorId
+        )
+    ) {
+        return;
+    }
+
+    container.replaceChildren();
+
+    const actorNameText =
+        String(
+            personData?.name ||
+            'Bilinmiyor'
+        );
+
+    const biography =
+        typeof personData
+            ?.biography ===
+            'string'
+            ? personData.biography
+            : '';
+
+    const birthPlace =
+        typeof personData
+            ?.place_of_birth ===
+            'string'
+            ? personData
+                .place_of_birth
+            : '';
+
+    let birthYear = '';
+
+    if (personData?.birthday) {
+        const birthDate =
+            new Date(
+                personData.birthday
+            );
+
+        if (
+            !Number.isNaN(
+                birthDate.getTime()
+            )
+        ) {
+            birthYear =
+                String(
+                    birthDate
+                        .getFullYear()
+                );
         }
-        
-        if (isFilterChange) {
-            if (!isRouteContextCurrent(routeContext, "actor", actorId)) return;
-            const skels = container.querySelectorAll('.skeleton-card');
-            skels.forEach(s => s.remove());
+    }
+
+    const profilePath =
+        isValidTmdbImagePath(
+            personData
+                ?.profile_path
+        )
+            ? personData
+                .profile_path
+            : null;
+
+    const profileUrl =
+        getSafeTmdbImageUrl(
+            profilePath,
+            IMAGE_BASE,
+            'https://via.placeholder.com/60x90'
+        );
+
+    let favoriteActors = [];
+
+    try {
+        const parsedFavorites =
+            JSON.parse(
+                localStorage.getItem(
+                    'favoriteActors'
+                ) ||
+                '[]'
+            );
+
+        if (
+            Array.isArray(
+                parsedFavorites
+            )
+        ) {
+            favoriteActors =
+                parsedFavorites;
         }
-        
-        if (pagedMovies.length === 0 && reset) {
-            const emptyMsg = filterProvId > 0 ? (jobType === 'Director' ? "Yönetmenin bu platformda içeriği yok." : "Oyuncunun bu platformda içeriği yok.") : "Seçtiğiniz filtrelere uygun yapım bulunamadı.";
-            if (!isFilterChange) {
-                container.innerHTML = `
-                    <div id="actor-bio-card-container" style="margin-bottom:30px;">
-                        ${bioCardHtml}
-                    </div>
-                    <div class='loading' style='margin-top:20px; text-align:center;'>${emptyMsg}</div>
-                `;
-            } else {
-                const existingMsgs = container.querySelectorAll('.loading');
-                existingMsgs.forEach(m => m.remove());
-                container.insertAdjacentHTML('beforeend', `<div class='loading' style='margin-top:20px; text-align:center;'>${emptyMsg}</div>`);
+    } catch (error) {
+        console.warn(
+            'Favorite actors okunamadı:',
+            error
+        );
+    }
+
+    const isFav =
+        favoriteActors.some(
+            actor =>
+                normalizeTmdbId(
+                    actor?.id
+                ) === currentActorId
+        );
+
+    const favClass =
+        isFav
+            ? 'active'
+            : 'inactive';
+
+    const favText =
+        isFav
+            ? 'Favorilerden Çıkar'
+            : 'Favorilere Ekle';
+
+    const bioCard =
+        document.createElement(
+            'div'
+        );
+
+    bioCard.id =
+        'actor-bio-card-container';
+
+    bioCard.className =
+        'actor-bio-card';
+
+    bioCard.style.cssText =
+        'grid-column:1 / -1;' +
+        'width:100%;' +
+        'max-width:800px;' +
+        'margin:0 auto 20px auto;' +
+        'padding:20px;' +
+        'background:var(--card-bg);' +
+        'border-radius:15px;' +
+        'border:1px solid var(--glass-border);' +
+        'color:var(--text-muted);' +
+        'font-size:0.95rem;';
+
+    const layout =
+        document.createElement(
+            'div'
+        );
+
+    layout.style.cssText =
+        'display:flex;' +
+        'align-items:flex-start;' +
+        'gap:20px;' +
+        'margin-bottom:10px;';
+
+    const profileImage =
+        document.createElement(
+            'img'
+        );
+
+    profileImage.src =
+        profileUrl;
+
+    profileImage.alt =
+        actorNameText;
+
+    profileImage.loading =
+        'lazy';
+
+    profileImage.style.cssText =
+        'width:80px;' +
+        'height:120px;' +
+        'border-radius:10px;' +
+        'object-fit:cover;' +
+        'flex-shrink:0;' +
+        'user-select:none;' +
+        '-webkit-user-drag:none;';
+
+    const content =
+        document.createElement(
+            'div'
+        );
+
+    content.style.cssText =
+        'flex:1;' +
+        'min-width:0;';
+
+    const header =
+        document.createElement(
+            'div'
+        );
+
+    header.style.cssText =
+        'display:flex;' +
+        'justify-content:flex-start;' +
+        'align-items:center;' +
+        'margin-bottom:10px;' +
+        'gap:10px;';
+
+    const title =
+        document.createElement(
+            'h3'
+        );
+
+    title.style.cssText =
+        'color:var(--text-color);' +
+        'margin:0;' +
+        'font-size:1.5rem;' +
+        'white-space:nowrap;' +
+        'overflow:hidden;' +
+        'text-overflow:ellipsis;' +
+        'display:inline-block;' +
+        'max-width:calc(100% - 60px);';
+
+    title.textContent =
+        actorNameText;
+
+    const favoriteButton =
+        document.createElement(
+            'button'
+        );
+
+    favoriteButton.id =
+        'modal-actor-fav-btn';
+
+    favoriteButton.type =
+        'button';
+
+    favoriteButton.className =
+        `btn-watchlist ${favClass}`;
+
+    favoriteButton.title =
+        favText;
+
+    favoriteButton.style.cssText =
+        'position:relative;' +
+        'z-index:10;' +
+        'margin-top:0;' +
+        'flex-shrink:0;' +
+        'border-radius:50%;' +
+        'width:35px;' +
+        'height:35px;' +
+        'padding:0;' +
+        'display:flex;' +
+        'align-items:center;' +
+        'justify-content:center;' +
+        'border:none;' +
+        'cursor:pointer;';
+
+    const heartIcon =
+        document.createElement(
+            'i'
+        );
+
+    heartIcon.className =
+        'fas fa-heart';
+
+    heartIcon.style.fontSize =
+        '1.2rem';
+
+    favoriteButton.appendChild(
+        heartIcon
+    );
+
+    favoriteButton
+        .addEventListener(
+            'click',
+            () => {
+                toggleActorFavorite(
+                    favoriteButton,
+                    currentActorId,
+                    actorNameText,
+                    profilePath
+                );
             }
-            container.style.minHeight = '';
-            document.getElementById('loadMoreBtn').style.display = 'none';
+        );
+
+    header.append(
+        title,
+        favoriteButton
+    );
+
+    const biographyContainer =
+        document.createElement(
+            'div'
+        );
+
+    biographyContainer.style.cssText =
+        'max-height:110px;' +
+        'overflow-y:auto;' +
+        'padding-right:5px;' +
+        'white-space:pre-wrap;';
+
+    if (
+        birthYear ||
+        birthPlace
+    ) {
+        const birthLabel =
+            document.createElement(
+                'strong'
+            );
+
+        birthLabel.textContent =
+            'Doğum:';
+
+        biographyContainer.append(
+            birthLabel,
+            document.createTextNode(
+                ` ${
+                    [
+                        birthYear,
+                        birthPlace
+                    ]
+                        .filter(Boolean)
+                        .join(' ')
+                }`
+            ),
+            document.createElement(
+                'br'
+            )
+        );
+    }
+
+    if (biography) {
+        biographyContainer.appendChild(
+            document.createTextNode(
+                biography
+            )
+        );
+    }
+
+    content.append(
+        header,
+        biographyContainer
+    );
+
+    layout.append(
+        profileImage,
+        content
+    );
+
+    bioCard.appendChild(
+        layout
+    );
+
+    container.appendChild(
+        bioCard
+    );
+    }
+
+    if (isFilterChange) {
+        if (
+            !isRouteContextCurrent(
+                routeContext,
+                'actor',
+                actorId
+            )
+        ) {
             return;
         }
+
+        const skels =
+            container.querySelectorAll(
+                '.skeleton-card'
+            );
+
+        skels.forEach(
+            skeleton =>
+                skeleton.remove()
+        );
+    }
+
+    if (
+        pagedMovies.length === 0 &&
+        reset
+    ) {
+        const emptyMsg =
+            filterProvId > 0
+                ? (
+                    jobType ===
+                        'Director'
+                        ? 'Yönetmenin bu platformda içeriği yok.'
+                        : 'Oyuncunun bu platformda içeriği yok.'
+                )
+                : 'Seçtiğiniz filtrelere uygun yapım bulunamadı.';
+
+        const existingMsgs =
+            container.querySelectorAll(
+                '.loading'
+            );
+
+        existingMsgs.forEach(
+            message =>
+                message.remove()
+        );
+
+        const emptyElement =
+            document.createElement(
+                'div'
+            );
+
+        emptyElement.className =
+            'loading';
+
+        emptyElement.style.cssText =
+            'margin-top:20px;' +
+            'text-align:center;';
+
+        emptyElement.textContent =
+            emptyMsg;
+
+        container.appendChild(
+            emptyElement
+        );
+
+        container.style.minHeight =
+            '';
+
+        document
+            .getElementById(
+                'loadMoreBtn'
+            )
+            .style.display =
+            'none';
+
+        return;
+    }
         
         if (!isRouteContextCurrent(routeContext, "actor", actorId)) return;
         for (let i = 0; i < pagedMovies.length; i++) {
@@ -367,100 +862,561 @@ async function renderActor(actorId, actorName = "", reset = true, jobType = 'cas
 }
 
 let currentTooltipTimer = null;
-function showActorTooltip(element, actorId) {
-    if (currentTooltipTimer) clearTimeout(currentTooltipTimer);
-    
-    currentTooltipTimer = setTimeout(async () => {
-        let tooltip = document.getElementById('global-actor-tooltip');
-        if (!tooltip) {
-            tooltip = document.createElement('div');
-            tooltip.id = 'global-actor-tooltip';
-            tooltip.className = 'actor-tooltip';
-            document.body.appendChild(tooltip);
-        }
-        
-        tooltip.innerHTML = "Yükleniyor...";
-        
-        // Calculate position
-        const rect = element.getBoundingClientRect();
-        tooltip.style.position = 'fixed';
-        tooltip.style.left = (rect.left + rect.width / 2) + 'px';
-        tooltip.style.bottom = (window.innerHeight - rect.top + 10) + 'px';
-        tooltip.style.transform = 'translateX(-50%) translateY(0)';
-        tooltip.classList.add('active');
-        
-        try {
-            const [pRes, mRes] = await Promise.all([
-                fetch(`${BASE_URL}/person/${actorId}?api_key=${API_KEY}&language=tr-TR`),
-                fetch(`${BASE_URL}/person/${actorId}/combined_credits?api_key=${API_KEY}&language=tr-TR`)
-            ]);
-            
-            const person = await pRes.json();
-            const movies = await mRes.json();
-            
-            let ageHtml = "";
-            if (person.birthday) {
-                const birth = new Date(person.birthday);
-                const end = person.deathday ? new Date(person.deathday) : new Date();
-                const age = Math.floor((end - birth) / (365.25 * 24 * 60 * 60 * 1000));
-                ageHtml = person.deathday ? `Vefat (${age} yaşında)` : `${age} Yaşında`;
-            }
-            
-            const place = person.place_of_birth ? `<br>${person.place_of_birth.split(',').pop().trim()}` : "";
-            
-            const bestMovies = (movies.cast || []).sort((a,b) => b.popularity - a.popularity).slice(0, 3);
-            let moviesHtml = "";
-            bestMovies.forEach(m => {
-                moviesHtml += `<li style="white-space: normal; overflow: visible;">• ${m.title || m.name}</li>`;
-            });
-            
-            tooltip.innerHTML = `
-                <h4>${person.name}</h4>
-                <div class="tt-meta">${ageHtml} ${place}</div>
-                ${moviesHtml ? `<ul style="padding: 0; list-style: none;">${moviesHtml}</ul>` : ''}
-            `;
-        } catch(e) {
-            tooltip.innerHTML = "Bilgi alınamadı.";
-        }
-    }, 400);
+let currentTooltipActorId = null;
+function showActorTooltip(
+    element,
+    actorId
+) {
+    const safeActorId =
+        normalizeTmdbId(
+            actorId
+        );
+
+    if (
+        !element ||
+        typeof element
+            .getBoundingClientRect !==
+            'function' ||
+        !safeActorId
+    ) {
+        return;
+    }
+
+    if (currentTooltipTimer) {
+        clearTimeout(
+            currentTooltipTimer
+        );
+    }
+
+    currentTooltipActorId =
+        safeActorId;
+
+    currentTooltipTimer =
+        setTimeout(
+            async () => {
+                currentTooltipTimer =
+                    null;
+
+                if (
+                    currentTooltipActorId !==
+                        safeActorId ||
+                    !element.isConnected
+                ) {
+                    return;
+                }
+
+                let tooltip =
+                    document.getElementById(
+                        'global-actor-tooltip'
+                    );
+
+                if (!tooltip) {
+                    tooltip =
+                        document.createElement(
+                            'div'
+                        );
+
+                    tooltip.id =
+                        'global-actor-tooltip';
+
+                    tooltip.className =
+                        'actor-tooltip';
+
+                    document.body
+                        .appendChild(
+                            tooltip
+                        );
+                }
+
+                tooltip.textContent =
+                    'Yükleniyor...';
+
+                const rect =
+                    element
+                        .getBoundingClientRect();
+
+                tooltip.style.position =
+                    'fixed';
+
+                tooltip.style.left =
+                    (
+                        rect.left +
+                        rect.width / 2
+                    ) + 'px';
+
+                tooltip.style.bottom =
+                    (
+                        window.innerHeight -
+                        rect.top +
+                        10
+                    ) + 'px';
+
+                tooltip.style.transform =
+                    'translateX(-50%) translateY(0)';
+
+                tooltip.classList.add(
+                    'active'
+                );
+
+                try {
+                    const [
+                        personResponse,
+                        moviesResponse
+                    ] =
+                        await Promise.all([
+                            fetch(
+                                `${BASE_URL}/person/${safeActorId}?api_key=${API_KEY}&language=tr-TR`
+                            ),
+                            fetch(
+                                `${BASE_URL}/person/${safeActorId}/combined_credits?api_key=${API_KEY}&language=tr-TR`
+                            )
+                        ]);
+
+                    const person =
+                        await personResponse
+                            .json();
+
+                    const movies =
+                        await moviesResponse
+                            .json();
+
+                    if (
+                        currentTooltipActorId !==
+                            safeActorId ||
+                        !element.isConnected
+                    ) {
+                        return;
+                    }
+
+                    const personName =
+                        String(
+                            person?.name ||
+                            'Bilinmiyor'
+                        );
+
+                    let ageText = '';
+
+                    if (
+                        person?.birthday
+                    ) {
+                        const birth =
+                            new Date(
+                                person.birthday
+                            );
+
+                        let endDate =
+                            new Date();
+
+                        let datesValid =
+                            !Number.isNaN(
+                                birth.getTime()
+                            );
+
+                        if (
+                            person.deathday
+                        ) {
+                            const death =
+                                new Date(
+                                    person
+                                        .deathday
+                                );
+
+                            if (
+                                Number.isNaN(
+                                    death
+                                        .getTime()
+                                )
+                            ) {
+                                datesValid =
+                                    false;
+                            } else {
+                                endDate =
+                                    death;
+                            }
+                        }
+
+                        if (
+                            datesValid &&
+                            endDate >= birth
+                        ) {
+                            const age =
+                                Math.floor(
+                                    (
+                                        endDate -
+                                        birth
+                                    ) /
+                                    (
+                                        365.25 *
+                                        24 *
+                                        60 *
+                                        60 *
+                                        1000
+                                    )
+                                );
+
+                            if (
+                                Number.isFinite(
+                                    age
+                                ) &&
+                                age >= 0 &&
+                                age <= 130
+                            ) {
+                                ageText =
+                                    person
+                                        .deathday
+                                        ? `Vefat (${age} yaşında)`
+                                        : `${age} Yaşında`;
+                            }
+                        }
+                    }
+
+                    let place = '';
+
+                    if (
+                        typeof person
+                            ?.place_of_birth ===
+                            'string'
+                    ) {
+                        const placeParts =
+                            person
+                                .place_of_birth
+                                .split(',');
+
+                        place =
+                            String(
+                                placeParts
+                                    .pop() ||
+                                ''
+                            ).trim();
+                    }
+
+                    const cast =
+                        Array.isArray(
+                            movies?.cast
+                        )
+                            ? [
+                                ...movies.cast
+                            ]
+                            : [];
+
+                    const popularityOf =
+                        work =>
+                            typeof work
+                                ?.popularity ===
+                                'number' &&
+                            Number.isFinite(
+                                work.popularity
+                            )
+                                ? work.popularity
+                                : 0;
+
+                    const bestMovies =
+                        cast
+                            .sort(
+                                (a, b) =>
+                                    popularityOf(
+                                        b
+                                    ) -
+                                    popularityOf(
+                                        a
+                                    )
+                            )
+                            .slice(0, 3);
+
+                    if (
+                        currentTooltipActorId !==
+                            safeActorId ||
+                        !element.isConnected
+                    ) {
+                        return;
+                    }
+
+                    const title =
+                        document.createElement(
+                            'h4'
+                        );
+
+                    title.textContent =
+                        personName;
+
+                    const meta =
+                        document.createElement(
+                            'div'
+                        );
+
+                    meta.className =
+                        'tt-meta';
+
+                    if (ageText) {
+                        meta.appendChild(
+                            document
+                                .createTextNode(
+                                    ageText
+                                )
+                        );
+                    }
+
+                    if (place) {
+                        if (ageText) {
+                            meta.appendChild(
+                                document
+                                    .createElement(
+                                        'br'
+                                    )
+                            );
+                        }
+
+                        meta.appendChild(
+                            document
+                                .createTextNode(
+                                    place
+                                )
+                        );
+                    }
+
+                    const nodes = [
+                        title,
+                        meta
+                    ];
+
+                    if (
+                        bestMovies.length >
+                        0
+                    ) {
+                        const list =
+                            document
+                                .createElement(
+                                    'ul'
+                                );
+
+                        list.style.cssText =
+                            'padding:0;' +
+                            'list-style:none;';
+
+                        bestMovies.forEach(
+                            work => {
+                                const workName =
+                                    String(
+                                        work
+                                            ?.title ||
+                                        work
+                                            ?.name ||
+                                        'Bilinmiyor'
+                                    );
+
+                                const item =
+                                    document
+                                        .createElement(
+                                            'li'
+                                        );
+
+                                item.style.cssText =
+                                    'white-space:normal;' +
+                                    'overflow:visible;';
+
+                                item.textContent =
+                                    `• ${workName}`;
+
+                                list.appendChild(
+                                    item
+                                );
+                            }
+                        );
+
+                        nodes.push(
+                            list
+                        );
+                    }
+
+                    tooltip.replaceChildren(
+                        ...nodes
+                    );
+                } catch (error) {
+                    if (
+                        currentTooltipActorId !==
+                            safeActorId ||
+                        !element.isConnected
+                    ) {
+                        return;
+                    }
+
+                    tooltip.textContent =
+                        'Bilgi alınamadı.';
+                }
+            },
+            400
+        );
 }
 
-function hideActorTooltip(element = null) {
-    if (currentTooltipTimer) clearTimeout(currentTooltipTimer);
-    const tooltip = document.getElementById('global-actor-tooltip');
+function hideActorTooltip(
+    element = null
+) {
+    if (currentTooltipTimer) {
+        clearTimeout(
+            currentTooltipTimer
+        );
+
+        currentTooltipTimer =
+            null;
+    }
+
+    currentTooltipActorId =
+        null;
+
+    const tooltip =
+        document.getElementById(
+            'global-actor-tooltip'
+        );
+
     if (tooltip) {
-        tooltip.classList.remove('active');
+        tooltip.classList.remove(
+            'active'
+        );
     }
 }
 
-function toggleActorFavorite(btnElem, actorId, actorName, profilePath) {
-    let favs = JSON.parse(localStorage.getItem('favoriteActors') || '[]');
-    const existingIndex = favs.findIndex(a => a.id === actorId);
-    
-    if (existingIndex > -1) {
-        favs.splice(existingIndex, 1);
+function toggleActorFavorite(
+    btnElem,
+    actorId,
+    actorName,
+    profilePath
+) {
+    const safeActorId =
+        normalizeTmdbId(
+            actorId
+        );
+
+    if (!safeActorId) {
+        return;
+    }
+
+    const safeActorName =
+        String(
+            actorName ||
+            'Bilinmiyor'
+        );
+
+    const safeProfilePath =
+        isValidTmdbImagePath(
+            profilePath
+        )
+            ? profilePath
+            : null;
+
+    let favs = [];
+
+    try {
+        const parsedFavorites =
+            JSON.parse(
+                localStorage.getItem(
+                    'favoriteActors'
+                ) ||
+                '[]'
+            );
+
+        if (
+            Array.isArray(
+                parsedFavorites
+            )
+        ) {
+            favs =
+                parsedFavorites;
+        }
+    } catch (error) {
+        console.warn(
+            'Favorite actors okunamadı:',
+            error
+        );
+    }
+
+    const isAlreadyFavorite =
+        favs.some(
+            actor =>
+                normalizeTmdbId(
+                    actor?.id
+                ) ===
+                safeActorId
+        );
+
+    if (isAlreadyFavorite) {
+        favs =
+            favs.filter(
+                actor =>
+                    normalizeTmdbId(
+                        actor?.id
+                    ) !==
+                    safeActorId
+            );
+
         if (btnElem) {
-            btnElem.classList.remove('active', 'inactive');
-            btnElem.classList.add('inactive');
-            if(btnElem.id === "modal-actor-fav-btn") {
-                btnElem.innerHTML = '<i class="fas fa-heart" style="font-size:1.2rem;"></i>';
+            btnElem.classList.remove(
+                'active',
+                'inactive'
+            );
+
+            btnElem.classList.add(
+                'inactive'
+            );
+
+            btnElem.title =
+                'Favorilere Ekle';
+
+            if (
+                btnElem.id ===
+                'modal-actor-fav-btn'
+            ) {
+                btnElem.innerHTML =
+                    '<i class="fas fa-heart" style="font-size:1.2rem;"></i>';
             }
         }
     } else {
-        favs.push({ id: actorId, name: actorName, profile_path: profilePath });
+        favs.push({
+            id: safeActorId,
+            name:
+                safeActorName,
+            profile_path:
+                safeProfilePath
+        });
+
         if (btnElem) {
-            btnElem.classList.remove('active', 'inactive');
-            btnElem.classList.add('active');
-            if(btnElem.id === "modal-actor-fav-btn") {
-                btnElem.innerHTML = '<i class="fas fa-heart" style="font-size:1.2rem;"></i>';
+            btnElem.classList.remove(
+                'active',
+                'inactive'
+            );
+
+            btnElem.classList.add(
+                'active'
+            );
+
+            btnElem.title =
+                'Favorilerden Çıkar';
+
+            if (
+                btnElem.id ===
+                'modal-actor-fav-btn'
+            ) {
+                btnElem.innerHTML =
+                    '<i class="fas fa-heart" style="font-size:1.2rem;"></i>';
             }
         }
     }
-    
-    localStorage.setItem('favoriteActors', JSON.stringify(favs));
-    
-    // Refresh profile grid if open
-    if (document.getElementById('profile') && document.getElementById('profile').classList.contains('active-tab')) {
+
+    localStorage.setItem(
+        'favoriteActors',
+        JSON.stringify(favs)
+    );
+
+    const profile =
+        document.getElementById(
+            'profile'
+        );
+
+    if (
+        profile &&
+        profile.classList.contains(
+            'active-tab'
+        )
+    ) {
         loadProfile();
     }
 }
@@ -473,68 +1429,336 @@ let selectedActor2Id = null;
 let actor1Timeout = null;
 let actor2Timeout = null;
 
-async function handleActorAutocomplete(event, actorNum) {
-    const input = document.getElementById(`actor${actorNum}-input`);
-    const box = document.getElementById(`actor${actorNum}-autocomplete`);
-    if (!input || !box) return;
-
-    if (actorNum === 1) selectedActor1Id = null;
-    else selectedActor2Id = null;
-
-    const query = input.value.trim();
-    if (query.length < 2) {
-        box.style.display = 'none';
+async function handleActorAutocomplete(
+    event,
+    actorNum
+) {
+    if (
+        actorNum !== 1 &&
+        actorNum !== 2
+    ) {
         return;
     }
 
-    if (actorNum === 1) clearTimeout(actor1Timeout);
-    else clearTimeout(actor2Timeout);
+    const input =
+        document.getElementById(
+            `actor${actorNum}-input`
+        );
 
-    const timeout = setTimeout(async () => {
-        try {
-            const res = await fetch(`${BASE_URL}/search/person?api_key=${API_KEY}&query=${encodeURIComponent(query)}&language=tr-TR`);
-            const data = await res.json();
-            let results = data.results || [];
-            results = results.filter(item => (item.known_for_department === 'Acting' || item.known_for_department === 'Directing') && item.profile_path).sort((a, b) => b.popularity - a.popularity);
+    const box =
+        document.getElementById(
+            `actor${actorNum}-autocomplete`
+        );
 
-            if (results.length === 0) {
-                box.style.display = 'none';
-                return;
-            }
+    if (!input || !box) {
+        return;
+    }
 
-            box.innerHTML = "";
-            results.slice(0, 5).forEach(item => {
-                const name = item.name || "Bilinmiyor";
-                const profile = item.profile_path ? IMAGE_BASE + item.profile_path : 'https://via.placeholder.com/40x60?text=Yok';
-                const knownFor = item.known_for_department || "Oyuncu";
+    if (actorNum === 1) {
+        selectedActor1Id =
+            null;
+    } else {
+        selectedActor2Id =
+            null;
+    }
 
-                const div = document.createElement('div');
-                div.className = 'suggestion-item';
-                div.innerHTML = `
-                    <img src="${profile}" class="suggestion-img" loading="lazy">
-                    <div class="suggestion-info">
-                        <span class="suggestion-title">${name}</span>
-                        <span class="suggestion-meta">${knownFor}</span>
-                    </div>
-                `;
+    const query =
+        input.value.trim();
 
-                div.onclick = () => {
-                    input.value = name;
-                    if (actorNum === 1) selectedActor1Id = item.id;
-                    else selectedActor2Id = item.id;
-                    box.style.display = 'none';
-                };
+    if (query.length < 2) {
+        box.style.display =
+            'none';
 
-                box.appendChild(div);
-            });
-            box.style.display = 'block';
-        } catch(e) {
-            console.error("Actor Autocomplete Error:", e);
-        }
-    }, 300);
+        return;
+    }
 
-    if (actorNum === 1) actor1Timeout = timeout;
-    else actor2Timeout = timeout;
+    const isCurrentQuery =
+        () =>
+            input.value.trim() ===
+            query;
+
+    if (actorNum === 1) {
+        clearTimeout(
+            actor1Timeout
+        );
+    } else {
+        clearTimeout(
+            actor2Timeout
+        );
+    }
+
+    const timeout =
+        setTimeout(
+            async () => {
+                try {
+                    const res =
+                        await fetch(
+                            `${BASE_URL}/search/person?api_key=${API_KEY}&query=${encodeURIComponent(query)}&language=tr-TR`
+                        );
+
+                    const data =
+                        await res.json();
+
+                    if (
+                        !isCurrentQuery()
+                    ) {
+                        return;
+                    }
+
+                    let results =
+                        Array.isArray(
+                            data?.results
+                        )
+                            ? data.results
+                            : [];
+
+                    results =
+                        results
+                            .filter(
+                                item => {
+                                    const itemId =
+                                        normalizeTmdbId(
+                                            item
+                                                ?.id
+                                        );
+
+                                    const validDepartment =
+                                        item
+                                            ?.known_for_department ===
+                                            'Acting' ||
+                                        item
+                                            ?.known_for_department ===
+                                            'Directing';
+
+                                    const validProfile =
+                                        isValidTmdbImagePath(
+                                            item
+                                                ?.profile_path
+                                        );
+
+                                    return (
+                                        itemId &&
+                                        validDepartment &&
+                                        validProfile
+                                    );
+                                }
+                            )
+                            .sort(
+                                (a, b) => {
+                                    const popularityA =
+                                        typeof a
+                                            ?.popularity ===
+                                            'number' &&
+                                        Number.isFinite(
+                                            a.popularity
+                                        )
+                                            ? a.popularity
+                                            : 0;
+
+                                    const popularityB =
+                                        typeof b
+                                            ?.popularity ===
+                                            'number' &&
+                                        Number.isFinite(
+                                            b.popularity
+                                        )
+                                            ? b.popularity
+                                            : 0;
+
+                                    return (
+                                        popularityB -
+                                        popularityA
+                                    );
+                                }
+                            );
+
+                    if (
+                        results.length ===
+                        0
+                    ) {
+                        if (
+                            isCurrentQuery()
+                        ) {
+                            box.style.display =
+                                'none';
+                        }
+
+                        return;
+                    }
+
+                    if (
+                        !isCurrentQuery()
+                    ) {
+                        return;
+                    }
+
+                    box.replaceChildren();
+
+                    let appendedCount = 0;
+
+                    results
+                        .slice(0, 5)
+                        .forEach(
+                            item => {
+                                const itemId =
+                                    normalizeTmdbId(
+                                        item
+                                            ?.id
+                                    );
+
+                                if (!itemId) {
+                                    return;
+                                }
+
+                                const name =
+                                    String(
+                                        item
+                                            ?.name ||
+                                        'Bilinmiyor'
+                                    );
+
+                                const profile =
+                                    getSafeTmdbImageUrl(
+                                        item
+                                            ?.profile_path,
+                                        IMAGE_BASE,
+                                        'https://via.placeholder.com/40x60?text=Yok'
+                                    );
+
+                                const knownFor =
+                                    String(
+                                        item
+                                            ?.known_for_department ||
+                                        'Oyuncu'
+                                    );
+
+                                const div =
+                                    document
+                                        .createElement(
+                                            'div'
+                                        );
+
+                                div.className =
+                                    'suggestion-item';
+
+                                const image =
+                                    document
+                                        .createElement(
+                                            'img'
+                                        );
+
+                                image.src =
+                                    profile;
+
+                                image.alt =
+                                    name;
+
+                                image.className =
+                                    'suggestion-img';
+
+                                image.loading =
+                                    'lazy';
+
+                                const info =
+                                    document
+                                        .createElement(
+                                            'div'
+                                        );
+
+                                info.className =
+                                    'suggestion-info';
+
+                                const title =
+                                    document
+                                        .createElement(
+                                            'span'
+                                        );
+
+                                title.className =
+                                    'suggestion-title';
+
+                                title.textContent =
+                                    name;
+
+                                const meta =
+                                    document
+                                        .createElement(
+                                            'span'
+                                        );
+
+                                meta.className =
+                                    'suggestion-meta';
+
+                                meta.textContent =
+                                    knownFor;
+
+                                info.append(
+                                    title,
+                                    meta
+                                );
+
+                                div.append(
+                                    image,
+                                    info
+                                );
+
+                                div.addEventListener(
+                                    'click',
+                                    () => {
+                                        input.value =
+                                            name;
+
+                                        if (
+                                            actorNum ===
+                                            1
+                                        ) {
+                                            selectedActor1Id =
+                                                itemId;
+                                        } else {
+                                            selectedActor2Id =
+                                                itemId;
+                                        }
+
+                                        box.style.display =
+                                            'none';
+                                    }
+                                );
+
+                                box.appendChild(
+                                    div
+                                );
+
+                                appendedCount++;
+                            }
+                        );
+
+                    if (
+                        !isCurrentQuery()
+                    ) {
+                        return;
+                    }
+
+                    box.style.display =
+                        appendedCount > 0
+                            ? 'block'
+                            : 'none';
+                } catch (error) {
+                    console.error(
+                        'Actor Autocomplete Error:',
+                        error
+                    );
+                }
+            },
+            300
+        );
+
+    if (actorNum === 1) {
+        actor1Timeout =
+            timeout;
+    } else {
+        actor2Timeout =
+            timeout;
+    }
 }
 
 async function findCommonMovies() {
