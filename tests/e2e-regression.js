@@ -428,7 +428,10 @@ if (collectionMatch) {
                 }
                 await waitRender();
                 check(window.location.hash === '#movie/70001/movie', 'Movie: Route updated to typed movie');
-                check(document.getElementById('details-modal').style.display === 'flex', 'Movie: Modal open');
+                check(
+                    getComputedStyle(document.getElementById('details-modal')).display === 'flex',
+                    'Movie: Modal open'
+                );
                 // Wait for title to be populated by async fetch
                 let titleText = '';
                 for(let i=0; i<50; i++){
@@ -480,7 +483,10 @@ if (collectionMatch) {
                 }
                 await waitRender();
                 check(window.location.hash === '#movie/80001/tv', 'TV: Route updated to typed tv');
-                check(document.getElementById('details-modal').style.display === 'flex', 'TV: Modal open');
+                check(
+                    getComputedStyle(document.getElementById('details-modal')).display === 'flex',
+                    'TV: Modal open'
+                );
                 let tvTitleText = '';
                 for(let i=0; i<50; i++){
                     tvTitleText = document.getElementById('details-title').innerText || document.getElementById('details-title').textContent || '';
@@ -502,9 +508,31 @@ if (collectionMatch) {
                     if(window.location.hash === '#actor/90001') break;
                     await wait(100);
                 }
+
                 await waitRender();
-                check(window.location.hash === '#actor/90001', 'Actor: Route updated');
-                check(document.getElementById('searchInput').value === 'E2E Actor', 'Actor: Name matches');
+
+                check(
+                    window.location.hash === '#actor/90001',
+                    'Actor: Route updated'
+                );
+
+                let actorNameValue = '';
+
+                for (let i = 0; i < 50; i++) {
+                    actorNameValue =
+                        document.getElementById('searchInput')?.value || '';
+
+                    if (actorNameValue === 'E2E Actor') {
+                        break;
+                    }
+
+                    await wait(100);
+                }
+
+                check(
+                    actorNameValue === 'E2E Actor',
+                    'Actor: Name matches (was: ' + actorNameValue + ')'
+                );
                 
                 // G. PLATFORM (UI Click)
                 const platformNav = Array.from(document.querySelectorAll('.nav-links a')).find(t => t.getAttribute('onclick')?.includes('platform'));

@@ -175,6 +175,8 @@ function handleRoute() {
         currentRouterIndex = newIndex;
     }
     window._justNavigated = false;
+    const shouldRestoreDetailsFocus = Boolean(window.isNavigatingBack);
+    window.isNavigatingBack = false;
     
     const route = parseRoute();
 
@@ -202,15 +204,53 @@ function handleRoute() {
         signal: currentAbortController.signal
     };
 
+    if (route.page !== 'movie' && route.page !== 'actor') {
+        window.lastNonMovieRoute = route.page;
+    }
+
     const detailsModal =
         document.getElementById('details-modal');
 
     const actorModal =
         document.getElementById('actor-modal');
 
-    if (detailsModal) {
-        detailsModal.style.display = 'none';
-        detailsModal.classList.remove('active');
+    const trailerModal =
+        document.getElementById('trailer-modal');
+
+    const randomModal =
+        document.getElementById('random-modal');
+
+    // Transient overlays must never survive a real route/history change.
+    if (trailerModal) {
+        if (window.ModalManager && window.ModalManager.isModalOpen(trailerModal)) {
+            window.ModalManager.closeModal(trailerModal, { skipFocusRestore: true });
+        } else if (trailerModal.classList.contains('active')) {
+            trailerModal.classList.remove('active');
+            trailerModal.setAttribute('aria-hidden', 'true');
+            trailerModal.inert = true;
+        }
+    }
+
+    if (randomModal) {
+        if (window.ModalManager && window.ModalManager.isModalOpen(randomModal)) {
+            window.ModalManager.closeModal(randomModal, { skipFocusRestore: true });
+        } else if (randomModal.classList.contains('active')) {
+            randomModal.classList.remove('active');
+            randomModal.setAttribute('aria-hidden', 'true');
+            randomModal.inert = true;
+        }
+    }
+
+    if (detailsModal && route.page !== 'movie') {
+        if (window.ModalManager && window.ModalManager.isModalOpen(detailsModal)) {
+            window.ModalManager.closeModal(detailsModal, {
+                skipFocusRestore: !shouldRestoreDetailsFocus
+            });
+        } else {
+            detailsModal.style.display = 'none';
+            detailsModal.classList.remove('active');
+            detailsModal.setAttribute('aria-hidden', 'true');
+        }
 
         const dt = document.getElementById('details-title');
         if (dt) dt.innerText = "";
@@ -263,22 +303,23 @@ function handleRoute() {
         );
     }
 
-    if (actorModal) {
-        actorModal.style.display = 'none';
+    if (actorModal && route.page !== 'actor') {
+        if (window.ModalManager && window.ModalManager.isModalOpen(actorModal)) {
+            window.ModalManager.closeModal(actorModal, { skipFocusRestore: true });
+        } else {
+            actorModal.style.display = 'none';
+            actorModal.classList.remove('active');
+            actorModal.setAttribute('aria-hidden', 'true');
+        }
     }
-
-    document.body.style.overflow = "auto";
 
     if (window.player) {
         window.player.destroy();
         window.player = null;
     }
 
-    const trailerModal =
-        document.getElementById('trailer-modal');
-
-    if (trailerModal) {
-        trailerModal.style.display = 'none';
+    if (!window.ModalManager || !window.ModalManager.hasActiveModal()) {
+        document.body.style.overflow = "auto";
     }
 
     switch (route.page) {

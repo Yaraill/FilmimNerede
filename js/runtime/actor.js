@@ -103,7 +103,8 @@ async function renderActor(
     }
     
     if (reset && !isFilterChange) {
-        window.scrollTo({ top: 0, behavior: 'smooth' });
+        const scrollBehavior = (typeof prefersReducedMotion === 'function' && prefersReducedMotion()) ? 'auto' : 'smooth';
+        window.scrollTo({ top: 0, behavior: scrollBehavior });
         clearAllFilters();
     }
     
@@ -1428,6 +1429,8 @@ let selectedActor1Id = null;
 let selectedActor2Id = null;
 let actor1Timeout = null;
 let actor2Timeout = null;
+let actor1ActiveIndex = -1;
+let actor2ActiveIndex = -1;
 
 async function handleActorAutocomplete(
     event,
@@ -1437,6 +1440,10 @@ async function handleActorAutocomplete(
         actorNum !== 1 &&
         actorNum !== 2
     ) {
+        return;
+    }
+
+    if (event && ['ArrowDown', 'ArrowUp', 'Enter', 'Escape', 'Tab'].includes(event.key)) {
         return;
     }
 
@@ -1457,9 +1464,11 @@ async function handleActorAutocomplete(
     if (actorNum === 1) {
         selectedActor1Id =
             null;
+        actor1ActiveIndex = -1;
     } else {
         selectedActor2Id =
             null;
+        actor2ActiveIndex = -1;
     }
 
     const query =
@@ -1468,6 +1477,8 @@ async function handleActorAutocomplete(
     if (query.length < 2) {
         box.style.display =
             'none';
+        input.setAttribute('aria-expanded', 'false');
+        input.removeAttribute('aria-activedescendant');
 
         return;
     }
@@ -1581,6 +1592,10 @@ async function handleActorAutocomplete(
                         ) {
                             box.style.display =
                                 'none';
+                            input.setAttribute('aria-expanded', 'false');
+                            input.removeAttribute('aria-activedescendant');
+                            if (actorNum === 1) actor1ActiveIndex = -1;
+                            else actor2ActiveIndex = -1;
                         }
 
                         return;
@@ -1593,13 +1608,16 @@ async function handleActorAutocomplete(
                     }
 
                     box.replaceChildren();
+                    input.removeAttribute('aria-activedescendant');
+                    if (actorNum === 1) actor1ActiveIndex = -1;
+                    else actor2ActiveIndex = -1;
 
                     let appendedCount = 0;
 
                     results
                         .slice(0, 5)
                         .forEach(
-                            item => {
+                            (item, index) => {
                                 const itemId =
                                     normalizeTmdbId(
                                         item
@@ -1640,6 +1658,9 @@ async function handleActorAutocomplete(
 
                                 div.className =
                                     'suggestion-item';
+                                div.id = `actor${actorNum}-opt-${index}`;
+                                div.setAttribute('role', 'option');
+                                div.setAttribute('aria-selected', 'false');
 
                                 const image =
                                     document
@@ -1702,27 +1723,30 @@ async function handleActorAutocomplete(
                                     info
                                 );
 
-                                div.addEventListener(
-                                    'click',
-                                    () => {
-                                        input.value =
-                                            name;
+                                const selectActor = () => {
+                                    input.value = name;
 
-                                        if (
-                                            actorNum ===
-                                            1
-                                        ) {
-                                            selectedActor1Id =
-                                                itemId;
-                                        } else {
-                                            selectedActor2Id =
-                                                itemId;
-                                        }
-
-                                        box.style.display =
-                                            'none';
+                                    if (actorNum === 1) {
+                                        selectedActor1Id = itemId;
+                                        actor1ActiveIndex = -1;
+                                    } else {
+                                        selectedActor2Id = itemId;
+                                        actor2ActiveIndex = -1;
                                     }
-                                );
+
+                                    box.querySelectorAll('.suggestion-item').forEach(item => {
+                                        item.classList.remove('active');
+                                        item.setAttribute('aria-selected', 'false');
+                                    });
+                                    box.style.display = 'none';
+                                    input.setAttribute('aria-expanded', 'false');
+                                    input.removeAttribute('aria-activedescendant');
+                                };
+
+                                div.addEventListener('mousedown', (e) => {
+                                    e.preventDefault();
+                                });
+                                div.addEventListener('click', selectActor);
 
                                 box.appendChild(
                                     div
@@ -1738,10 +1762,19 @@ async function handleActorAutocomplete(
                         return;
                     }
 
-                    box.style.display =
-                        appendedCount > 0
-                            ? 'block'
-                            : 'none';
+                    if (appendedCount > 0) {
+                        box.style.display = 'block';
+                        input.setAttribute('aria-expanded', 'true');
+                        if (typeof announceA11y === 'function') {
+                            announceA11y(`${appendedCount} oyuncu önerisi bulundu.`);
+                        }
+                    } else {
+                        box.style.display = 'none';
+                        input.setAttribute('aria-expanded', 'false');
+                        if (typeof announceA11y === 'function') {
+                            announceA11y('Öneri bulunamadı.');
+                        }
+                    }
                 } catch (error) {
                     console.error(
                         'Actor Autocomplete Error:',
@@ -1758,6 +1791,123 @@ async function handleActorAutocomplete(
     } else {
         actor2Timeout =
             timeout;
+    }
+}
+
+function initActorAutocompleteEvents() {
+    [1, 2].forEach(num => {
+        const input = document.getElementById(`actor${num}-input`);
+        const box = document.getElementById(`actor${num}-autocomplete`);
+        if (!input || !box) return;
+
+        input.addEventListener('keydown', (e) => {
+            const isBoxOpen = box.style.display !== 'none' && box.children.length > 0;
+
+            if (e.key === 'ArrowDown') {
+                if (isBoxOpen) {
+                    e.preventDefault();
+                    const items = Array.from(box.querySelectorAll('.suggestion-item'));
+                    if (items.length > 0) {
+                        let activeIdx = num === 1 ? actor1ActiveIndex : actor2ActiveIndex;
+                        activeIdx = (activeIdx + 1) % items.length;
+                        if (num === 1) actor1ActiveIndex = activeIdx;
+                        else actor2ActiveIndex = activeIdx;
+
+                        items.forEach((item, i) => {
+                            const active = i === activeIdx;
+                            item.classList.toggle('active', active);
+                            item.setAttribute('aria-selected', active ? 'true' : 'false');
+                        });
+                        input.setAttribute('aria-activedescendant', items[activeIdx].id);
+                        items[activeIdx].scrollIntoView({ block: 'nearest' });
+                    }
+                }
+            } else if (e.key === 'ArrowUp') {
+                if (isBoxOpen) {
+                    e.preventDefault();
+                    const items = Array.from(box.querySelectorAll('.suggestion-item'));
+                    if (items.length > 0) {
+                        let activeIdx = num === 1 ? actor1ActiveIndex : actor2ActiveIndex;
+                        activeIdx = (activeIdx - 1 + items.length) % items.length;
+                        if (num === 1) actor1ActiveIndex = activeIdx;
+                        else actor2ActiveIndex = activeIdx;
+
+                        items.forEach((item, i) => {
+                            const active = i === activeIdx;
+                            item.classList.toggle('active', active);
+                            item.setAttribute('aria-selected', active ? 'true' : 'false');
+                        });
+                        input.setAttribute('aria-activedescendant', items[activeIdx].id);
+                        items[activeIdx].scrollIntoView({ block: 'nearest' });
+                    }
+                }
+            } else if (e.key === 'Enter') {
+                let activeIdx = num === 1 ? actor1ActiveIndex : actor2ActiveIndex;
+                if (isBoxOpen && activeIdx >= 0) {
+                    const items = Array.from(box.querySelectorAll('.suggestion-item'));
+                    if (items[activeIdx]) {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        items[activeIdx].click();
+                    }
+                }
+            } else if (e.key === 'Escape') {
+                if (isBoxOpen) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    box.querySelectorAll('.suggestion-item').forEach(item => {
+                        item.classList.remove('active');
+                        item.setAttribute('aria-selected', 'false');
+                    });
+                    box.style.display = 'none';
+                    input.setAttribute('aria-expanded', 'false');
+                    input.removeAttribute('aria-activedescendant');
+                    if (num === 1) actor1ActiveIndex = -1;
+                    else actor2ActiveIndex = -1;
+                }
+            } else if (e.key === 'Tab') {
+                if (isBoxOpen) {
+                    // Do not preventDefault; close listbox and allow natural focus movement
+                    box.querySelectorAll('.suggestion-item').forEach(item => {
+                        item.classList.remove('active');
+                        item.setAttribute('aria-selected', 'false');
+                    });
+                    box.style.display = 'none';
+                    input.setAttribute('aria-expanded', 'false');
+                    input.removeAttribute('aria-activedescendant');
+                    if (num === 1) actor1ActiveIndex = -1;
+                    else actor2ActiveIndex = -1;
+                }
+            }
+        });
+    });
+
+    document.addEventListener('click', (e) => {
+        [1, 2].forEach(num => {
+            const input = document.getElementById(`actor${num}-input`);
+            const box = document.getElementById(`actor${num}-autocomplete`);
+            if (box && input && box.style.display !== 'none') {
+                if (!box.contains(e.target) && e.target !== input) {
+                    box.querySelectorAll('.suggestion-item').forEach(item => {
+                        item.classList.remove('active');
+                        item.setAttribute('aria-selected', 'false');
+                    });
+                    box.style.display = 'none';
+                    input.setAttribute('aria-expanded', 'false');
+                    input.removeAttribute('aria-activedescendant');
+                    if (num === 1) actor1ActiveIndex = -1;
+                    else actor2ActiveIndex = -1;
+                }
+            }
+        });
+    });
+}
+
+if (typeof document !== 'undefined' && typeof document.addEventListener === 'function') {
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', initActorAutocompleteEvents);
+    } else {
+        initActorAutocompleteEvents();
     }
 }
 

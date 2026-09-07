@@ -429,7 +429,7 @@ async function runTest() {
 
             window.location.hash = "#movie/77777/movie"; await waitRender();
             check(window.location.hash === '#movie/77777/movie', 'A3: movie direct hash');
-            check(document.getElementById('details-modal').style.display === 'flex', 'A3: movie modal open');
+            check(getComputedStyle(document.getElementById('details-modal')).display === 'flex', 'A3: movie modal open');
             document.getElementById('details-modal').style.display = 'none';
 
             window.location.hash = "#actor/77777"; await waitRender();
@@ -443,7 +443,7 @@ async function runTest() {
 
             window.location.hash = "#film/77777"; await waitRender();
             check(window.location.hash === '#movie/77777', 'A6: legacy film route normalized without type');
-            check(document.getElementById('details-modal').style.display === 'flex', 'A6: modal opened from legacy film route');
+            check(getComputedStyle(document.getElementById('details-modal')).display === 'flex', 'A6: modal opened from legacy film route');
             document.getElementById('details-modal').style.display = 'none';
 
             window.location.hash = "#actor/bad"; await waitRender();
@@ -472,7 +472,7 @@ async function runTest() {
             }
             await waitRender(); // Wait for DOM condition/title
             check(window.location.hash === '#movie/77777/movie', 'B: First Back expected hash');
-            check(document.getElementById('details-modal').style.display === 'flex', 'B: First Back modal open');
+            check(getComputedStyle(document.getElementById('details-modal')).display === 'flex', 'B: First Back modal open');
             check(document.getElementById('details-title').innerText === 'Fast Movie', 'B: First Back title restored');
             
             // 4. SECOND REAL BACK

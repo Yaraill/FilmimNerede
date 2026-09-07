@@ -19,8 +19,12 @@ function toggleWatchlist(btnElem, movieId) {
     allBtns.forEach(btn => {
         if (!isAdding) {
             btn.classList.remove('active');
+            btn.setAttribute('aria-pressed', 'false');
+            btn.setAttribute('aria-label', 'Listeme ekle');
         } else {
             btn.classList.add('active');
+            btn.setAttribute('aria-pressed', 'true');
+            btn.setAttribute('aria-label', 'Listeden çıkar');
         }
     });
     
@@ -124,23 +128,62 @@ function switchProfileTab(tabId, btnElem) {
     document.querySelectorAll('.profile-tab-content').forEach(el => {
         el.classList.remove('active-tab');
         el.style.display = 'none';
+        el.hidden = true;
     });
     const target = document.getElementById(tabId);
     if (target) {
         target.classList.add('active-tab');
         target.style.display = 'block';
+        target.hidden = false;
     }
     
     document.querySelectorAll('.profile-tab-btn').forEach(btn => {
         btn.classList.remove('active');
+        btn.setAttribute('aria-selected', 'false');
+        btn.setAttribute('tabindex', '-1');
         btn.style.background = '';
         btn.style.border = '';
     });
     if (btnElem) {
         btnElem.classList.add('active');
+        btnElem.setAttribute('aria-selected', 'true');
+        btnElem.setAttribute('tabindex', '0');
         btnElem.style.background = '';
         btnElem.style.borderColor = '';
     }
+}
+
+if (typeof document !== 'undefined' && typeof document.addEventListener === 'function') {
+    document.addEventListener('DOMContentLoaded', () => {
+    const profileTabs = document.querySelectorAll('.profile-tab-btn');
+    profileTabs.forEach((tabBtn, index) => {
+        tabBtn.addEventListener('keydown', (e) => {
+            const tabs = Array.from(document.querySelectorAll('.profile-tab-btn'));
+            let targetIdx = -1;
+            if (e.key === 'ArrowRight') {
+                e.preventDefault();
+                targetIdx = (index + 1) % tabs.length;
+            } else if (e.key === 'ArrowLeft') {
+                e.preventDefault();
+                targetIdx = (index - 1 + tabs.length) % tabs.length;
+            } else if (e.key === 'Home') {
+                e.preventDefault();
+                targetIdx = 0;
+            } else if (e.key === 'End') {
+                e.preventDefault();
+                targetIdx = tabs.length - 1;
+            }
+            if (targetIdx !== -1) {
+                const targetTab = tabs[targetIdx];
+                const targetPanelId = targetTab.getAttribute('aria-controls');
+                if (targetPanelId) {
+                    switchProfileTab(targetPanelId, targetTab);
+                    targetTab.focus();
+                }
+            }
+        });
+    });
+});
 }
 
 function loadProfile(routeContext = null) {
@@ -443,6 +486,22 @@ ratedMovies.forEach(m => {
                 card.className =
                     'fav-actor-card';
 
+                const mainBtn =
+                    document.createElement(
+                        'button'
+                    );
+
+                mainBtn.type =
+                    'button';
+
+                mainBtn.className =
+                    'fav-actor-main-btn';
+
+                mainBtn.setAttribute(
+                    'aria-label',
+                    `${actorName} detayları`
+                );
+
                 const img =
                     document.createElement(
                         'img'
@@ -465,6 +524,20 @@ ratedMovies.forEach(m => {
                 title.textContent =
                     actorName;
 
+                mainBtn.append(
+                    img,
+                    title
+                );
+
+                mainBtn.addEventListener(
+                    'click',
+                    () => {
+                        openActorDetails(
+                            actorId
+                        );
+                    }
+                );
+
                 const heart =
                     document.createElement(
                         'button'
@@ -476,6 +549,19 @@ ratedMovies.forEach(m => {
                 heart.className =
                     'btn-actor-heart active';
 
+                heart.setAttribute(
+                    'aria-label',
+                    `${actorName} favorilerden çıkar`
+                );
+
+                heart.setAttribute(
+                    'aria-pressed',
+                    'true'
+                );
+
+                heart.title =
+                    'Favorilerden çıkar';
+
                 const heartIcon =
                     document.createElement(
                         'i'
@@ -484,17 +570,13 @@ ratedMovies.forEach(m => {
                 heartIcon.className =
                     'fas fa-heart';
 
-                heart.appendChild(
-                    heartIcon
+                heartIcon.setAttribute(
+                    'aria-hidden',
+                    'true'
                 );
 
-                card.addEventListener(
-                    'click',
-                    () => {
-                        openActorDetails(
-                            actorId
-                        );
-                    }
+                heart.appendChild(
+                    heartIcon
                 );
 
                 heart.addEventListener(
@@ -511,10 +593,21 @@ ratedMovies.forEach(m => {
                     }
                 );
 
+                heart.addEventListener(
+                    'keydown',
+                    event => {
+                        if (
+                            event.key === 'Enter' ||
+                            event.key === ' '
+                        ) {
+                            event.stopPropagation();
+                        }
+                    }
+                );
+
                 card.append(
-                    img,
-                    title,
-                    heart
+                    heart,
+                    mainBtn
                 );
 
                 actorsGrid.appendChild(

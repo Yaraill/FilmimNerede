@@ -1,23 +1,50 @@
 function surpriseMe() {
     const modal = document.getElementById('random-modal');
     if (modal) {
-        modal.classList.add('active');
-        document.body.style.overflow = "hidden";
+        const trigger = document.getElementById('surprise-btn') || document.activeElement;
+        if (window.ModalManager) {
+            window.ModalManager.openModal(modal, trigger);
+        } else {
+            modal.classList.add('active');
+            modal.setAttribute('aria-hidden', 'false');
+            document.body.style.overflow = "hidden";
+        }
     }
 }
 
 function closeRandom(event, force = false) {
-    if (force || event.target.id === 'random-modal' || event.target.closest('.close-btn')) {
-        const modal = document.getElementById('random-modal');
-        if (modal) {
+    const modal = document.getElementById('random-modal');
+    if (!modal) return;
+
+    const isBackdropClick = Boolean(event && event.target === modal);
+    if (force || isBackdropClick) {
+        if (window.ModalManager) {
+            window.ModalManager.closeModal(modal);
+        } else {
             modal.classList.remove('active');
-            if (!document.getElementById('details-modal').classList.contains('active')) {
+            modal.setAttribute('aria-hidden', 'true');
+            if (!document.getElementById('details-modal')?.classList.contains('active')) {
                 document.body.style.overflow = "auto";
             }
         }
     }
 }
 
+function closeActor(event, force = false) {
+    const modal = document.getElementById('actor-modal');
+    if (!modal) return;
+
+    const isBackdropClick = Boolean(event && event.target === modal);
+    if (force || isBackdropClick) {
+        if (window.ModalManager) {
+            window.ModalManager.closeModal(modal);
+        } else {
+            modal.classList.remove('active');
+            modal.setAttribute('aria-hidden', 'true');
+            modal.style.display = 'none';
+        }
+    }
+}
 
 window.lastRandomGenre = null;
 async function fetchRandomMovie(isNext = false) {
@@ -175,13 +202,26 @@ function toggleAdvancedSearch() {
         if (panel.style.display === 'none' || panel.style.display === '') {
             panel.style.display = 'block';
             panel.classList.remove('closing');
-            if (btn) btn.classList.add('active');
+            if (btn) {
+                btn.classList.add('active');
+                btn.setAttribute('aria-expanded', 'true');
+            }
+            const focusable = panel.querySelectorAll('button, select, input');
+            if (focusable.length > 0) {
+                focusable[0].focus();
+            }
         } else if (!panel.classList.contains('closing')) {
             panel.classList.add('closing');
+            if (btn) {
+                btn.setAttribute('aria-expanded', 'false');
+                btn.classList.remove('active');
+                if (document.activeElement && panel.contains(document.activeElement)) {
+                    btn.focus();
+                }
+            }
             setTimeout(() => {
                 panel.style.display = 'none';
                 panel.classList.remove('closing');
-                if (btn) btn.classList.remove('active');
             }, 300);
         }
     }
@@ -406,7 +446,10 @@ async function startNewGame() {
         // Oyun yüklendikten sonra kaydırma yap (Başlığı gizle, afişe odakla)
         setTimeout(() => {
             const container = document.getElementById('game-container');
-            if(container) container.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            if(container) {
+                const scrollBehavior = (typeof prefersReducedMotion === 'function' && prefersReducedMotion()) ? 'auto' : 'smooth';
+                container.scrollIntoView({ behavior: scrollBehavior, block: 'start' });
+            }
         }, 100);
     } catch (err) {
         console.error(err);
@@ -540,13 +583,49 @@ function makeGameGuess(guessedId, btn) {
 function switchGameTab(tabId, btnElem) {
     document.querySelectorAll('.game-tab-content').forEach(tab => {
         tab.style.display = 'none';
+        tab.hidden = true;
     });
-    document.getElementById(tabId + '-tab').style.display = 'block';
+    const target = document.getElementById(tabId + '-tab');
+    if (target) {
+        target.style.display = 'block';
+        target.hidden = false;
+    }
     
     if (btnElem) {
         btnElem.parentElement.querySelectorAll('.segment-btn').forEach(btn => {
             btn.classList.remove('active');
+            btn.setAttribute('aria-selected', 'false');
+            btn.setAttribute('tabindex', '-1');
         });
         btnElem.classList.add('active');
+        btnElem.setAttribute('aria-selected', 'true');
+        btnElem.setAttribute('tabindex', '0');
     }
+}
+
+if (typeof document !== 'undefined' && typeof document.addEventListener === 'function') {
+    document.addEventListener('DOMContentLoaded', () => {
+        const gameTabButtons = document.querySelectorAll('.games-tabs [role="tab"]');
+        if (gameTabButtons.length > 0) {
+            gameTabButtons.forEach((btn, index) => {
+                btn.addEventListener('keydown', (e) => {
+                    let targetIndex = -1;
+                    if (e.key === 'ArrowRight') {
+                        targetIndex = (index + 1) % gameTabButtons.length;
+                    } else if (e.key === 'ArrowLeft') {
+                        targetIndex = (index - 1 + gameTabButtons.length) % gameTabButtons.length;
+                    } else if (e.key === 'Home') {
+                        targetIndex = 0;
+                    } else if (e.key === 'End') {
+                        targetIndex = gameTabButtons.length - 1;
+                    }
+                    if (targetIndex !== -1) {
+                        e.preventDefault();
+                        gameTabButtons[targetIndex].focus();
+                        gameTabButtons[targetIndex].click();
+                    }
+                });
+            });
+        }
+    });
 }

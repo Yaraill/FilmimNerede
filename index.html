@@ -16,30 +16,31 @@
     <link rel="manifest" href="manifest.json">
 </head>
 <body>
+    <a href="#main-content" class="skip-link">Ana içeriğe atla</a>
 
     <!-- Üst Menü (Navbar) -->
     <nav class="navbar glass">
         <div class="logo" style="cursor: pointer;" onclick="window.location.reload()" title="Anasayfaya Dön">
             <span class="highlight">Filmim</span>Nerede
         </div>
-        <div class="menu-toggle" id="mobile-menu" onclick="toggleMobileMenu()">
+        <button type="button" class="menu-toggle" id="mobile-menu" onclick="toggleMobileMenu()" aria-label="Menüyü aç/kapat" aria-expanded="false" aria-controls="nav-links">
             <span class="bar"></span>
             <span class="bar"></span>
             <span class="bar"></span>
-        </div>
-        <ul class="nav-links">
+        </button>
+        <ul class="nav-links" id="nav-links">
             <li><a href="#" class="active" onclick="switchTab(event, 'now-playing')">Şu An Vizyonda</a></li>
             <li><a href="#" onclick="switchTab(event, 'vizyon')">Yakında Vizyonda</a></li>
             <li><a href="#" onclick="switchTab(event, 'platform')">Nerede İzlerim?</a></li>
             <li><a href="#" onclick="switchTab(event, 'profile')">Profilim</a></li>
             <li><a href="#" onclick="switchTab(event, 'games')">Oyunlar 🎲</a></li>
             <li><a href="#" onclick="switchTab(event, 'imax')" class="imax-badge">IMAX</a></li>
-            <li><button onclick="toggleTheme()" id="themeToggleBtn" title="Tema Değiştir" style="background:transparent; border:none; color:var(--text-color); font-size:1.2rem; cursor:pointer;"><i class="fas fa-sun"></i></button></li>
+            <li><button type="button" onclick="toggleTheme()" id="themeToggleBtn" title="Tema Değiştir" aria-label="Tema Değiştir" aria-pressed="false" style="background:transparent; border:none; color:var(--text-color); font-size:1.2rem; cursor:pointer;"><i class="fas fa-sun" aria-hidden="true"></i></button></li>
         </ul>
     </nav>
 
     <!-- Ana İçerik -->
-    <main class="container">
+    <main class="container" id="main-content" tabindex="-1">
 
         <!-- SEKTME 1: Şu An Vizyonda (YENİ) -->
         <section id="now-playing" class="tab-content active-tab">
@@ -59,8 +60,8 @@
                 <p>Türkiye genelinde şu an vizyonda olan filmler. Şehrinizi seçerek bilet ekranına gidebilirsiniz.</p>
             </div>
                 <div class="city-selector-wrapper">
-                    <i class="fas fa-map-marker-alt location-icon"></i>
-                    <select id="citySelect" class="premium-city-select" onchange="updateCity()">
+                    <i class="fas fa-map-marker-alt location-icon" aria-hidden="true"></i>
+                    <select id="citySelect" class="premium-city-select" onchange="updateCity()" aria-label="Şehir Seçin">
                         <option value="" disabled selected>Şehrinizi Seçin...</option>
                         <option value="adana">Adana</option>
                         <option value="adiyaman">Adıyaman</option>
@@ -179,10 +180,10 @@
             </div>
 
             <div class="search-box" style="display: flex; align-items: stretch;">
-                <input type="text" id="searchInput" placeholder="Film, Dizi veya Oyuncu adı girin (Örn: timothée chalamet)..." onkeyup="handleSearchInput(event)" onkeypress="if(event.key === 'Enter') searchMovie(true)" autocomplete="off">
-                <div id="autocomplete-box" class="autocomplete-suggestions"></div>
-                <button onclick="searchMovie(true)" style="border-radius: 0;">Ara</button>
-                <button onclick="surpriseMe()" title="Rastgele Film Öner (Sürpriz Yap!)" style="background: var(--accent-color); border-radius: 0 25px 25px 0; border-left: 1px solid rgba(255,255,255,0.2); padding: 0 20px;"><i class="fas fa-dice"></i></button>
+                <input type="text" id="searchInput" placeholder="Film, Dizi veya Oyuncu adı girin (Örn: timothée chalamet)..." onkeyup="handleSearchInput(event)" onkeypress="if(event.key === 'Enter') searchMovie(true)" autocomplete="off" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-haspopup="listbox" aria-controls="autocomplete-box" aria-label="Film, Dizi veya Oyuncu Ara">
+                <div id="autocomplete-box" class="autocomplete-suggestions" role="listbox" aria-label="Arama önerileri"></div>
+                <button type="button" onclick="searchMovie(true)" style="border-radius: 0;" aria-label="Film veya Dizi Ara">Ara</button>
+                <button type="button" id="surprise-btn" onclick="surpriseMe()" title="Rastgele Film Öner (Sürpriz Yap!)" aria-label="Rastgele Film Öner (Sürpriz Yap!)" style="background: var(--accent-color); border-radius: 0 25px 25px 0; border-left: 1px solid rgba(255,255,255,0.2); padding: 0 20px;"><i class="fas fa-dice" aria-hidden="true"></i></button>
             </div>
 
             
@@ -191,16 +192,16 @@
                     <div id="platform-selection-area">
                         <h3 style="text-align:center; margin-bottom: 15px; color: var(--text-muted);">Veya Doğrudan Platform Seçin</h3>
                         <div class="provider-logos-filter">
-                            <button class="provider-filter-btn" id="btn-prov-8" onclick="handlePlatformButtonClick(8)" title="Netflix">
+                            <button type="button" class="provider-filter-btn" id="btn-prov-8" onclick="handlePlatformButtonClick(8)" title="Netflix" aria-label="Netflix">
                                 <img src="https://image.tmdb.org/t/p/original/pbpMk2JmcoNnQwx5JGpXngfoWtp.jpg" alt="Netflix">
                             </button>
-                            <button class="provider-filter-btn" id="btn-prov-119" onclick="handlePlatformButtonClick(119)" title="Amazon Prime">
+                            <button type="button" class="provider-filter-btn" id="btn-prov-119" onclick="handlePlatformButtonClick(119)" title="Amazon Prime" aria-label="Amazon Prime">
                                 <img src="https://image.tmdb.org/t/p/original/pvske1MyAoymrs5bguRfVqYiM9a.jpg" alt="Amazon Prime">
                             </button>
-                            <button class="provider-filter-btn" id="btn-prov-337" onclick="handlePlatformButtonClick(337)" title="Disney+">
+                            <button type="button" class="provider-filter-btn" id="btn-prov-337" onclick="handlePlatformButtonClick(337)" title="Disney+" aria-label="Disney+">
                                 <img src="https://image.tmdb.org/t/p/original/97yvRBw1GzX7fXprcF80er19ot.jpg" alt="Disney+">
                             </button>
-                            <button class="provider-filter-btn" id="btn-prov-1899" onclick="handlePlatformButtonClick(1899)" title="HBO Max">
+                            <button type="button" class="provider-filter-btn" id="btn-prov-1899" onclick="handlePlatformButtonClick(1899)" title="HBO Max" aria-label="HBO Max">
                                 <img src="https://upload.wikimedia.org/wikipedia/commons/1/17/HBO_Max_Logo.svg" style="background:#000; object-fit:contain; padding:5px;" alt="HBO Max">
                             </button>
                         </div>
@@ -209,10 +210,10 @@
                 
                 
     <div class="filter-toggle-container glass" style="flex: 1; min-width: 300px; display: flex; align-items: center; justify-content: center; padding: 20px; border-radius: 20px;">
-        <button id="advanced-toggle-btn" onclick="toggleAdvancedSearch()" class="action-btn" style="padding: 15px 30px; font-size: 1.2rem; border-radius: 30px; background: linear-gradient(135deg, var(--primary-color), var(--accent-color)); color: white; box-shadow: 0 5px 15px rgba(229,9,20,0.4);"><i class="fas fa-sliders-h"></i> Gelişmiş Filtreler</button>
+        <button type="button" id="advanced-toggle-btn" onclick="toggleAdvancedSearch()" class="action-btn" aria-expanded="false" aria-controls="advanced-search-panel" style="padding: 15px 30px; font-size: 1.2rem; border-radius: 30px; background: linear-gradient(135deg, var(--primary-color), var(--accent-color)); color: white; box-shadow: 0 5px 15px rgba(229,9,20,0.4);"><i class="fas fa-sliders-h" aria-hidden="true"></i> Gelişmiş Filtreler</button>
         <div class="view-mode-controls" style="display: flex; gap: 5px; margin-left: 20px;">
-            <button onclick="switchViewMode('grid')" id="viewGridBtn" class="action-btn active" style="padding: 8px 15px; border-radius: 20px; background: rgba(0,0,0,0.5); color: white;"><i class="fas fa-th"></i></button>
-            <button onclick="switchViewMode('list')" id="viewListBtn" class="action-btn" style="padding: 8px 15px; border-radius: 20px; background: rgba(0,0,0,0.5); color: white;"><i class="fas fa-list"></i></button>
+            <button type="button" onclick="switchViewMode('grid')" id="viewGridBtn" class="action-btn active" aria-label="Izgara görünümü" aria-pressed="true" style="padding: 8px 15px; border-radius: 20px; background: rgba(0,0,0,0.5); color: white;"><i class="fas fa-th" aria-hidden="true"></i></button>
+            <button type="button" onclick="switchViewMode('list')" id="viewListBtn" class="action-btn" aria-label="Liste görünümü" aria-pressed="false" style="padding: 8px 15px; border-radius: 20px; background: rgba(0,0,0,0.5); color: white;"><i class="fas fa-list" aria-hidden="true"></i></button>
         </div>
     </div>
     
@@ -250,29 +251,29 @@
 
             
             
-                    <div class="profile-tabs glass-nav">
-                <button class="profile-tab-btn active" onclick="switchProfileTab('profile-watchlist', this)">Listeme Eklediklerim</button>
-                <button class="profile-tab-btn" onclick="switchProfileTab('profile-rated', this)">Puanladıklarım</button>
-                <button class="profile-tab-btn" onclick="switchProfileTab('profile-fav-actors', this)">Favori Oyuncularım</button>
-                <button class="profile-tab-btn" onclick="switchProfileTab('profile-smart-recs', this)"><i class="fas fa-magic"></i> Sizin İçin Öneriler</button>
+                    <div class="profile-tabs glass-nav" role="tablist" aria-label="Profil Sekmeleri">
+                <button type="button" class="profile-tab-btn active" role="tab" id="tab-profile-watchlist" aria-controls="profile-watchlist" aria-selected="true" tabindex="0" onclick="switchProfileTab('profile-watchlist', this)">Listeme Eklediklerim</button>
+                <button type="button" class="profile-tab-btn" role="tab" id="tab-profile-rated" aria-controls="profile-rated" aria-selected="false" tabindex="-1" onclick="switchProfileTab('profile-rated', this)">Puanladıklarım</button>
+                <button type="button" class="profile-tab-btn" role="tab" id="tab-profile-fav-actors" aria-controls="profile-fav-actors" aria-selected="false" tabindex="-1" onclick="switchProfileTab('profile-fav-actors', this)">Favori Oyuncularım</button>
+                <button type="button" class="profile-tab-btn" role="tab" id="tab-profile-smart-recs" aria-controls="profile-smart-recs" aria-selected="false" tabindex="-1" onclick="switchProfileTab('profile-smart-recs', this)"><i class="fas fa-magic" aria-hidden="true"></i> Sizin İçin Öneriler</button>
             </div>
 
-            <div id="profile-watchlist" class="profile-tab-content active-tab">
+            <div id="profile-watchlist" class="profile-tab-content active-tab" role="tabpanel" aria-labelledby="tab-profile-watchlist" tabindex="0">
                 <div id="watchlist-grid" class="profile-movie-grid"></div>
             </div>
 
-            <div id="profile-rated" class="profile-tab-content" style="display:none;">
+            <div id="profile-rated" class="profile-tab-content" role="tabpanel" aria-labelledby="tab-profile-rated" tabindex="0" style="display:none;" hidden>
                 <h3 style="margin-top: 20px; color:var(--text-color);">Puanlanan Filmler</h3>
                 <div id="rated-movie-grid" class="profile-movie-grid"></div>
                 <h3 style="margin-top: 20px; color:var(--text-color);">Puanlanan Diziler</h3>
                 <div id="rated-tv-grid" class="profile-movie-grid"></div>
             </div>
             
-            <div id="profile-fav-actors" class="profile-tab-content" style="display:none;">
+            <div id="profile-fav-actors" class="profile-tab-content" role="tabpanel" aria-labelledby="tab-profile-fav-actors" tabindex="0" style="display:none;" hidden>
                 <div id="favorite-actors-grid" class="profile-movie-grid"></div>
             </div>
             
-            <div id="profile-smart-recs" class="profile-tab-content" style="display:none;">
+            <div id="profile-smart-recs" class="profile-tab-content" role="tabpanel" aria-labelledby="tab-profile-smart-recs" tabindex="0" style="display:none;" hidden>
                 <div id="smart-recommendations-section">
                     <h3 style="margin-top: 20px; color:var(--text-color);">Puanladıklarınıza Göre Sizin İçin Öneriler</h3>
                     <div id="smart-recommendations-list" class="profile-movie-grid" style="display: grid; grid-template-columns: repeat(7, 1fr); gap: 15px;">
@@ -293,13 +294,13 @@
         <section id="games" class="tab-content" style="padding-top:40px;">
             <div class="section-header" style="text-align: center; margin-bottom: 20px;">
                 <h2>Eğlence & Araçlar 🎲</h2>
-                <div class="games-tabs" style="display: flex; justify-content: center; gap: 15px; margin-top: 15px;">
-                    <button class="segment-btn active" onclick="switchGameTab('poster-game', this)">Afiş Oyunu</button>
-                    <button class="segment-btn" onclick="switchGameTab('common-actor', this)">Ortak Oyuncu Aracı</button>
+                <div class="games-tabs" role="tablist" aria-label="Oyun Sekmeleri" style="display: flex; justify-content: center; gap: 15px; margin-top: 15px;">
+                    <button type="button" class="segment-btn active" role="tab" id="tab-poster-game" aria-controls="poster-game-tab" aria-selected="true" tabindex="0" onclick="switchGameTab('poster-game', this)">Afiş Oyunu</button>
+                    <button type="button" class="segment-btn" role="tab" id="tab-common-actor" aria-controls="common-actor-tab" aria-selected="false" tabindex="-1" onclick="switchGameTab('common-actor', this)">Ortak Oyuncu Aracı</button>
                 </div>
             </div>
             
-            <div id="poster-game-tab" class="game-tab-content">
+            <div id="poster-game-tab" class="game-tab-content" role="tabpanel" aria-labelledby="tab-poster-game" tabindex="0">
                 <div style="display:flex; justify-content:center; gap:20px; flex-wrap:wrap; margin-bottom:30px;">
                     <div class="glass" style="max-width: 600px; width: 100%; padding: 20px; border-radius: 20px; text-align: center;" id="game-main-box">
                         <h3 style="margin-bottom: 20px; color: var(--primary-color);">🎲 Afişten Film Tahmin Oyunu</h3>
@@ -315,9 +316,9 @@
                         
                         <div id="game-container" style="display:none; text-align:center;">
                             <div class="game-poster-wrapper" style="position: relative; margin: 0 auto;">
-                                <img id="game-poster" src="" class="game-poster-img">
-                                <button id="game-next-btn" onclick="event.stopPropagation(); startNewGame()" class="action-btn" style="display:none; position:absolute; bottom:15px; right:15px; width:55px; height:55px; border-radius:50%; background: rgba(0, 0, 0, 0.6); color: #00c6ff; border: 2px solid rgba(0, 198, 255, 0.5); cursor:pointer; box-shadow: 0 0 20px rgba(0, 198, 255, 0.5); backdrop-filter: blur(10px); z-index: 20; align-items: center; justify-content: center; font-size: 1.5rem; transition: transform 0.3s ease, box-shadow 0.3s ease;" onmouseover="this.style.transform='scale(1.1)'; this.style.boxShadow='0 0 30px rgba(0, 198, 255, 0.8)'" onmouseout="this.style.transform='scale(1)'; this.style.boxShadow='0 0 20px rgba(0, 198, 255, 0.5)'">
-                                    <i class="fas fa-chevron-right" style="margin-left: 3px;"></i>
+                                <img id="game-poster" src="" class="game-poster-img" alt="Film Afişi">
+                                <button type="button" id="game-next-btn" onclick="event.stopPropagation(); startNewGame()" class="action-btn" aria-label="Sonraki soru" style="display:none; position:absolute; bottom:15px; right:15px; width:55px; height:55px; border-radius:50%; background: rgba(0, 0, 0, 0.6); color: #00c6ff; border: 2px solid rgba(0, 198, 255, 0.5); cursor:pointer; box-shadow: 0 0 20px rgba(0, 198, 255, 0.5); backdrop-filter: blur(10px); z-index: 20; align-items: center; justify-content: center; font-size: 1.5rem; transition: transform 0.3s ease, box-shadow 0.3s ease;" onmouseover="this.style.transform='scale(1.1)'; this.style.boxShadow='0 0 30px rgba(0, 198, 255, 0.8)'" onmouseout="this.style.transform='scale(1)'; this.style.boxShadow='0 0 20px rgba(0, 198, 255, 0.5)'">
+                                    <i class="fas fa-chevron-right" style="margin-left: 3px;" aria-hidden="true"></i>
                                 </button>
                             </div>
                             
@@ -333,25 +334,25 @@
                             </div>
                         </div>
                         
-                        <button id="game-start-btn" onclick="startNewGame()" class="action-btn" style="padding: 15px 40px; font-size: 1.2rem; border-radius: 30px; background: linear-gradient(135deg, var(--primary-color), var(--accent-color)); color: white; border:none; cursor:pointer; box-shadow: 0 5px 15px rgba(229,9,20,0.4); margin: 0 auto; display: block;">Oyuna Başla</button>
+                        <button type="button" id="game-start-btn" onclick="startNewGame()" class="action-btn" style="padding: 15px 40px; font-size: 1.2rem; border-radius: 30px; background: linear-gradient(135deg, var(--primary-color), var(--accent-color)); color: white; border:none; cursor:pointer; box-shadow: 0 5px 15px rgba(229,9,20,0.4); margin: 0 auto; display: block;">Oyuna Başla</button>
                     </div>
                 </div>
             </div>
             
-            <div id="common-actor-tab" class="game-tab-content" style="display: none;">
+            <div id="common-actor-tab" class="game-tab-content" role="tabpanel" aria-labelledby="tab-common-actor" tabindex="0" style="display: none;" hidden>
                 <div class="glass" style="padding:30px; border-radius:20px; text-align:center; max-width:800px; margin: 40px auto;">
-                    <h2 style="font-size: 2rem; margin-bottom: 15px;"><i class="fas fa-users"></i> Ortak Oyuncu Aracı</h2>
+                    <h2 style="font-size: 2rem; margin-bottom: 15px;"><i class="fas fa-users" aria-hidden="true"></i> Ortak Oyuncu Aracı</h2>
                     <p style="color: var(--text-muted); margin-bottom: 25px; font-size: 1.1rem;">İki oyuncunun birlikte rol aldığı filmleri bulun!</p>
                     <div style="display:flex; gap:20px; justify-content:center; flex-wrap:wrap;">
                         <div style="position:relative; flex:1; min-width:200px;">
-                            <input type="text" id="actor1-input" class="premium-search-input" placeholder="1. Oyuncu Adı..." style="width:100%; padding:10px; border-radius:10px; border:none; background:rgba(255,255,255,0.1); color:white; font-size:1.1rem;" onkeyup="handleActorAutocomplete(event, 1)" autocomplete="off">
-                            <div id="actor1-autocomplete" class="autocomplete-suggestions" style="text-align: left; max-height: 250px; overflow-y: auto;"></div>
+                            <input type="text" id="actor1-input" class="premium-search-input" placeholder="1. Oyuncu Adı..." role="combobox" aria-autocomplete="list" aria-expanded="false" aria-haspopup="listbox" aria-controls="actor1-autocomplete" aria-label="1. Oyuncu Adı" style="width:100%; padding:10px; border-radius:10px; border:none; background:rgba(255,255,255,0.1); color:white; font-size:1.1rem;" onkeyup="handleActorAutocomplete(event, 1)" autocomplete="off">
+                            <div id="actor1-autocomplete" class="autocomplete-suggestions" role="listbox" aria-label="1. Oyuncu Önerileri" style="text-align: left; max-height: 250px; overflow-y: auto;"></div>
                         </div>
                         <div style="position:relative; flex:1; min-width:200px;">
-                            <input type="text" id="actor2-input" class="premium-search-input" placeholder="2. Oyuncu Adı..." style="width:100%; padding:10px; border-radius:10px; border:none; background:rgba(255,255,255,0.1); color:white; font-size:1.1rem;" onkeyup="handleActorAutocomplete(event, 2)" autocomplete="off">
-                            <div id="actor2-autocomplete" class="autocomplete-suggestions" style="text-align: left; max-height: 250px; overflow-y: auto;"></div>
+                            <input type="text" id="actor2-input" class="premium-search-input" placeholder="2. Oyuncu Adı..." role="combobox" aria-autocomplete="list" aria-expanded="false" aria-haspopup="listbox" aria-controls="actor2-autocomplete" aria-label="2. Oyuncu Adı" style="width:100%; padding:10px; border-radius:10px; border:none; background:rgba(255,255,255,0.1); color:white; font-size:1.1rem;" onkeyup="handleActorAutocomplete(event, 2)" autocomplete="off">
+                            <div id="actor2-autocomplete" class="autocomplete-suggestions" role="listbox" aria-label="2. Oyuncu Önerileri" style="text-align: left; max-height: 250px; overflow-y: auto;"></div>
                         </div>
-                        <button onclick="findCommonMovies()" class="action-btn" style="padding: 10px 30px; border-radius: 10px; background: linear-gradient(135deg, var(--primary-color), var(--accent-color)); color: white; border:none; cursor:pointer; font-size:1.1rem;">Bul</button>
+                        <button type="button" onclick="findCommonMovies()" class="action-btn" style="padding: 10px 30px; border-radius: 10px; background: linear-gradient(135deg, var(--primary-color), var(--accent-color)); color: white; border:none; cursor:pointer; font-size:1.1rem;">Bul</button>
                     </div>
                     <div id="common-movies-result" style="margin-top: 30px; display:none;">
                         <h3 style="margin-bottom:15px; color:var(--accent-color);">Ortak Filmler</h3>
@@ -384,10 +385,10 @@
     </footer>
 
     <!-- Fragman Penceresi (Modal) -->
-    <div id="trailer-modal" class="modal" onclick="closeTrailer(event)">
+    <div id="trailer-modal" class="modal" onclick="closeTrailer(event)" role="dialog" aria-modal="true" aria-label="Fragman" aria-hidden="true">
         <div class="modal-content">
-            <span class="close-btn" onclick="closeTrailer(null, true)" title="Kapat">&times;</span>
-        <span class="pip-btn" onclick="togglePiP(event)" title="Yüzen Oynatıcı (PiP)" style="position:absolute; top:-38px; right: 40px; color:white; font-size: 24px; cursor: pointer; transition: color 0.2s;"><i class="fas fa-compress-alt"></i></span>
+            <button type="button" class="close-btn" onclick="closeTrailer(null, true)" aria-label="Fragmanı Kapat" title="Kapat">&times;</button>
+        <button type="button" class="pip-btn" onclick="togglePiP(event)" title="Yüzen Oynatıcı (PiP)" aria-label="Yüzen Oynatıcı (PiP)" style="position:absolute; top:-38px; right: 40px; color:white; font-size: 24px; cursor: pointer; transition: color 0.2s; background:transparent; border:none;"><i class="fas fa-compress-alt" aria-hidden="true"></i></button>
             <div class="video-container" id="video-container">
                 <!-- YouTube iFrame buraya gelecek -->
             </div>
@@ -395,12 +396,12 @@
     </div>
 
     <!-- Rastgele (Surprise Me) Modalı -->
-    <div id="random-modal" class="modal" onclick="closeRandom(event)">
+    <div id="random-modal" class="modal" onclick="closeRandom(event)" role="dialog" aria-modal="true" aria-labelledby="random-modal-title" aria-hidden="true">
         <div class="modal-content glass" style="max-width: 400px; text-align: center; padding: 40px 20px;">
-            <span class="close-btn" onclick="closeRandom(null, true)">&times;</span>
-            <h2 style="margin-bottom: 20px; font-size: 2rem;">🎲 Ne İzlesem?</h2>
+            <button type="button" class="close-btn" onclick="closeRandom(null, true)" aria-label="Kapat">&times;</button>
+            <h2 id="random-modal-title" style="margin-bottom: 20px; font-size: 2rem;">🎲 Ne İzlesem?</h2>
             <p style="margin-bottom: 20px; color: var(--text-muted);">Bir tür seç, sana rastgele efsane bir film önereyim!</p>
-            <select id="randomGenreSelect" class="modern-select" style="width: 100%; margin-bottom: 20px; font-size: 1.1rem; padding: 15px;">
+            <select id="randomGenreSelect" class="modern-select" aria-label="Tür Seçin" style="width: 100%; margin-bottom: 20px; font-size: 1.1rem; padding: 15px;">
                 <option value="">Harbiden Rastgele (Tüm Türler)</option>
                 <option value="28">Aksiyon</option>
                 <option value="878">Bilim Kurgu</option>
@@ -413,16 +414,16 @@
                 <option value="10749">Romantik</option>
                 <option value="16">Animasyon</option>
             </select>
-            <button onclick="fetchRandomMovie()" class="btn-buy-ticket" style="width: 100%; justify-content: center; font-size: 1.2rem; padding: 15px;"><i class="fas fa-magic"></i> Bana Öner!</button>
+            <button type="button" onclick="fetchRandomMovie()" class="btn-buy-ticket" style="width: 100%; justify-content: center; font-size: 1.2rem; padding: 15px;"><i class="fas fa-magic" aria-hidden="true"></i> Bana Öner!</button>
         </div>
     </div>
 
     <!-- Detaylar Penceresi (Modal) -->
-    <div id="details-modal" class="modal details-modal-wrapper" onclick="closeDetails(event)">
+    <div id="details-modal" class="modal details-modal-wrapper" onclick="closeDetails(event)" role="dialog" aria-modal="true" aria-labelledby="details-title" aria-hidden="true">
         <div id="ambilight-bg" class="ambilight-bg"></div>
         <div id="video-bg-container" class="video-bg-container"></div>
         <div class="details-content glass">
-            <span class="close-btn" onclick="closeDetails(null, true)">&times;</span>
+            <button type="button" class="close-btn" onclick="closeDetails(null, true)" aria-label="Kapat">&times;</button>
             <div id="details-backdrop" class="details-backdrop"></div>
             <div class="details-body">
                 <div class="details-left">
@@ -431,9 +432,9 @@
                     <div id="modal-providers" class="modal-providers"></div>
                 </div>
                 <div class="details-right">
-                    <h2 id="details-title"></h2>
+                    <h2 id="details-title">Yapım detayları yükleniyor...</h2>
                     <div id="random-next-container" style="display:none; margin-bottom: 15px;">
-                        <button id="next-random-btn" onclick="fetchRandomMovie(true)" class="action-btn btn-buy-ticket-card" style="padding: 8px 15px; font-size: 0.9rem; background: var(--accent-color); border:none; border-radius:8px; cursor:pointer; color:white; font-weight:bold; box-shadow: 0 4px 10px rgba(16, 185, 129, 0.3); transition: transform 0.2s;"><i class="fas fa-random"></i> Başka Öner</button>
+                        <button type="button" id="next-random-btn" onclick="fetchRandomMovie(true)" class="action-btn btn-buy-ticket-card" style="padding: 8px 15px; font-size: 0.9rem; background: var(--accent-color); border:none; border-radius:8px; cursor:pointer; color:white; font-weight:bold; box-shadow: 0 4px 10px rgba(16, 185, 129, 0.3); transition: transform 0.2s;"><i class="fas fa-random" aria-hidden="true"></i> Başka Öner</button>
                     </div>
                     <div id="details-meta" class="details-meta"></div>
                     <p id="details-overview" class="details-overview"></p>
@@ -483,17 +484,17 @@
     </script>
 
     <!-- Oyuncu Detayları Penceresi (Modal) -->
-    <div id="actor-modal" class="modal" onclick="closeActor(event)" style="z-index: 10000;">
+    <div id="actor-modal" class="modal" onclick="closeActor(event)" role="dialog" aria-modal="true" aria-labelledby="actor-name" aria-hidden="true" style="z-index: 10000;">
         <div class="modal-content" style="max-width: 800px; padding: 0;">
-            <span class="close-btn" onclick="closeActor(null, true)">&times;</span>
+            <button type="button" class="close-btn" onclick="closeActor(null, true)" aria-label="Kapat">&times;</button>
             <div class="actor-header" style="display: flex; gap: 20px; padding: 20px; background: rgba(0,0,0,0.5);">
-                <img id="actor-profile-img" src="" style="width: 150px; height: 225px; object-fit: cover; border-radius: 10px; box-shadow: 0 5px 15px rgba(0,0,0,0.5);">
+                <img id="actor-profile-img" src="" alt="Oyuncu Profili" style="width: 150px; height: 225px; object-fit: cover; border-radius: 10px; box-shadow: 0 5px 15px rgba(0,0,0,0.5);">
                 <div style="flex:1;">
-                    <h2 id="actor-name" style="margin:0 0 10px 0; font-size: 2rem;"></h2>
+                    <h2 id="actor-name" style="margin:0 0 10px 0; font-size: 2rem;">Oyuncu Detayları</h2>
                     <p id="actor-bio" style="font-size: 0.95rem; line-height: 1.5; color: #ccc; max-height: 100px; overflow-y: auto; padding-right: 10px;"></p>
                     <div style="margin-top: 15px; display: flex; gap: 10px;">
-                        <span id="actor-bday" style="font-size: 0.9rem; color: #aaa;"><i class="fas fa-birthday-cake"></i> </span>
-                        <span id="actor-place" style="font-size: 0.9rem; color: #aaa;"><i class="fas fa-map-marker-alt"></i> </span>
+                        <span id="actor-bday" style="font-size: 0.9rem; color: #aaa;"><i class="fas fa-birthday-cake" aria-hidden="true"></i> </span>
+                        <span id="actor-place" style="font-size: 0.9rem; color: #aaa;"><i class="fas fa-map-marker-alt" aria-hidden="true"></i> </span>
                     </div>
                 </div>
             </div>
@@ -509,12 +510,12 @@
 
 
 <div id="advanced-search-panel" class="drawer" style="display:none; flex-direction: column; align-items: center; padding: 20px;">
-    <span class="close-btn" onclick="toggleAdvancedSearch()" style="position:absolute; top:10px; left:20px; z-index:100; color:var(--text-color); font-size: 30px; cursor: pointer;">&times;</span>
+    <button type="button" class="close-btn" onclick="toggleAdvancedSearch()" aria-label="Filtreleri Kapat" style="position:absolute; top:10px; left:20px; z-index:100; color:var(--text-color); font-size: 30px; cursor: pointer; background:transparent; border:none;">&times;</button>
                     <h3 style="text-align:center; margin-bottom: 15px; color: var(--text-muted);">Arama & Filtreleme</h3>
                     <div style="display: flex; flex-direction: column; gap: 15px; width: 100%; align-items: center; margin-bottom: 20px;">
                         
                         <!-- Hidden select elements to preserve logic -->
-                        <select id="mediaTypeFilter" style="display:none;" onchange="applyPlatformFilters()">
+                        <select id="mediaTypeFilter" style="display:none;" onchange="applyPlatformFilters()" aria-hidden="true" tabindex="-1">
                             <option value="all">Tümü</option>
                             <option value="movie">Sadece Filmler</option>
                             <option value="tv">Sadece Diziler</option>
@@ -523,27 +524,27 @@
 
                         <!-- Premium Media Type Segmented Control -->
                         <div class="premium-segmented-control">
-                            <button class="segment-btn active" onclick="setMediaType('all', this)">Tümü</button>
-                            <button class="segment-btn" onclick="setMediaType('movie', this)">Filmler</button>
-                            <button class="segment-btn" onclick="setMediaType('tv', this)">Diziler</button>
+                            <button type="button" class="segment-btn active" onclick="setMediaType('all', this)">Tümü</button>
+                            <button type="button" class="segment-btn" onclick="setMediaType('movie', this)">Filmler</button>
+                            <button type="button" class="segment-btn" onclick="setMediaType('tv', this)">Diziler</button>
                         </div>
                         
                         <!-- Premium Genre Pills (Scrollable horizontally) -->
                         <div class="premium-genre-pills">
-                            <button class="genre-pill-btn active" onclick="setGenre('', this)">Hepsi</button>
-                            <button class="genre-pill-btn" onclick="setGenre('28|12|10759', this)">Aksiyon</button>
-                            <button class="genre-pill-btn" onclick="setGenre('16', this)">Animasyon</button>
-                            <button class="genre-pill-btn" onclick="setGenre('35', this)">Komedi</button>
-                            <button class="genre-pill-btn" onclick="setGenre('18', this)">Dram</button>
-                            <button class="genre-pill-btn" onclick="setGenre('27', this)">Korku</button>
-                            <button class="genre-pill-btn" onclick="setGenre('878|10765', this)">Bilim Kurgu</button>
-                            <button class="genre-pill-btn" onclick="setGenre('53|80', this)">Gerilim</button>
-                            <button class="genre-pill-btn" onclick="setGenre('10749', this)">Romantik</button>
+                            <button type="button" class="genre-pill-btn active" onclick="setGenre('', this)">Hepsi</button>
+                            <button type="button" class="genre-pill-btn" onclick="setGenre('28|12|10759', this)">Aksiyon</button>
+                            <button type="button" class="genre-pill-btn" onclick="setGenre('16', this)">Animasyon</button>
+                            <button type="button" class="genre-pill-btn" onclick="setGenre('35', this)">Komedi</button>
+                            <button type="button" class="genre-pill-btn" onclick="setGenre('18', this)">Dram</button>
+                            <button type="button" class="genre-pill-btn" onclick="setGenre('27', this)">Korku</button>
+                            <button type="button" class="genre-pill-btn" onclick="setGenre('878|10765', this)">Bilim Kurgu</button>
+                            <button type="button" class="genre-pill-btn" onclick="setGenre('53|80', this)">Gerilim</button>
+                            <button type="button" class="genre-pill-btn" onclick="setGenre('10749', this)">Romantik</button>
                         </div>
 
                         <!-- Premium Secondary Filters (Year, Rating, Sort) -->
                         <div style="display: flex; gap: 15px; flex-wrap: wrap; justify-content: center; width: 100%;">
-                            <select id="yearFilter" class="premium-dropdown" onchange="applyPlatformFilters()">
+                            <select id="yearFilter" class="premium-dropdown" onchange="applyPlatformFilters()" aria-label="Yıl Filtresi">
                                 <option value="">Tüm Yıllar</option>
                                 <option value="2026">2026</option>
                                 <option value="2025">2025</option>
@@ -555,14 +556,14 @@
                                 <option value="2000">2000'ler</option>
                             </select>
                             
-                            <select id="ratingFilter" class="premium-dropdown" onchange="applyPlatformFilters()">
+                            <select id="ratingFilter" class="premium-dropdown" onchange="applyPlatformFilters()" aria-label="Puan Filtresi">
                                 <option value="0">Tüm Puanlar</option>
                                 <option value="8">IMDb 8.0+</option>
                                 <option value="7">IMDb 7.0+</option>
                                 <option value="6">IMDb 6.0+</option>
                             </select>
                             
-                            <select id="providerFilter" class="premium-dropdown" style="display:none;" onchange="applyPlatformFilters()">
+                            <select id="providerFilter" class="premium-dropdown" style="display:none;" onchange="applyPlatformFilters()" aria-label="Platform Filtresi">
                                 <option value="0">Tüm Platformlar</option>
                                 <option value="8">Netflix</option>
                                 <option value="119">Amazon Prime</option>
@@ -571,7 +572,7 @@
                             </select>
                             
                             
-                            <select id="runtimeFilter" class="premium-dropdown" onchange="applyPlatformFilters()">
+                            <select id="runtimeFilter" class="premium-dropdown" onchange="applyPlatformFilters()" aria-label="Süre Filtresi">
                                 <option value="">Tüm Süreler</option>
                                 <option value="90">90 Dk Altı (Kısa)</option>
                                 <option value="120">90 - 105 Dk (Orta)</option>
@@ -581,7 +582,7 @@
                             
                             
     
-                            <select id="sortByFilter" class="premium-dropdown" onchange="applyPlatformFilters()">
+                            <select id="sortByFilter" class="premium-dropdown" onchange="applyPlatformFilters()" aria-label="Sıralama Filtresi">
                                 <option value="popularity.desc">En Popüler</option>
                                 <option value="vote_average.desc">En Çok Oy Alanlar</option>
                                 <option value="primary_release_date.desc">En Yeniler</option>
@@ -592,6 +593,8 @@
                         
                         
                     </div>
+</div>
+    <div id="a11y-live-region" class="sr-only" role="status" aria-live="polite" aria-atomic="true"></div>
 </body>
 </html>
 

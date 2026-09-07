@@ -2129,3 +2129,119 @@ select.custom-select-hidden {
     from { transform: translateX(0); }
     to { transform: translateX(100%); }
 }
+
+/* =========================================
+   SPRINT 4 ACCESSIBILITY ENHANCEMENTS
+   ========================================= */
+
+/* Skip Link */
+.skip-link {
+    position: absolute;
+    top: -999px;
+    left: 10px;
+    background: var(--primary-color, #3b82f6);
+    color: #ffffff;
+    padding: 12px 20px;
+    border-radius: 8px;
+    font-weight: 700;
+    font-size: 1rem;
+    z-index: 100000;
+    text-decoration: none;
+    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.5);
+    transition: top 0.2s ease;
+}
+.skip-link:focus,
+.skip-link:focus-visible {
+    top: 10px;
+    outline: 3px solid #ffffff;
+    outline-offset: 2px;
+}
+
+/* Screen Reader Only */
+.sr-only {
+    position: absolute !important;
+    width: 1px !important;
+    height: 1px !important;
+    padding: 0 !important;
+    margin: -1px !important;
+    overflow: hidden !important;
+    clip: rect(0, 0, 0, 0) !important;
+    white-space: nowrap !important;
+    border: 0 !important;
+}
+
+/* Global Focus-Visible */
+:focus-visible {
+    outline: 2px solid var(--accent-color, #10b981) !important;
+    outline-offset: 2px !important;
+}
+
+/* Mobile Hamburger Button Reset */
+button.menu-toggle {
+    background: transparent;
+    border: none;
+    padding: 0;
+}
+
+/* Favorite Actor Card Details Button Reset */
+.fav-actor-main-btn {
+    background: transparent;
+    border: none;
+    padding: 0;
+    margin: 0;
+    width: 100%;
+    text-align: center;
+    cursor: pointer;
+    font: inherit;
+    color: inherit;
+    display: block;
+}
+.fav-actor-main-btn:focus-visible {
+    outline: 2px solid var(--accent-color, #10b981);
+    outline-offset: 2px;
+    border-radius: 12px;
+}
+
+/* Movie Card Title Button Reset */
+.movie-title-btn {
+    background: transparent;
+    border: none;
+    padding: 0;
+    margin: 0;
+    text-align: left;
+    cursor: pointer;
+    font: inherit;
+    color: inherit;
+    font-size: inherit;
+    font-weight: bold;
+    width: 100%;
+    display: block;
+}
+.movie-title-btn:focus-visible {
+    outline: 2px solid var(--accent-color, #10b981);
+    outline-offset: 2px;
+    border-radius: 4px;
+}
+
+/* Autocomplete Suggestion Active State */
+.suggestion-item.active {
+    background: rgba(16, 185, 129, 0.2);
+    outline: 1px solid var(--accent-color, #10b981);
+}
+
+/* Custom Option Active Focus */
+.custom-option:focus,
+.custom-option.active-focus {
+    background: rgba(16, 185, 129, 0.2);
+    outline: 1px solid var(--accent-color, #10b981);
+}
+
+/* Prefers Reduced Motion */
+@media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+        scroll-behavior: auto !important;
+    }
+}

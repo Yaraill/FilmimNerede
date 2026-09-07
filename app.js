@@ -28,10 +28,8 @@ window.addEventListener('load', () => {
 
 document.addEventListener('DOMContentLoaded', () => {
     // V5 Theme check
-    if (localStorage.getItem('theme') === 'light') {
-        document.body.classList.add('light-theme');
-        if(document.getElementById('themeToggleBtn')) document.getElementById('themeToggleBtn').innerHTML = '<i class="fas fa-moon"></i>';
-    }
+    const isLightTheme = localStorage.getItem('theme') === 'light';
+    syncThemeState(isLightTheme);
     
     // Load default tab
     loadGenres();
@@ -43,13 +41,9 @@ document.addEventListener('DOMContentLoaded', () => {
         const drawer = document.getElementById('advanced-search-panel');
         const btn = document.getElementById('advanced-toggle-btn');
         if (drawer && !drawer.classList.contains('closing') && drawer.style.display === 'block' && btn) {
-            if (!drawer.contains(e.target) && !btn.contains(e.target)) {
-                drawer.classList.add('closing');
-                setTimeout(() => {
-                    drawer.style.display = 'none';
-                    drawer.classList.remove('closing');
-                    btn.classList.remove('active');
-                }, 300); // Matches animation duration
+            const modalActive = window.ModalManager && window.ModalManager.hasActiveModal();
+            if (!modalActive && !drawer.contains(e.target) && !btn.contains(e.target)) {
+                toggleAdvancedSearch();
             }
         }
     });
@@ -58,28 +52,140 @@ document.addEventListener('DOMContentLoaded', () => {
         const box = document.getElementById('autocomplete-box');
         const input = document.getElementById('searchInput');
         if (box && input && e.target !== input && e.target !== box && !box.contains(e.target)) {
+            box.querySelectorAll('.suggestion-item').forEach(item => {
+                item.classList.remove('active');
+                item.setAttribute('aria-selected', 'false');
+            });
             box.style.display = 'none';
+            input.setAttribute('aria-expanded', 'false');
+            input.removeAttribute('aria-activedescendant');
         }
 
-        const box1 = document.getElementById('actor1-autocomplete');
-        const input1 = document.getElementById('actor1-input');
-        if (box1 && input1 && e.target !== input1 && e.target !== box1 && !box1.contains(e.target)) {
-            box1.style.display = 'none';
-        }
-
-        const box2 = document.getElementById('actor2-autocomplete');
-        const input2 = document.getElementById('actor2-input');
-        if (box2 && input2 && e.target !== input2 && e.target !== box2 && !box2.contains(e.target)) {
-            box2.style.display = 'none';
-        }
+        [1, 2].forEach(num => {
+            const aBox = document.getElementById(`actor${num}-autocomplete`);
+            const aInput = document.getElementById(`actor${num}-input`);
+            if (aBox && aInput && e.target !== aInput && e.target !== aBox && !aBox.contains(e.target)) {
+                aBox.querySelectorAll('.suggestion-item').forEach(item => {
+                    item.classList.remove('active');
+                    item.setAttribute('aria-selected', 'false');
+                });
+                aBox.style.display = 'none';
+                aInput.setAttribute('aria-expanded', 'false');
+                aInput.removeAttribute('aria-activedescendant');
+            }
+        });
     });
 
-    // Keyboard shortcuts
+    // Keyboard shortcuts (Strict Modal-First Precedence)
     document.addEventListener('keydown', (e) => {
         if (e.key === 'Escape') {
-            closeDetails(e, true);
-            closeTrailer(e, true);
-            closeRandom(e, true);
+            // 1. If an accessible modal is active, top-most modal takes absolute precedence
+            if (window.ModalManager && window.ModalManager.hasActiveModal()) {
+                const topModal = window.ModalManager.getTopModal();
+                if (topModal) {
+                    if (topModal.id === 'trailer-modal') {
+                        closeTrailer(null, true);
+                    } else if (topModal.id === 'details-modal') {
+                        closeDetails(null, true);
+                    } else if (topModal.id === 'random-modal') {
+                        closeRandom(null, true);
+                    } else if (topModal.id === 'actor-modal') {
+                        closeActor(null, true);
+                    } else {
+                        window.ModalManager.closeModal(topModal.element);
+                    }
+                }
+                return;
+            }
+
+            // 2. Background UI Escape handling (only when NO modal is active)
+            // 2a. Any open custom select
+            const openCustomSelect = document.querySelector('.custom-select-container.open');
+            if (openCustomSelect) {
+                if (typeof closeCustomSelectDropdown === 'function') {
+                    closeCustomSelectDropdown(openCustomSelect, true);
+                } else {
+                    openCustomSelect.classList.remove('open');
+                    const trigger = openCustomSelect.querySelector('.custom-select-trigger');
+                    if (trigger) {
+                        trigger.setAttribute('aria-expanded', 'false');
+                        trigger.focus();
+                    }
+                }
+                return;
+            }
+
+            // 2b. Any open autocomplete suggestions
+            let closedAutocomplete = false;
+            const searchBox = document.getElementById('autocomplete-box');
+            if (searchBox && searchBox.style.display !== 'none') {
+                if (typeof closeSearchAutocomplete === 'function') {
+                    closeSearchAutocomplete();
+                } else {
+                    searchBox.style.display = 'none';
+                    const sInput = document.getElementById('searchInput');
+                    if (sInput) {
+                        sInput.setAttribute('aria-expanded', 'false');
+                        sInput.removeAttribute('aria-activedescendant');
+                    }
+                }
+                closedAutocomplete = true;
+            }
+            [1, 2].forEach(num => {
+                const aBox = document.getElementById(`actor${num}-autocomplete`);
+                if (aBox && aBox.style.display !== 'none') {
+                    aBox.querySelectorAll('.suggestion-item').forEach(item => {
+                        item.classList.remove('active');
+                        item.setAttribute('aria-selected', 'false');
+                    });
+                    aBox.style.display = 'none';
+                    const aInput = document.getElementById(`actor${num}-input`);
+                    if (aInput) {
+                        aInput.setAttribute('aria-expanded', 'false');
+                        aInput.removeAttribute('aria-activedescendant');
+                    }
+                    closedAutocomplete = true;
+                }
+            });
+            if (closedAutocomplete) return;
+
+            // 2c. Open mobile menu
+            const navLinks = document.getElementById('nav-links') || document.querySelector('.nav-links');
+            const mobileToggle = document.getElementById('mobile-menu');
+            if (navLinks && navLinks.classList.contains('active')) {
+                if (typeof closeMobileMenu === 'function') {
+                    closeMobileMenu();
+                } else {
+                    navLinks.classList.remove('active');
+                    if (mobileToggle) {
+                        mobileToggle.classList.remove('is-active');
+                        mobileToggle.setAttribute('aria-expanded', 'false');
+                        mobileToggle.focus();
+                    }
+                }
+                return;
+            }
+
+            // 2d. Open advanced search drawer
+            const advancedPanel = document.getElementById('advanced-search-panel');
+            const advancedBtn = document.getElementById('advanced-toggle-btn');
+            if (advancedPanel && advancedPanel.style.display === 'block' && !advancedPanel.classList.contains('closing')) {
+                if (typeof toggleAdvancedSearch === 'function') {
+                    toggleAdvancedSearch();
+                } else {
+                    advancedPanel.classList.add('closing');
+                    if (advancedBtn) {
+                        advancedBtn.setAttribute('aria-expanded', 'false');
+                        advancedBtn.classList.remove('active');
+                        advancedBtn.focus();
+                    }
+                    setTimeout(() => {
+                        advancedPanel.style.display = 'none';
+                        advancedPanel.classList.remove('closing');
+                    }, 300);
+                }
+                return;
+            }
         }
     });
 

@@ -24,7 +24,10 @@ async function searchMovie(reset = true, isFilterChange = false, routeContext = 
             return;
         }
         
-        if (!isFilterChange) window.scrollTo({ top: 0, behavior: 'smooth' });
+        if (!isFilterChange) {
+            const scrollBehavior = (typeof prefersReducedMotion === 'function' && prefersReducedMotion()) ? 'auto' : 'smooth';
+            window.scrollTo({ top: 0, behavior: scrollBehavior });
+        }
         currentMode = "search";
         currentPage = 1;
         
@@ -93,7 +96,11 @@ async function searchMovie(reset = true, isFilterChange = false, routeContext = 
             html += createMovieCard(filtered[i], filtered[i].media_type, "");
             fetchAndInjectProviders(filtered[i].id, filtered[i].media_type, null, routeContext);
         }
-        container.innerHTML += html;
+        if (reset) {
+            container.innerHTML = html;
+        } else {
+            container.insertAdjacentHTML('beforeend', html);
+        }
         
         if (filtered.length > 0) {
             document.getElementById('loadMoreBtn').style.display = 'inline-block';
@@ -101,6 +108,9 @@ async function searchMovie(reset = true, isFilterChange = false, routeContext = 
             document.getElementById('loadMoreBtn').style.display = 'none';
         }
         document.getElementById('search-results').style.minHeight = '';
+        if (typeof announceA11y === 'function') {
+            announceA11y(`${filtered.length} arama sonucu listelendi.`);
+        }
         } catch (error) {
             if (error.name === 'AbortError') {
                 return;
@@ -154,9 +164,34 @@ async function searchMovie(reset = true, isFilterChange = false, routeContext = 
 let searchTimeout = null;
 let autocompleteAbortController = null;
 let autocompleteRequestGeneration = 0;
+let searchActiveIndex = -1;
+
+function closeSearchAutocomplete() {
+    const box = document.getElementById('autocomplete-box');
+    const input = document.getElementById('searchInput');
+    if (box) {
+        box.querySelectorAll('.suggestion-item').forEach(item => {
+            item.classList.remove('active');
+            item.setAttribute('aria-selected', 'false');
+        });
+        box.style.display = 'none';
+        box.replaceChildren();
+    }
+    if (input) {
+        input.setAttribute('aria-expanded', 'false');
+        input.removeAttribute('aria-activedescendant');
+    }
+    searchActiveIndex = -1;
+}
+
 async function handleSearchInput(event) {
+    if (event && ['ArrowDown', 'ArrowUp', 'Enter', 'Escape', 'Tab'].includes(event.key)) {
+        return;
+    }
+
     const query = event.target.value.trim();
     const box = document.getElementById('autocomplete-box');
+    const input = event.target;
     
     const requestGeneration = ++autocompleteRequestGeneration;
     const routeGenerationAtInput = routeGeneration;
@@ -169,7 +204,7 @@ async function handleSearchInput(event) {
     }
     
     if (query.length < 3) {
-        if(box) box.style.display = 'none';
+        closeSearchAutocomplete();
         return;
     }
     
@@ -191,18 +226,20 @@ async function handleSearchInput(event) {
             });
             
             if (results.length === 0) {
-                if(box) box.style.display = 'none';
+                closeSearchAutocomplete();
                 return;
             }
             
             if (box) {
                 box.replaceChildren();
+                searchActiveIndex = -1;
+                input.removeAttribute('aria-activedescendant');
 
                 let appendedCount = 0;
 
                 results
                     .slice(0, 5)
-                    .forEach(item => {
+                    .forEach((item, index) => {
                         const itemId =
                             normalizeTmdbId(
                                 item?.id
@@ -266,6 +303,9 @@ async function handleSearchInput(event) {
 
                         div.className =
                             'suggestion-item';
+                        div.id = `search-opt-${index}`;
+                        div.setAttribute('role', 'option');
+                        div.setAttribute('aria-selected', 'false');
 
                         const img =
                             document.createElement(
@@ -318,44 +358,52 @@ async function handleSearchInput(event) {
                             info
                         );
 
-                        div.addEventListener(
-                            'click',
-                            () => {
-                                box.style.display =
-                                    'none';
+                        const selectSuggestion = () => {
+                            closeSearchAutocomplete();
 
-                                if (isPerson) {
-                                    openActorDetails(
-                                        itemId
-                                    );
-
-                                    return;
-                                }
-
-                                window.movieCache[
+                            if (isPerson) {
+                                openActorDetails(
                                     itemId
-                                ] = {
-                                    ...item,
-                                    id: itemId,
-                                    media_type:
-                                        mediaType
-                                };
-
-                                openDetails(
-                                    itemId,
-                                    mediaType
                                 );
+                                return;
                             }
-                        );
+
+                            window.movieCache[
+                                itemId
+                            ] = {
+                                ...item,
+                                id: itemId,
+                                media_type:
+                                    mediaType
+                            };
+
+                            openDetails(
+                                itemId,
+                                mediaType
+                            );
+                        };
+
+                        div.addEventListener('mousedown', (e) => {
+                            e.preventDefault();
+                        });
+                        div.addEventListener('click', selectSuggestion);
 
                         box.appendChild(div);
                         appendedCount++;
                     });
 
-                box.style.display =
-                    appendedCount > 0
-                        ? 'block'
-                        : 'none';
+                if (appendedCount > 0) {
+                    box.style.display = 'block';
+                    input.setAttribute('aria-expanded', 'true');
+                    if (typeof announceA11y === 'function') {
+                        announceA11y(`${appendedCount} arama önerisi bulundu.`);
+                    }
+                } else {
+                    closeSearchAutocomplete();
+                    if (typeof announceA11y === 'function') {
+                        announceA11y('Öneri bulunamadı.');
+                    }
+                }
             }
         } catch (e) {
             if (e.name === 'AbortError') return;
@@ -366,6 +414,84 @@ async function handleSearchInput(event) {
             }
         }
     }, 400);
+}
+
+function initSearchAutocompleteEvents() {
+    const input = document.getElementById('searchInput');
+    const box = document.getElementById('autocomplete-box');
+    if (!input || !box) return;
+
+    input.addEventListener('keydown', (e) => {
+        const isBoxOpen = box.style.display !== 'none' && box.children.length > 0;
+
+        if (e.key === 'ArrowDown') {
+            if (isBoxOpen) {
+                e.preventDefault();
+                const items = Array.from(box.querySelectorAll('.suggestion-item'));
+                if (items.length > 0) {
+                    searchActiveIndex = (searchActiveIndex + 1) % items.length;
+                    items.forEach((item, i) => {
+                        const active = i === searchActiveIndex;
+                        item.classList.toggle('active', active);
+                        item.setAttribute('aria-selected', active ? 'true' : 'false');
+                    });
+                    input.setAttribute('aria-activedescendant', items[searchActiveIndex].id);
+                    items[searchActiveIndex].scrollIntoView({ block: 'nearest' });
+                }
+            }
+        } else if (e.key === 'ArrowUp') {
+            if (isBoxOpen) {
+                e.preventDefault();
+                const items = Array.from(box.querySelectorAll('.suggestion-item'));
+                if (items.length > 0) {
+                    searchActiveIndex = (searchActiveIndex - 1 + items.length) % items.length;
+                    items.forEach((item, i) => {
+                        const active = i === searchActiveIndex;
+                        item.classList.toggle('active', active);
+                        item.setAttribute('aria-selected', active ? 'true' : 'false');
+                    });
+                    input.setAttribute('aria-activedescendant', items[searchActiveIndex].id);
+                    items[searchActiveIndex].scrollIntoView({ block: 'nearest' });
+                }
+            }
+        } else if (e.key === 'Enter') {
+            if (isBoxOpen && searchActiveIndex >= 0) {
+                const items = Array.from(box.querySelectorAll('.suggestion-item'));
+                if (items[searchActiveIndex]) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    items[searchActiveIndex].click();
+                }
+            }
+        } else if (e.key === 'Escape') {
+            if (isBoxOpen) {
+                e.preventDefault();
+                e.stopPropagation();
+                closeSearchAutocomplete();
+            }
+        } else if (e.key === 'Tab') {
+            if (isBoxOpen) {
+                // Do not preventDefault; close listbox and allow natural focus movement
+                closeSearchAutocomplete();
+            }
+        }
+    });
+
+    document.addEventListener('click', (e) => {
+        if (!e.target.closest('.search-box')) {
+            if (box.style.display !== 'none') {
+                closeSearchAutocomplete();
+            }
+        }
+    });
+}
+
+if (typeof document !== 'undefined' && typeof document.addEventListener === 'function') {
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', initSearchAutocompleteEvents);
+    } else {
+        initSearchAutocompleteEvents();
+    }
 }
 
 async function loadMoreResults() {

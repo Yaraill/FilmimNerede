@@ -847,18 +847,34 @@ async function loadTop10Trending(
                     'border-radius:10px;' +
                     'box-shadow:0 5px 15px rgba(0,0,0,0.5);';
 
+                card.setAttribute('role', 'button');
+                card.setAttribute('tabindex', '0');
+                card.setAttribute('aria-label', `Top 10 - ${index + 1}: ${title}`);
+
                 card.append(
                     number,
                     image
                 );
 
+                const activateTop10 = () => {
+                    openDetails(
+                        itemId,
+                        mediaType
+                    );
+                };
+
                 card.addEventListener(
                     'click',
-                    () => {
-                        openDetails(
-                            itemId,
-                            mediaType
-                        );
+                    activateTop10
+                );
+
+                card.addEventListener(
+                    'keydown',
+                    (e) => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                            e.preventDefault();
+                            activateTop10();
+                        }
                     }
                 );
 
@@ -1096,18 +1112,34 @@ async function loadTrendingActors(
             name.textContent =
                 actorName;
 
+            card.setAttribute('role', 'button');
+            card.setAttribute('tabindex', '0');
+            card.setAttribute('aria-label', `${actorName} detaylarını görüntüle`);
+
             card.append(
                 image,
                 name
             );
 
+            const activateActor = () => {
+                openActorDetails(
+                    actorId,
+                    actorName
+                );
+            };
+
             card.addEventListener(
                 'click',
-                () => {
-                    openActorDetails(
-                        actorId,
-                        actorName
-                    );
+                activateActor
+            );
+
+            card.addEventListener(
+                'keydown',
+                (e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault();
+                        activateActor();
+                    }
                 }
             );
 
@@ -1148,6 +1180,11 @@ async function loadTrendingActors(
             clearInterval(
                 trendingActorsAutoScrollInterval
             );
+            trendingActorsAutoScrollInterval = null;
+        }
+
+        if (typeof prefersReducedMotion === 'function' && prefersReducedMotion()) {
+            return;
         }
 
         trendingActorsAutoScrollInterval =
@@ -1496,17 +1533,33 @@ async function loadCuratedCollections(
                 count
             );
 
+            card.setAttribute('role', 'button');
+            card.setAttribute('tabindex', '0');
+            card.setAttribute('aria-label', `${collectionName}, ${parts.length} Film`);
+
             card.append(
                 image,
                 info
             );
 
+            const activateCollection = () => {
+                openCollection(
+                    collectionId
+                );
+            };
+
             card.addEventListener(
                 'click',
-                () => {
-                    openCollection(
-                        collectionId
-                    );
+                activateCollection
+            );
+
+            card.addEventListener(
+                'keydown',
+                (e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault();
+                        activateCollection();
+                    }
                 }
             );
 
@@ -1547,6 +1600,11 @@ async function loadCuratedCollections(
             clearInterval(
                 curatedCollectionsAutoScrollInterval
             );
+            curatedCollectionsAutoScrollInterval = null;
+        }
+
+        if (typeof prefersReducedMotion === 'function' && prefersReducedMotion()) {
+            return;
         }
 
         curatedCollectionsAutoScrollInterval =
@@ -1622,9 +1680,10 @@ async function openCollection(
                 ?.signal
     };
 
+    const scrollBehavior = (typeof prefersReducedMotion === 'function' && prefersReducedMotion()) ? 'auto' : 'smooth';
     window.scrollTo({
         top: 0,
-        behavior: 'smooth'
+        behavior: scrollBehavior
     });
 
     closeDetails(

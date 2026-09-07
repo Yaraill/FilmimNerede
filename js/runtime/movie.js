@@ -87,9 +87,20 @@ async function renderMovie(
         document.getElementById(
             'details-modal'
         );
-    if (modal) modal.style.display = 'flex';
-
-    document.body.style.overflow = "hidden";
+    const detailsTitle = document.getElementById('details-title');
+    if (detailsTitle) {
+        detailsTitle.textContent = 'Yapım detayları yükleniyor...';
+    }
+    if (modal) {
+        if (window.ModalManager) {
+            window.ModalManager.openModal(modal);
+        } else {
+            modal.style.display = 'flex';
+            modal.classList.add('active');
+            modal.setAttribute('aria-hidden', 'false');
+            document.body.style.overflow = "hidden";
+        }
+    }
     window.currentMovieId = movieId;
 
     // Önceki detaydan kalan IMDb ID'nin
@@ -1226,6 +1237,9 @@ if (imdbId) {
                             'span'
                         );
 
+                    directorLink.id =
+                        'directorLink';
+
                     directorLink.style.cssText =
                         'cursor:pointer;' +
                         'color:#fff;' +
@@ -1248,6 +1262,10 @@ if (imdbId) {
                         'color:var(--accent-color);' +
                         'margin-right:5px;';
 
+                    directorLink.setAttribute('role', 'button');
+                    directorLink.setAttribute('tabindex', '0');
+                    directorLink.setAttribute('aria-label', `Yönetmen: ${directorName}`);
+
                     directorLink.append(
                         directorIcon,
                         document.createTextNode(
@@ -1255,12 +1273,24 @@ if (imdbId) {
                         )
                     );
 
+                    const activateDirector = () => {
+                        openActorDetails(
+                            directorId
+                        );
+                    };
+
                     directorLink.addEventListener(
                         'click',
-                        () => {
-                            openActorDetails(
-                                directorId
-                            );
+                        activateDirector
+                    );
+
+                    directorLink.addEventListener(
+                        'keydown',
+                        (e) => {
+                            if (e.key === 'Enter' || e.key === ' ') {
+                                e.preventDefault();
+                                activateDirector();
+                            }
                         }
                     );
 
@@ -1430,18 +1460,34 @@ if (imdbId) {
                     tooltip.textContent =
                         'Yükleniyor...';
 
+                    card.setAttribute('role', 'button');
+                    card.setAttribute('tabindex', '0');
+                    card.setAttribute('aria-label', `${actorName} detaylarını görüntüle`);
+
                     card.append(
                         image,
                         name,
                         tooltip
                     );
 
+                    const activateCastActor = () => {
+                        openActorDetails(
+                            actorId
+                        );
+                    };
+
                     card.addEventListener(
                         'click',
-                        () => {
-                            openActorDetails(
-                                actorId
-                            );
+                        activateCastActor
+                    );
+
+                    card.addEventListener(
+                        'keydown',
+                        (e) => {
+                            if (e.key === 'Enter' || e.key === ' ') {
+                                e.preventDefault();
+                                activateCastActor();
+                            }
                         }
                     );
 
@@ -1591,18 +1637,34 @@ if (imdbId) {
                     title.textContent =
                         recTitle;
 
+                    card.setAttribute('role', 'button');
+                    card.setAttribute('tabindex', '0');
+                    card.setAttribute('aria-label', `${recTitle} detaylarını görüntüle`);
+
                     card.append(
                         image,
                         title
                     );
 
+                    const activateRec = () => {
+                        openDetails(
+                            recId,
+                            recMediaType
+                        );
+                    };
+
                     card.addEventListener(
                         'click',
-                        () => {
-                            openDetails(
-                                recId,
-                                recMediaType
-                            );
+                        activateRec
+                    );
+
+                    card.addEventListener(
+                        'keydown',
+                        (e) => {
+                            if (e.key === 'Enter' || e.key === ' ') {
+                                e.preventDefault();
+                                activateRec();
+                            }
                         }
                     );
 
@@ -2054,18 +2116,34 @@ if (imdbId) {
                                 title.textContent =
                                     partTitle;
 
+                                card.setAttribute('role', 'button');
+                                card.setAttribute('tabindex', '0');
+                                card.setAttribute('aria-label', `${partTitle} detaylarını görüntüle`);
+
                                 card.append(
                                     image,
                                     title
                                 );
 
+                                const activatePart = () => {
+                                    openDetails(
+                                        partId,
+                                        'movie'
+                                    );
+                                };
+
                                 card.addEventListener(
                                     'click',
-                                    () => {
-                                        openDetails(
-                                            partId,
-                                            'movie'
-                                        );
+                                    activatePart
+                                );
+
+                                card.addEventListener(
+                                    'keydown',
+                                    (e) => {
+                                        if (e.key === 'Enter' || e.key === ' ') {
+                                            e.preventDefault();
+                                            activatePart();
+                                        }
                                     }
                                 );
 
@@ -2373,9 +2451,13 @@ async function openTrailer(
     container.innerHTML =
         "<div style='color:white;text-align:center;padding-top:20%;font-size:1.2rem'>Fragman Aranıyor...</div>";
 
-    modal.classList.add(
-        'active'
-    );
+    const trailerTrigger = document.activeElement;
+    if (window.ModalManager) {
+        window.ModalManager.openModal(modal, trailerTrigger);
+    } else {
+        modal.classList.add('active');
+        modal.setAttribute('aria-hidden', 'false');
+    }
 
     const bgIframe =
         document.querySelector(
@@ -2453,11 +2535,19 @@ async function openTrailer(
 }
 
 function closeTrailer(event, force = false) {
-    if (force || (event && event.target.id === 'trailer-modal')) {
-        const modal = document.getElementById('trailer-modal');
+    const modal = document.getElementById('trailer-modal');
+    if (!modal) return;
+
+    const isBackdropClick = Boolean(event && event.target === modal);
+    if (force || isBackdropClick) {
         const container = document.getElementById('video-container');
-        modal.classList.remove('active');
-        container.innerHTML = ""; 
+        if (window.ModalManager) {
+            window.ModalManager.closeModal(modal);
+        } else {
+            modal.classList.remove('active');
+            modal.setAttribute('aria-hidden', 'true');
+        }
+        if (container) container.innerHTML = "";
         
         const bgIframe = document.querySelector('#video-bg-container iframe');
         if (bgIframe && bgIframe.contentWindow) {
@@ -2466,16 +2556,30 @@ function closeTrailer(event, force = false) {
     }
 }
 
+window.isNavigatingBack = false;
+
 function closeDetails(event, force = false) {
-    if (force || (event && (event.target.id === 'details-modal' || event.target.closest('.close-btn')))) {
+    const modal = document.getElementById('details-modal');
+    if (!modal) return;
+
+    const isBackdropClick = Boolean(event && event.target === modal);
+    if (force || isBackdropClick) {
+        if (window.isNavigatingBack) return;
+
         const hash = window.location.hash || "";
-        if (!hash.startsWith('#movie/')) return;
-        
-        const state = history.state;
-        if (state && state.filmRehberiRouter && state.filmRehberiRouter.index > 0) {
-            history.back();
-        } else {
-            navigate('platform', { replace: true });
+        if (hash.startsWith('#movie/')) {
+            const state = history.state;
+            if (state && state.filmRehberiRouter && state.filmRehberiRouter.index > 0) {
+                window.isNavigatingBack = true;
+                history.back();
+                setTimeout(() => {
+                    window.isNavigatingBack = false;
+                }, 300);
+            } else {
+                navigate('platform', { replace: true });
+            }
+        } else if (window.ModalManager && window.ModalManager.isModalOpen(modal)) {
+            window.ModalManager.closeModal(modal);
         }
     }
 }
@@ -2708,25 +2812,41 @@ async function loadSeasonEpisodes(
                 }
             );
 
+            card.setAttribute('role', 'link');
+            card.setAttribute('tabindex', '0');
+            card.setAttribute('aria-label', `${safeSeasonNumber}. Sezon ${episodeNumber}. Bölüm: ${episodeName} (${usesImdb ? 'IMDb' : 'TMDB'})`);
+
+            const activateEpisode = () => {
+                if (
+                    targetUrl === '#'
+                ) {
+                    return;
+                }
+
+                const openedWindow =
+                    window.open(
+                        targetUrl,
+                        '_blank',
+                        'noopener,noreferrer'
+                    );
+
+                if (openedWindow) {
+                    openedWindow.opener =
+                        null;
+                }
+            };
+
             card.addEventListener(
                 'click',
-                () => {
-                    if (
-                        targetUrl === '#'
-                    ) {
-                        return;
-                    }
+                activateEpisode
+            );
 
-                    const openedWindow =
-                        window.open(
-                            targetUrl,
-                            '_blank',
-                            'noopener,noreferrer'
-                        );
-
-                    if (openedWindow) {
-                        openedWindow.opener =
-                            null;
+            card.addEventListener(
+                'keydown',
+                (e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault();
+                        activateEpisode();
                     }
                 }
             );

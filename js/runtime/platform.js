@@ -85,7 +85,10 @@ async function loadPlatformMovies(providerId = 0, reset = true, isFilterChange =
         const sortSelect = document.getElementById('sortByFilter');
         if (sortSelect && sortSelect.value === 'order.asc') sortSelect.value = 'popularity.desc';
         
-        if (!isFilterChange) window.scrollTo({ top: 0, behavior: 'smooth' });
+        if (!isFilterChange) {
+            const scrollBehavior = (typeof prefersReducedMotion === 'function' && prefersReducedMotion()) ? 'auto' : 'smooth';
+            window.scrollTo({ top: 0, behavior: scrollBehavior });
+        }
         currentProvider = providerId;
         
         // Sync platform dropdown
@@ -187,7 +190,7 @@ async function loadPlatformMovies(providerId = 0, reset = true, isFilterChange =
             const res = await fetch(url, { signal: routeContext?.signal });
             const data = await res.json();
             
-            if (requestGeneration !== platformRequestGeneration) return;
+            if (requestGeneration !== platformRequestGeneration || currentMode !== "platform") return;
             if (routeContext && !isRouteContextCurrent(routeContext, "platform")) return;
             
             if (data.results && data.results.length > 0) {
@@ -206,7 +209,7 @@ async function loadPlatformMovies(providerId = 0, reset = true, isFilterChange =
                         }
                     }));
                     
-                    if (requestGeneration !== platformRequestGeneration) return;
+                    if (requestGeneration !== platformRequestGeneration || currentMode !== "platform") return;
 
                     results = detailedResults.filter(detail => {
                         const rt = detail.runtime;
@@ -227,7 +230,7 @@ async function loadPlatformMovies(providerId = 0, reset = true, isFilterChange =
             }
         }
         
-        if (requestGeneration !== platformRequestGeneration) return;
+        if (requestGeneration !== platformRequestGeneration || currentMode !== "platform") return;
 
         allResults.sort((a, b) => b.popularity - a.popularity);
         
@@ -244,7 +247,11 @@ async function loadPlatformMovies(providerId = 0, reset = true, isFilterChange =
             html += createMovieCard(allResults[i], allResults[i].media_type, "");
             fetchAndInjectProviders(allResults[i].id, allResults[i].media_type, null, routeContext);
         }
-        container.innerHTML += html;
+        if (reset) {
+            container.innerHTML = html;
+        } else {
+            container.insertAdjacentHTML('beforeend', html);
+        }
         
         if (allResults.length > 0) {
             document.getElementById('loadMoreBtn').style.display = 'inline-block';
