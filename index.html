@@ -8,7 +8,7 @@
     <title>FilmimNerede - Türkiye Film & Dizi Rehberi</title>
     <!-- Google Fonts: Modern ve okunaklı bir font (Inter) -->
     <!-- Kendi CSS dosyamız -->
-    <link rel="stylesheet" href="style.css?v=50">
+    <link rel="stylesheet" href="style.css?v=51">
     <!-- Font Awesome (İkonlar için) -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/color-thief/2.3.0/color-thief.umd.js"></script>
@@ -244,6 +244,33 @@
 
             <div id="profile-stats-container" style="display:flex; justify-content:center; gap:20px; flex-wrap:wrap; margin-bottom:30px;"></div>
             
+            <section class="profile-backup-panel glass" aria-labelledby="profile-backup-title">
+                <div class="profile-backup-copy">
+                    <h3 id="profile-backup-title"><i class="fas fa-download" aria-hidden="true"></i> Veri Yedekleme</h3>
+                    <p>Listenizi, puanlarınızı, favori oyuncularınızı ve son baktıklarınızı JSON dosyası olarak yedekleyip daha sonra geri yükleyebilirsiniz.</p>
+                </div>
+                <div class="profile-backup-actions">
+                    <button type="button" id="profile-export-btn" class="profile-backup-btn">
+                        <i class="fas fa-file-export" aria-hidden="true"></i> Verilerimi Yedekle
+                    </button>
+                    <div class="profile-backup-import">
+                        <div class="profile-backup-field">
+                            <label for="profile-import-mode">Geri yükleme şekli</label>
+                            <select id="profile-import-mode" class="profile-backup-select" aria-describedby="profile-backup-mode-help">
+                                <option value="merge">Birleştir (önerilen)</option>
+                                <option value="replace">Mevcut verilerin yerine koy</option>
+                            </select>
+                            <span id="profile-backup-mode-help" class="sr-only">Birleştir mevcut kayıtları korur ve eksik kayıtları ekler. Yerine koy seçeneği yedekteki verileri bu cihazdaki FilmimNerede verilerinin yerine yazar.</span>
+                        </div>
+                        <input type="file" id="profile-import-file" class="sr-only" accept=".json,application/json">
+                        <button type="button" id="profile-import-btn" class="profile-backup-btn secondary">
+                            <i class="fas fa-file-import" aria-hidden="true"></i> Yedeği Geri Yükle
+                        </button>
+                    </div>
+                </div>
+                <p id="profile-backup-status" class="profile-backup-status" role="status" aria-live="polite" aria-atomic="true"></p>
+            </section>
+
             <div id="recently-viewed-section" style="display:none; margin-bottom:40px;">
                 <div class="section-header"><h2>Son Baktıklarınız</h2></div>
                 <div id="recently-viewed-grid" class="movie-grid" style="display:flex; overflow-x:auto; padding-bottom:20px; gap:15px;"></div>
@@ -470,7 +497,7 @@
     <script src="js/runtime/movie.js?v=5"></script>
     <script src="js/runtime/actor.js?v=7"></script>
     <script src="js/runtime/home.js?v=6"></script>
-    <script src="js/runtime/profile.js?v=2"></script>
+    <script src="js/runtime/profile.js?v=3"></script>
     <script src="js/runtime/misc.js?v=7"></script>
     <script src="app.js?v=72"></script>
     <script>

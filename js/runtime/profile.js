@@ -124,6 +124,377 @@ function renderRecentlyViewed(routeContext = null) {
     }
 }
 
+
+const PROFILE_BACKUP_APP = 'FilmimNerede';
+const PROFILE_BACKUP_VERSION = 1;
+const PROFILE_BACKUP_MAX_FILE_BYTES = 5 * 1024 * 1024;
+const PROFILE_BACKUP_STORAGE_KEYS = [
+    'watchlist',
+    'ratedMovies',
+    'movieRatings',
+    'favoriteActors',
+    'recentlyViewed'
+];
+
+function isPlainBackupObject(value) {
+    return Boolean(value && typeof value === 'object' && !Array.isArray(value));
+}
+
+function readProfileBackupStorage(key, fallback) {
+    try {
+        const raw = localStorage.getItem(key);
+        return raw === null ? fallback : JSON.parse(raw);
+    } catch (error) {
+        console.warn(`Profil verisi okunamadı (${key}):`, error);
+        return fallback;
+    }
+}
+
+function normalizeBackupText(value, maxLength) {
+    return typeof value === 'string' ? value.slice(0, maxLength) : '';
+}
+
+function normalizeBackupDate(value) {
+    if (typeof value !== 'string') return '';
+    const trimmed = value.trim();
+    return /^\d{4}-\d{2}-\d{2}$/.test(trimmed) ? trimmed : '';
+}
+
+function normalizeBackupMovieItem(item) {
+    if (!isPlainBackupObject(item)) return null;
+
+    const id = normalizeTmdbId(item.id);
+    if (!id) return null;
+
+    const title = normalizeBackupText(item.title, 300);
+    const name = normalizeBackupText(item.name, 300);
+    const releaseDate = normalizeBackupDate(item.release_date);
+    const firstAirDate = normalizeBackupDate(item.first_air_date);
+    const inferredMediaType = firstAirDate || (name && !title) ? 'tv' : 'movie';
+    const mediaType = normalizeMediaType(item.media_type, inferredMediaType);
+    if (!mediaType) return null;
+
+    const normalized = {
+        id,
+        title,
+        name,
+        release_date: releaseDate,
+        first_air_date: firstAirDate,
+        poster_path: isValidTmdbImagePath(item.poster_path) ? item.poster_path : null,
+        backdrop_path: isValidTmdbImagePath(item.backdrop_path) ? item.backdrop_path : null,
+        overview: normalizeBackupText(item.overview, 12000),
+        genre_ids: Array.isArray(item.genre_ids)
+            ? Array.from(new Set(
+                item.genre_ids
+                    .map(genreId => normalizeTmdbId(genreId))
+                    .filter(Boolean)
+            )).slice(0, 50)
+            : [],
+        media_type: mediaType
+    };
+
+    const voteAverage = Number(item.vote_average);
+    if (Number.isFinite(voteAverage) && voteAverage >= 0 && voteAverage <= 10) {
+        normalized.vote_average = voteAverage;
+    }
+
+    const exactRuntime = Number(item.exact_runtime_mins_v2);
+    if (Number.isFinite(exactRuntime) && exactRuntime > 0 && exactRuntime <= 1000000) {
+        normalized.exact_runtime_mins_v2 = exactRuntime;
+    }
+
+    return normalized;
+}
+
+function normalizeBackupMovieList(value, fieldName, strict = true) {
+    if (!Array.isArray(value)) {
+        if (strict) throw new Error(`${fieldName} dizi olmalı`);
+        return [];
+    }
+
+    const normalized = [];
+    const seenIds = new Set();
+    value.forEach(item => {
+        const safeItem = normalizeBackupMovieItem(item);
+        if (!safeItem) {
+            if (strict) throw new Error(`${fieldName} geçersiz kayıt içeriyor`);
+            return;
+        }
+        if (seenIds.has(safeItem.id)) return;
+        seenIds.add(safeItem.id);
+        normalized.push(safeItem);
+    });
+    return normalized;
+}
+
+function normalizeBackupFavoriteActors(value, strict = true) {
+    if (!Array.isArray(value)) {
+        if (strict) throw new Error('favoriteActors dizi olmalı');
+        return [];
+    }
+
+    const normalized = [];
+    const seenIds = new Set();
+    value.forEach(actor => {
+        if (!isPlainBackupObject(actor)) {
+            if (strict) throw new Error('favoriteActors geçersiz kayıt içeriyor');
+            return;
+        }
+
+        const id = normalizeTmdbId(actor.id);
+        if (!id) {
+            if (strict) throw new Error('favoriteActors geçersiz kimlik içeriyor');
+            return;
+        }
+        if (seenIds.has(id)) return;
+        seenIds.add(id);
+        normalized.push({
+            id,
+            name: normalizeBackupText(actor.name, 300) || 'Bilinmiyor',
+            profile_path: isValidTmdbImagePath(actor.profile_path)
+                ? actor.profile_path
+                : null
+        });
+    });
+    return normalized;
+}
+
+function normalizeBackupRatings(value, strict = true) {
+    if (!isPlainBackupObject(value)) {
+        if (strict) throw new Error('movieRatings nesne olmalı');
+        return {};
+    }
+
+    const normalized = {};
+    Object.entries(value).forEach(([rawId, rawRating]) => {
+        const id = normalizeTmdbId(rawId);
+        const rating = normalizeUserRating(rawRating);
+        if (!id || rating === null) {
+            if (strict) throw new Error('movieRatings geçersiz kayıt içeriyor');
+            return;
+        }
+        normalized[id] = rating;
+    });
+    return normalized;
+}
+
+function normalizeProfileBackupData(data, strict = true) {
+    if (!isPlainBackupObject(data)) {
+        throw new Error('Yedek verisi geçersiz');
+    }
+
+    return {
+        watchlist: normalizeBackupMovieList(data.watchlist, 'watchlist', strict),
+        ratedMovies: normalizeBackupMovieList(data.ratedMovies, 'ratedMovies', strict),
+        movieRatings: normalizeBackupRatings(data.movieRatings, strict),
+        favoriteActors: normalizeBackupFavoriteActors(data.favoriteActors, strict),
+        recentlyViewed: normalizeBackupMovieList(
+            data.recentlyViewed,
+            'recentlyViewed',
+            strict
+        ).slice(0, 10)
+    };
+}
+
+function collectCurrentProfileBackupData() {
+    return normalizeProfileBackupData({
+        watchlist: readProfileBackupStorage('watchlist', []),
+        ratedMovies: readProfileBackupStorage('ratedMovies', []),
+        movieRatings: readProfileBackupStorage('movieRatings', {}),
+        favoriteActors: readProfileBackupStorage('favoriteActors', []),
+        recentlyViewed: readProfileBackupStorage('recentlyViewed', [])
+    }, false);
+}
+
+function createProfileBackupPayload() {
+    return {
+        app: PROFILE_BACKUP_APP,
+        version: PROFILE_BACKUP_VERSION,
+        exportedAt: new Date().toISOString(),
+        data: collectCurrentProfileBackupData()
+    };
+}
+
+function validateProfileBackupPayload(payload) {
+    if (
+        !isPlainBackupObject(payload) ||
+        payload.app !== PROFILE_BACKUP_APP ||
+        payload.version !== PROFILE_BACKUP_VERSION ||
+        !Object.prototype.hasOwnProperty.call(payload, 'data')
+    ) {
+        throw new Error('Desteklenmeyen yedek formatı');
+    }
+    return normalizeProfileBackupData(payload.data, true);
+}
+
+function mergeBackupList(currentItems, importedItems, limit = null) {
+    const merged = [];
+    const seenIds = new Set();
+    [...currentItems, ...importedItems].forEach(item => {
+        const id = normalizeTmdbId(item?.id);
+        if (!id || seenIds.has(id)) return;
+        seenIds.add(id);
+        merged.push(item);
+    });
+    return typeof limit === 'number' ? merged.slice(0, limit) : merged;
+}
+
+function mergeProfileBackupData(currentData, importedData) {
+    return {
+        watchlist: mergeBackupList(currentData.watchlist, importedData.watchlist),
+        ratedMovies: mergeBackupList(currentData.ratedMovies, importedData.ratedMovies),
+        movieRatings: { ...importedData.movieRatings, ...currentData.movieRatings },
+        favoriteActors: mergeBackupList(
+            currentData.favoriteActors,
+            importedData.favoriteActors
+        ),
+        recentlyViewed: mergeBackupList(
+            currentData.recentlyViewed,
+            importedData.recentlyViewed,
+            10
+        )
+    };
+}
+
+function writeProfileBackupData(data) {
+    const previousValues = Object.fromEntries(
+        PROFILE_BACKUP_STORAGE_KEYS.map(key => [key, localStorage.getItem(key)])
+    );
+
+    try {
+        PROFILE_BACKUP_STORAGE_KEYS.forEach(key => {
+            localStorage.setItem(key, JSON.stringify(data[key]));
+        });
+    } catch (error) {
+        PROFILE_BACKUP_STORAGE_KEYS.forEach(key => {
+            try {
+                if (previousValues[key] === null) localStorage.removeItem(key);
+                else localStorage.setItem(key, previousValues[key]);
+            } catch (rollbackError) {
+                console.error('Profil yedeği geri alma hatası:', rollbackError);
+            }
+        });
+        throw error;
+    }
+}
+
+function setProfileBackupStatus(message, state = '') {
+    const status = document.getElementById('profile-backup-status');
+    if (!status) return;
+    status.textContent = String(message || '');
+    status.dataset.state = state;
+}
+
+function exportProfileData() {
+    try {
+        const payload = createProfileBackupPayload();
+        const blob = new Blob(
+            [JSON.stringify(payload, null, 2)],
+            { type: 'application/json;charset=utf-8' }
+        );
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = `filmimnerede-yedek-${payload.exportedAt.slice(0, 10)}.json`;
+        link.hidden = true;
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        setTimeout(() => URL.revokeObjectURL(url), 0);
+        setProfileBackupStatus('Yedek dosyanız indirildi.', 'success');
+    } catch (error) {
+        console.warn('Profil yedeği dışa aktarılamadı:', error);
+        setProfileBackupStatus(
+            'Yedek oluşturulamadı. Lütfen tekrar deneyin.',
+            'error'
+        );
+    }
+}
+
+async function handleProfileBackupFileSelection(event) {
+    const input = event?.currentTarget;
+    const file = input?.files?.[0];
+    if (!file) return;
+
+    try {
+        if (file.size > PROFILE_BACKUP_MAX_FILE_BYTES) {
+            throw new Error('Yedek dosyası boyut sınırını aşıyor');
+        }
+
+        setProfileBackupStatus('Yedek dosyası kontrol ediliyor…');
+        const payload = JSON.parse(await file.text());
+        const importedData = validateProfileBackupPayload(payload);
+        const mode = document.getElementById('profile-import-mode')?.value === 'replace'
+            ? 'replace'
+            : 'merge';
+
+        if (
+            mode === 'replace' &&
+            !window.confirm(
+                'Bu işlem mevcut FilmimNerede listelerinizi yedekteki verilerle değiştirecek. Devam edilsin mi?'
+            )
+        ) {
+            setProfileBackupStatus('İçe aktarma iptal edildi.');
+            return;
+        }
+
+        const finalData = mode === 'merge'
+            ? mergeProfileBackupData(collectCurrentProfileBackupData(), importedData)
+            : importedData;
+        writeProfileBackupData(finalData);
+
+        try {
+            const profile = document.getElementById('profile');
+            if (
+                profile?.classList.contains('active-tab') &&
+                typeof loadProfile === 'function'
+            ) {
+                loadProfile();
+            }
+        } catch (refreshError) {
+            console.warn('Profil import sonrası yenilenemedi:', refreshError);
+        }
+
+        setProfileBackupStatus(
+            mode === 'merge'
+                ? 'Yedek mevcut verilerinizle başarıyla birleştirildi.'
+                : 'Yedek başarıyla geri yüklendi.',
+            'success'
+        );
+    } catch (error) {
+        console.warn('Profil yedeği içe aktarılamadı:', error);
+        setProfileBackupStatus(
+            'Yedek dosyası geçersiz veya desteklenmiyor. Mevcut verileriniz değiştirilmedi.',
+            'error'
+        );
+    } finally {
+        if (input) input.value = '';
+    }
+}
+
+function bindProfileBackupControls() {
+    const exportButton = document.getElementById('profile-export-btn');
+    const importButton = document.getElementById('profile-import-btn');
+    const importInput = document.getElementById('profile-import-file');
+
+    if (exportButton) {
+        exportButton.addEventListener('click', exportProfileData);
+    }
+    if (importButton && importInput) {
+        importButton.addEventListener('click', () => {
+            importInput.value = '';
+            importInput.click();
+        });
+    }
+    if (importInput) {
+        importInput.addEventListener('change', handleProfileBackupFileSelection);
+    }
+}
+
+if (typeof document !== 'undefined' && typeof document.addEventListener === 'function') {
+    document.addEventListener('DOMContentLoaded', bindProfileBackupControls);
+}
+
 function switchProfileTab(tabId, btnElem) {
     document.querySelectorAll('.profile-tab-content').forEach(el => {
         el.classList.remove('active-tab');

@@ -436,7 +436,7 @@ if (collectionMatch) {
                 let titleText = '';
                 for(let i=0; i<50; i++){
                     titleText = document.getElementById('details-title').innerText || document.getElementById('details-title').textContent || '';
-                    if (titleText.length > 0) break;
+                    if (titleText.includes('E2E Movie Result')) break;
                     await wait(100);
                 }
                 const cacheItem = JSON.stringify(window.movieCache[70001]);
