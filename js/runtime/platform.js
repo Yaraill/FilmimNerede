@@ -1,5 +1,198 @@
+const PLATFORM_FILTER_DEFAULTS = Object.freeze({
+    media: 'all',
+    genres: [],
+    year: '',
+    rating: '0',
+    runtime: '',
+    sort: 'popularity.desc',
+    provider: '0'
+});
+
+function getPlatformSelectValues(selectId) {
+    const select = document.getElementById(selectId);
+    if (!select) return new Set();
+    return new Set(
+        Array.from(select.options)
+            .filter(option => !option.disabled)
+            .map(option => option.value)
+    );
+}
+
+function getPlatformGenreValues() {
+    return Array.from(
+        document.querySelectorAll('.genre-pill-btn[onclick^="setGenre"]')
+    )
+        .map(button => {
+            const match = button
+                .getAttribute('onclick')
+                ?.match(/^setGenre\('([^']*)'/);
+            return match ? match[1] : null;
+        })
+        .filter(value => value !== null && value !== '');
+}
+
+function sanitizePlatformFilterState(queryString = '') {
+    const params = new URLSearchParams(queryString);
+    const allowedMedia = getPlatformSelectValues('mediaTypeFilter');
+    const allowedYears = getPlatformSelectValues('yearFilter');
+    const allowedRatings = getPlatformSelectValues('ratingFilter');
+    const allowedRuntimes = getPlatformSelectValues('runtimeFilter');
+    const allowedSorts = getPlatformSelectValues('sortByFilter');
+    const allowedProviders = getPlatformSelectValues('providerFilter');
+    const genreOrder = getPlatformGenreValues();
+    const requestedGenres = new Set(
+        (params.get('genres') || '')
+            .split(',')
+            .map(value => value.trim())
+            .filter(Boolean)
+    );
+
+    const readAllowed = (key, allowed, fallback) => {
+        const value = params.get(key);
+        return value !== null && allowed.has(value)
+            ? value
+            : fallback;
+    };
+
+    return {
+        media: readAllowed('media', allowedMedia, PLATFORM_FILTER_DEFAULTS.media),
+        genres: genreOrder.filter(value => requestedGenres.has(value)),
+        year: readAllowed('year', allowedYears, PLATFORM_FILTER_DEFAULTS.year),
+        rating: readAllowed('rating', allowedRatings, PLATFORM_FILTER_DEFAULTS.rating),
+        runtime: readAllowed('runtime', allowedRuntimes, PLATFORM_FILTER_DEFAULTS.runtime),
+        sort: readAllowed('sort', allowedSorts, PLATFORM_FILTER_DEFAULTS.sort),
+        provider: readAllowed('provider', allowedProviders, PLATFORM_FILTER_DEFAULTS.provider)
+    };
+}
+
+function getPlatformFilterStateFromUi() {
+    const params = new URLSearchParams();
+    const media = document.getElementById('mediaTypeFilter')?.value || 'all';
+    const genres = document.getElementById('genreFilter')?.value || '';
+    const year = document.getElementById('yearFilter')?.value || '';
+    const rating = document.getElementById('ratingFilter')?.value || '0';
+    const runtime = document.getElementById('runtimeFilter')?.value || '';
+    const sort = document.getElementById('sortByFilter')?.value || 'popularity.desc';
+
+    params.set('media', media);
+    params.set('genres', genres);
+    params.set('year', year);
+    params.set('rating', rating);
+    params.set('runtime', runtime);
+    params.set('sort', sort);
+    params.set('provider', String(currentProvider || 0));
+
+    return sanitizePlatformFilterState(params.toString());
+}
+
+function buildPlatformRoute(state = getPlatformFilterStateFromUi()) {
+    const params = new URLSearchParams();
+
+    if (state.media !== PLATFORM_FILTER_DEFAULTS.media) {
+        params.set('media', state.media);
+    }
+    if (state.genres.length > 0) {
+        params.set('genres', state.genres.join(','));
+    }
+    if (state.year !== PLATFORM_FILTER_DEFAULTS.year) {
+        params.set('year', state.year);
+    }
+    if (state.rating !== PLATFORM_FILTER_DEFAULTS.rating) {
+        params.set('rating', state.rating);
+    }
+    if (state.runtime !== PLATFORM_FILTER_DEFAULTS.runtime) {
+        params.set('runtime', state.runtime);
+    }
+    if (state.sort !== PLATFORM_FILTER_DEFAULTS.sort) {
+        params.set('sort', state.sort);
+    }
+    if (state.provider !== PLATFORM_FILTER_DEFAULTS.provider) {
+        params.set('provider', state.provider);
+    }
+
+    const queryString = params.toString();
+    return queryString ? `platform?${queryString}` : 'platform';
+}
+
+function syncPlatformSelect(selectId, value) {
+    const select = document.getElementById(selectId);
+    if (!select) return;
+
+    select.value = value;
+    const wrapper = select.nextElementSibling;
+    if (!wrapper || !wrapper.classList.contains('custom-select-container')) {
+        return;
+    }
+
+    const selectedOption = select.options[select.selectedIndex];
+    const triggerText = wrapper.querySelector('.custom-select-trigger span');
+    if (triggerText && selectedOption) {
+        triggerText.textContent = selectedOption.text;
+    }
+
+    wrapper.querySelectorAll('.custom-option').forEach(option => {
+        option.classList.toggle('selected', option.dataset.value === value);
+    });
+}
+
+function restorePlatformFilterState(state) {
+    syncPlatformSelect('mediaTypeFilter', state.media);
+    syncPlatformSelect('yearFilter', state.year);
+    syncPlatformSelect('ratingFilter', state.rating);
+    syncPlatformSelect('runtimeFilter', state.runtime);
+    syncPlatformSelect('sortByFilter', state.sort);
+    syncPlatformSelect('providerFilter', state.provider);
+
+    document
+        .querySelectorAll('.segment-btn[onclick^="setMediaType"]')
+        .forEach(button => {
+            const match = button
+                .getAttribute('onclick')
+                ?.match(/^setMediaType\('([^']*)'/);
+            button.classList.toggle(
+                'active',
+                Boolean(match && match[1] === state.media)
+            );
+        });
+
+    const selectedGenreSet = new Set(state.genres);
+    selectedGenres = [...state.genres];
+    const genreFilter = document.getElementById('genreFilter');
+    if (genreFilter) {
+        genreFilter.value = selectedGenres.join(',');
+    }
+
+    document.querySelectorAll('.genre-pill-btn[onclick^="setGenre"]').forEach(button => {
+        const match = button
+            .getAttribute('onclick')
+            ?.match(/^setGenre\('([^']*)'/);
+        if (!match) return;
+        const value = match[1];
+        button.classList.toggle(
+            'active',
+            value === '' ? selectedGenres.length === 0 : selectedGenreSet.has(value)
+        );
+    });
+
+    currentProvider = Number(state.provider) || 0;
+    document.querySelectorAll('.provider-filter-btn').forEach(button => {
+        button.classList.toggle(
+            'active',
+            button.id === `btn-prov-${currentProvider}` && currentProvider > 0
+        );
+    });
+}
+
+function navigateToCurrentPlatformFilters(options = {}) {
+    navigate(buildPlatformRoute(), options);
+}
 function resetPlatformView(routeContext = null) {
-    if (window.isHistoryRestoration && currentMode === "search" && document.getElementById('search-results').children.length > 0) {
+    if (
+        window.isHistoryRestoration &&
+        currentMode === "search" &&
+        routeContext?.platformQuery === "" &&
+        document.getElementById('search-results').children.length > 0
+    ) {
         // Preserve existing search results on history back/forward
         document.querySelectorAll('.tab-content').forEach(tab => tab.classList.remove('active-tab'));
         document.querySelectorAll('.nav-links a').forEach(link => link.classList.remove('active'));
@@ -41,7 +234,21 @@ function resetPlatformView(routeContext = null) {
     const filterControls = document.querySelector('.filter-controls');
     if (filterControls) filterControls.style.display = 'flex';
     
-    loadPlatformMovies(0, true, false, routeContext);
+    const state = sanitizePlatformFilterState(routeContext?.platformQuery || "");
+    restorePlatformFilterState(state);
+
+    const canonicalRoute = buildPlatformRoute(state);
+    if (window.location.hash.slice(1) !== canonicalRoute) {
+        navigate(canonicalRoute, { replace: true });
+        return;
+    }
+
+    loadPlatformMovies(
+        currentProvider,
+        true,
+        Boolean(window.isHistoryRestoration),
+        routeContext
+    );
 }
 
 
@@ -51,7 +258,7 @@ function applyPlatformFilters() {
     } else if (currentMode === "search") {
         searchMovie(true, true);
     } else {
-        loadPlatformMovies(currentProvider, true, true); // true for isFilterChange
+        navigateToCurrentPlatformFilters();
     }
 }
 
@@ -62,10 +269,8 @@ function handlePlatformButtonClick(pid) {
     } else {
         currentProvider = pid;
     }
-    const platSelect = document.getElementById('discover-platform');
-    if (platSelect) platSelect.value = currentProvider;
-    
-    loadPlatformMovies(currentProvider, true, true);
+    syncPlatformSelect('providerFilter', String(currentProvider));
+    navigateToCurrentPlatformFilters();
 }
 
 
@@ -77,7 +282,7 @@ async function loadPlatformMovies(providerId = 0, reset = true, isFilterChange =
         : platformRequestGeneration;
 
     if (reset) {
-        if (!isFilterChange) clearAllFilters();
+        if (!isFilterChange && routeContext?.platformQuery == null) clearAllFilters();
         currentPage = 1;
         document.getElementById('search-results').innerHTML = "";
         document.getElementById('loadMoreBtn').style.display = 'none';

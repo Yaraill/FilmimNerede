@@ -11,19 +11,20 @@ function isRouteContextCurrent(routeContext, expectedPage, expectedId = null) {
     if (routeContext.generation !== routeGeneration) return false;
 
     const hash = window.location.hash.slice(1);
+    const hashPath = hash.split("?")[0];
     let currentPage = "home";
     let currentId = null;
 
-    if (hash.startsWith("movie/")) {
+    if (hashPath.startsWith("movie/")) {
         currentPage = "movie";
-        currentId = hash.split("/")[1];
-    } else if (hash.startsWith("actor/")) {
+        currentId = hashPath.split("/")[1];
+    } else if (hashPath.startsWith("actor/")) {
         currentPage = "actor";
-        currentId = hash.split("/")[1];
-    } else if (hash.startsWith("search")) {
+        currentId = hashPath.split("/")[1];
+    } else if (hashPath === "search") {
         currentPage = "search";
-    } else if (hash) {
-        currentPage = hash;
+    } else if (hashPath) {
+        currentPage = hashPath;
     }
 
     if (currentPage !== expectedPage) return false;
@@ -91,8 +92,16 @@ function parseRoute() {
         return { page: "home" };
     }
 
-    if (hash.startsWith("movie/")) {
-        const parts = hash.split("/");
+    const querySeparator = hash.indexOf("?");
+    const path = querySeparator === -1
+        ? hash
+        : hash.slice(0, querySeparator);
+    const queryString = querySeparator === -1
+        ? ""
+        : hash.slice(querySeparator + 1);
+
+    if (path.startsWith("movie/")) {
+        const parts = path.split("/");
         const id = parts[1];
         const type = parts[2];
         if (type === 'movie' || type === 'tv') {
@@ -111,8 +120,8 @@ function parseRoute() {
         };
     }
 
-    if (hash.startsWith("film/")) {
-        const id = hash.split("/")[1];
+    if (path.startsWith("film/")) {
+        const id = path.split("/")[1];
 
         if (isValidRouteId(id)) {
             window.history.replaceState(
@@ -134,20 +143,19 @@ function parseRoute() {
         );
 
         return {
-            page: "platform"
+            page: "platform",
+            platformQuery: ""
         };
     }
 
-    if (hash.startsWith("actor/")) {
+    if (path.startsWith("actor/")) {
         return {
             page: "actor",
-            id: hash.split("/")[1]
+            id: path.split("/")[1]
         };
     }
 
-    if (hash.startsWith("search")) {
-        const parts = hash.split("?");
-        const queryString = parts[1] || "";
+    if (path === "search") {
         const params = new URLSearchParams(queryString);
 
         return {
@@ -156,8 +164,15 @@ function parseRoute() {
         };
     }
 
+    if (path === "platform") {
+        return {
+            page: "platform",
+            platformQuery: queryString
+        };
+    }
+
     return {
-        page: hash
+        page: path
     };
 }
 
@@ -201,7 +216,10 @@ function handleRoute() {
 
     const routeContext = {
         generation,
-        signal: currentAbortController.signal
+        signal: currentAbortController.signal,
+        platformQuery: route.page === 'platform'
+            ? (route.platformQuery || '')
+            : null
     };
 
     if (route.page !== 'movie' && route.page !== 'actor') {
