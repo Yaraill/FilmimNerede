@@ -451,13 +451,29 @@ async function loadPlatformMovies(providerId = 0, reset = true, isFilterChange =
         
         let html = "";
         for (let i = 0; i < allResults.length; i++) {
-            html += createMovieCard(allResults[i], allResults[i].media_type, "");
-            fetchAndInjectProviders(allResults[i].id, allResults[i].media_type, null, routeContext);
+            html += createMovieCard(
+                allResults[i],
+                allResults[i].media_type,
+                ""
+            );
         }
+
         if (reset) {
             container.innerHTML = html;
         } else {
-            container.insertAdjacentHTML('beforeend', html);
+            container.insertAdjacentHTML(
+                'beforeend',
+                html
+            );
+        }
+
+        for (let i = 0; i < allResults.length; i++) {
+            fetchAndInjectProviders(
+                allResults[i].id,
+                allResults[i].media_type,
+                null,
+                routeContext
+            );
         }
         
         if (allResults.length > 0) {

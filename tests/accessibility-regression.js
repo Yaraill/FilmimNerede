@@ -631,11 +631,6 @@ async function runAccessibilityTests() {
         await page.focus('#search-results .movie-title-btn');
         await page.keyboard.press('Enter');
 
-        await page.waitForFunction(() => {
-            const recCard = document.querySelector('#details-recommendations .recommendation-card');
-            return recCard !== null;
-        });
-
         const historyState1 = await page.evaluate(() => ({
             index: history.state?.filmRehberiRouter?.index,
             hash: window.location.hash
@@ -643,8 +638,23 @@ async function runAccessibilityTests() {
         assert(historyState1.hash.includes('movie/101'), 'Journey E FAILED: Route hash does not contain movie/101');
 
         // Activate real recommendation card for Movie 102 via keyboard Enter
-        await new Promise(r => setTimeout(r, 60));
-        await page.focus('#details-recommendations .recommendation-card');
+        await page.waitForFunction(() => {
+            const recCard =
+                document.querySelector(
+                    '#details-recommendations .recommendation-card'
+                );
+
+            if (!recCard || !recCard.isConnected) {
+                return false;
+            }
+
+            recCard.focus();
+
+            return (
+                document.activeElement === recCard
+            );
+        }, { timeout: 5000 });
+
         await page.keyboard.press('Enter');
 
         await page.waitForFunction(() => {

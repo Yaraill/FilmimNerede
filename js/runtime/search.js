@@ -3,6 +3,23 @@ function handleSearch(event) {
 }
 
 async function searchMovie(reset = true, isFilterChange = false, routeContext = null) {
+    if (reset && !isFilterChange && !routeContext) {
+        const searchInput =
+            document.getElementById('searchInput');
+
+        const requestedQuery =
+            searchInput
+                ? searchInput.value.trim()
+                : '';
+
+        if (requestedQuery) {
+            navigate(
+                `search?q=${encodeURIComponent(requestedQuery)}`
+            );
+            return;
+        }
+    }
+
     routeContext = routeContext || {
         generation: routeGeneration,
         signal: currentAbortController?.signal
@@ -93,13 +110,29 @@ async function searchMovie(reset = true, isFilterChange = false, routeContext = 
         
         let html = "";
         for (let i = 0; i < filtered.length; i++) {
-            html += createMovieCard(filtered[i], filtered[i].media_type, "");
-            fetchAndInjectProviders(filtered[i].id, filtered[i].media_type, null, routeContext);
+            html += createMovieCard(
+                filtered[i],
+                filtered[i].media_type,
+                ""
+            );
         }
+
         if (reset) {
             container.innerHTML = html;
         } else {
-            container.insertAdjacentHTML('beforeend', html);
+            container.insertAdjacentHTML(
+                'beforeend',
+                html
+            );
+        }
+
+        for (let i = 0; i < filtered.length; i++) {
+            fetchAndInjectProviders(
+                filtered[i].id,
+                filtered[i].media_type,
+                null,
+                routeContext
+            );
         }
         
         if (filtered.length > 0) {

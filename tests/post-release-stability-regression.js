@@ -461,28 +461,166 @@ async function runTest() {
         console.log('[PASS] Scroll test passed');
 
         // ============================================================
-        // 6. SEARCH/PLATFORM ROUTE RESET
+        // 6. SEARCH / PLATFORM / PROVIDER CACHE TESTS (TUR A)
         // ============================================================
-        console.log('Running search/platform test...');
-        await page.evaluate(() => {
-            const si = document.getElementById('searchInput');
-            if (si) si.value = 'Test Value';
-        });
-        await page.evaluate(() => { window.location.hash = '#platform'; });
-        await new Promise(r => setTimeout(r, 500));
+        console.log('Running Search / Platform / Cache flow tests...');
 
-        const platformState = await page.evaluate(() => {
-            const psa = document.getElementById('platform-selection-area');
+        // --- 6.A COLD CACHE PLATFORM CHECK ---
+        await page.goto('http://127.0.0.1:' + PORT + '/#platform', { waitUntil: 'networkidle0' });
+
+        // Wait for platform movies to render completely, including provider containers (avoids skeleton false pass)
+        await page.waitForFunction(() =>
+            document.querySelectorAll('#search-results .movie-card .providers-container').length >= 3,
+            { timeout: 8000 }
+        );
+
+        const getProviderStates = async () => {
+            return await page.evaluate(() => {
+                const cards = Array.from(document.querySelectorAll('#search-results .movie-card')).slice(0, 3);
+                return cards.map(card => {
+                    const container = card.querySelector('.providers-container');
+                    return {
+                        exists: Boolean(container),
+                        loading: Boolean(container && container.textContent.includes('Platformlar aranıyor...')),
+                        childCount: container ? container.children.length : 0
+                    };
+                });
+            });
+        };
+
+        // Wait for providers to settle without blind sleep
+        await page.waitForFunction(() => {
+            const containers = Array.from(document.querySelectorAll('#search-results .movie-card .providers-container')).slice(0, 3);
+            return (
+                containers.length === 3 &&
+                containers.every(container =>
+                    !container.textContent.includes('Platformlar aranıyor...') &&
+                    container.children.length > 0
+                )
+            );
+        }, { timeout: 5000 });
+
+        const platformProviders = await getProviderStates();
+        for (let state of platformProviders) {
+            if (!state.exists) throw new Error('Platform cold cache: Provider container missing');
+            if (state.loading) throw new Error('Platform cold cache: Provider stuck on loading state');
+            if (state.childCount === 0) throw new Error('Platform cold cache: Provider container rendered empty');
+        }
+
+        // --- 6.B REAL USER SEARCH (A1) ---
+        await page.type('#searchInput', 'dune');
+        await page.click(
+            '#platform .search-box button[aria-label="Film veya Dizi Ara"]'
+        );
+
+        // Wait for search result cards
+        await page.waitForFunction(() =>
+            document.querySelectorAll('#search-results .movie-card .providers-container').length >= 3,
+            { timeout: 8000 }
+        );
+
+        let currentHash = await page.evaluate(() => window.location.hash);
+        let currentMode = await page.evaluate(() => typeof currentMode !== 'undefined' ? currentMode : 'undefined');
+        let sInputVal = await page.evaluate(() => document.getElementById('searchInput').value);
+
+        if (currentHash !== '#search?q=dune') throw new Error('Search button click did not route to #search?q=dune, got: ' + currentHash);
+        if (currentMode !== 'search') throw new Error('Mode not search after search button, got: ' + currentMode);
+        if (sInputVal !== 'dune') throw new Error('Input value lost: ' + sInputVal);
+
+        // --- 6.C WARM CACHE SEARCH CHECK (A3) ---
+        // Wait for providers to settle without blind sleep
+        await page.waitForFunction(() => {
+            const containers = Array.from(document.querySelectorAll('#search-results .movie-card .providers-container')).slice(0, 3);
+            return (
+                containers.length === 3 &&
+                containers.every(container =>
+                    !container.textContent.includes('Platformlar aranıyor...') &&
+                    container.children.length > 0
+                )
+            );
+        }, { timeout: 5000 });
+
+        const searchProviders = await getProviderStates();
+        for (let state of searchProviders) {
+            if (!state.exists) throw new Error('Search warm cache: Provider container missing');
+            if (state.loading) throw new Error('Search warm cache: Provider stuck on loading state due to sync DOM bug');
+            if (state.childCount === 0) throw new Error('Search warm cache: Provider container rendered empty');
+        }
+
+        // --- 6.D ENTER KEY SEARCH (A1 duplicate flow) ---
+        // Clear input, type test2, hit enter
+        await page.evaluate(() => { document.getElementById('searchInput').value = ''; });
+        await page.type('#searchInput', 'test2');
+        await page.keyboard.press('Enter');
+        await page.waitForFunction(
+            () => window.location.hash === '#search?q=test2',
+            { timeout: 5000 }
+        );
+
+        currentHash = await page.evaluate(() => window.location.hash);
+        if (currentHash !== '#search?q=test2') throw new Error('Enter key did not route correctly, got: ' + currentHash);
+
+        // --- 6.E REAL PLATFORM RESET (A2) ---
+        // Click "Nerede İzlerim?" (Navbar)
+        await page.click('.nav-links a[onclick*="platform"]');
+
+        // Wait for UI to update without blind sleep
+        await page.waitForFunction(() => {
+            const psa =
+                document.getElementById(
+                    'platform-selection-area'
+                );
+
+            return (
+                window.location.hash === '#platform' &&
+                typeof currentMode !== 'undefined' &&
+                currentMode === 'platform' &&
+                document.getElementById('searchInput').value === '' &&
+                psa &&
+                getComputedStyle(psa).display !== 'none' &&
+                document.querySelectorAll(
+                    '#search-results .movie-card .providers-container'
+                ).length >= 3
+            );
+        }, { timeout: 8000 });
+
+        const pResetState = await page.evaluate(() => {
+            const psa =
+                document.getElementById(
+                    'platform-selection-area'
+                );
+
             return {
                 hash: window.location.hash,
-                searchVal: (document.getElementById('searchInput') || {}).value || '',
-                areaVisible: psa ? window.getComputedStyle(psa).display !== 'none' : false
+                mode:
+                    typeof currentMode !== 'undefined'
+                        ? currentMode
+                        : 'undefined',
+                searchVal:
+                    document.getElementById(
+                        'searchInput'
+                    ).value,
+                psaDisplay:
+                    psa
+                        ? getComputedStyle(psa).display
+                        : 'null',
+                providerContainersCount:
+                    document.querySelectorAll(
+                        '#search-results .movie-card .providers-container'
+                    ).length
             };
         });
-        if (platformState.hash !== '#platform') throw new Error('Platform hash wrong: ' + platformState.hash);
-        if (platformState.searchVal !== '') throw new Error('searchInput not cleared on platform route: "' + platformState.searchVal + '"');
-        if (!platformState.areaVisible) throw new Error('Platform selection area not visible');
-        console.log('[PASS] Search/platform test passed');
+
+        if (pResetState.hash !== '#platform') throw new Error('Platform navbar link failed to reset hash, got: ' + pResetState.hash);
+        if (pResetState.mode !== 'platform') throw new Error('currentMode did not revert to platform, got: ' + pResetState.mode);
+        if (pResetState.searchVal !== '') throw new Error('searchInput not cleared, got: ' + pResetState.searchVal);
+        if (
+            pResetState.psaDisplay === 'none' ||
+            pResetState.psaDisplay === 'null'
+        ) throw new Error('platform-selection-area still display none or null');
+        if (pResetState.providerContainersCount < 3) throw new Error('providerContainersCount < 3 after platform reset');
+
+        console.log('[PASS] Search / Platform / Cache flow tests passed');
 
         console.log('\n[PASS] All post-release stability tests passed!');
         process.exitCode = 0;
