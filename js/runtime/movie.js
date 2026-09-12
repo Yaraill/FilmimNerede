@@ -330,7 +330,7 @@ async function renderMovie(
         getSafeTmdbImageUrl(
             item.poster_path,
             IMAGE_BASE,
-            'https://via.placeholder.com/500x750?text=Afiş+Yok'
+            'assets/placeholder.svg'
         );
 
     const posterImgElem =
@@ -647,7 +647,7 @@ async function renderMovie(
                         getSafeTmdbImageUrl(
                             provider?.logo_path,
                             IMAGE_BASE,
-                            'https://via.placeholder.com/35x35?text=?'
+                            'assets/placeholder.svg'
                         );
 
                     const wrapper =
@@ -1407,7 +1407,7 @@ if (imdbId) {
                         getSafeTmdbImageUrl(
                             actor.profile_path,
                             IMAGE_BASE,
-                            'https://via.placeholder.com/150x150?text=Foto'
+                            'assets/placeholder.svg'
                         );
 
                     const card =
@@ -1572,7 +1572,7 @@ if (imdbId) {
                         getSafeTmdbImageUrl(
                             rec.poster_path,
                             IMAGE_BASE,
-                            'https://via.placeholder.com/100x150?text=Yok'
+                            'assets/placeholder.svg'
                         );
 
                     window.movieCache[recId] = {
@@ -2036,7 +2036,7 @@ if (imdbId) {
                                     getSafeTmdbImageUrl(
                                         part.poster_path,
                                         IMAGE_BASE,
-                                        'https://via.placeholder.com/100x150?text=Yok'
+                                        'assets/placeholder.svg'
                                     );
 
                                 window.movieCache[
@@ -2731,7 +2731,7 @@ async function loadSeasonEpisodes(
                 getSafeTmdbImageUrl(
                     ep.still_path,
                     IMAGE_BASE,
-                    'https://via.placeholder.com/120x70?text=Afiş+Yok'
+                    'assets/placeholder.svg'
                 );
 
             let airDate =

@@ -765,7 +765,7 @@ async function loadTop10Trending(
                     getSafeTmdbImageUrl(
                         item.poster_path,
                         IMAGE_BASE,
-                        'https://via.placeholder.com/500x750?text=Yok'
+                        'assets/placeholder.svg'
                     );
 
                 window.movieCache[
@@ -1067,7 +1067,7 @@ async function loadTrendingActors(
                     actor
                         .profile_path,
                     IMAGE_BASE,
-                    'https://via.placeholder.com/150x225?text=Yok'
+                    'assets/placeholder.svg'
                 );
 
             const card =
@@ -1445,7 +1445,7 @@ async function loadCuratedCollections(
                 getSafeTmdbImageUrl(
                     data.poster_path,
                     IMAGE_BASE,
-                    'https://via.placeholder.com/300x170?text=Koleksiyon'
+                    'assets/placeholder.svg'
                 );
 
             const poster =

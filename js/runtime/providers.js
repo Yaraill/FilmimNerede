@@ -222,7 +222,7 @@ async function fetchAndInjectProviders(
                                             provider
                                                 ?.logo_path,
                                             IMAGE_BASE,
-                                            'https://via.placeholder.com/35x35?text=?'
+                                            'assets/placeholder.svg'
                                         );
 
                                     const image =

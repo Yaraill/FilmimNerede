@@ -846,7 +846,7 @@ ratedMovies.forEach(m => {
                     getSafeTmdbImageUrl(
                         profilePath,
                         IMAGE_BASE,
-                        'https://via.placeholder.com/150x225?text=Yok'
+                        'assets/placeholder.svg'
                     );
 
                 const card =

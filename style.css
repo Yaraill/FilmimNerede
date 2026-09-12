@@ -2350,3 +2350,21 @@ button.menu-toggle {
         scroll-behavior: auto !important;
     }
 }
+
+/* Actor Modal Mobile Layout Fix */
+.actor-header {
+    display: flex;
+    gap: 20px;
+    padding: 20px;
+    background: rgba(0,0,0,0.5);
+}
+@media (max-width: 768px) {
+    .actor-header {
+        flex-direction: column;
+        align-items: center;
+        text-align: center;
+    }
+    .actor-header > div {
+        width: 100%;
+    }
+}

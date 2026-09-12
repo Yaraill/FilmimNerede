@@ -483,7 +483,7 @@ async function renderActor(
         getSafeTmdbImageUrl(
             profilePath,
             IMAGE_BASE,
-            'https://via.placeholder.com/60x90'
+            'assets/placeholder.svg'
         );
 
     let favoriteActors = [];
@@ -1640,7 +1640,7 @@ async function handleActorAutocomplete(
                                         item
                                             ?.profile_path,
                                         IMAGE_BASE,
-                                        'https://via.placeholder.com/40x60?text=Yok'
+                                        'assets/placeholder.svg'
                                     );
 
                                 const knownFor =
