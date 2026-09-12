@@ -231,6 +231,8 @@ function resetPlatformView(routeContext = null) {
     if (platformSelector) platformSelector.style.display = 'flex';
     const platformFilters = document.querySelector('.platform-filters');
     if (platformFilters) platformFilters.style.display = 'block';
+    const platformSelection = document.getElementById('platform-selection-area');
+    if (platformSelection) platformSelection.style.display = 'block';
     const filterControls = document.querySelector('.filter-controls');
     if (filterControls) filterControls.style.display = 'flex';
     

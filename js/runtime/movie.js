@@ -97,7 +97,7 @@ async function renderMovie(
         } else {
             modal.style.display = 'flex';
             modal.classList.add('active');
-            modal.setAttribute('aria-hidden', 'false');
+            modal.removeAttribute('aria-hidden');
             document.body.style.overflow = "hidden";
         }
     }
@@ -461,13 +461,12 @@ async function renderMovie(
             'align-items:center;';
 
         let renderedGenreCount = 0;
-
         const genreIds =
-            Array.isArray(
-                item.genre_ids
-            )
+            Array.isArray(item.genre_ids)
                 ? item.genre_ids
-                : [];
+                : Array.isArray(item.genres) 
+                    ? item.genres.map(g => g.id || g) 
+                    : [];
 
         genreIds.forEach(rawGenreId => {
             const genreId =
@@ -2456,7 +2455,7 @@ async function openTrailer(
         window.ModalManager.openModal(modal, trailerTrigger);
     } else {
         modal.classList.add('active');
-        modal.setAttribute('aria-hidden', 'false');
+        modal.removeAttribute('aria-hidden');
     }
 
     const bgIframe =

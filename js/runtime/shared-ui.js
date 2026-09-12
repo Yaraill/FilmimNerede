@@ -848,6 +848,9 @@ const ModalManager = {
 
         const previousTop = this.getTopModal();
         if (previousTop && previousTop.element !== modalElem) {
+            if (previousTop.element.contains(document.activeElement)) {
+                document.activeElement.blur();
+            }
             previousTop.element.setAttribute('aria-hidden', 'true');
             previousTop.element.classList.add('modal-underlay');
             if (!(modalElem.id === 'trailer-modal' && modalElem.classList.contains('pip-mode'))) {
@@ -869,7 +872,7 @@ const ModalManager = {
         modalElem.style.removeProperty('display');
         modalElem.classList.add('active');
         modalElem.classList.remove('modal-underlay');
-        modalElem.setAttribute('aria-hidden', 'false');
+        modalElem.removeAttribute('aria-hidden');
         modalElem.inert = false;
 
         if (this.stack.length === 1) {
@@ -919,7 +922,8 @@ const ModalManager = {
         const top = this.getTopModal();
         if (top) {
             top.element.classList.remove('modal-underlay');
-            top.element.setAttribute('aria-hidden', 'false');
+            top.element.removeAttribute('aria-hidden');
+            if (modalElem.contains(document.activeElement)) { document.activeElement.blur(); }
             top.element.inert = false;
             if (!skipFocusRestore) {
                 if (entry && entry.trigger && top.element.contains(entry.trigger)) {
@@ -939,6 +943,8 @@ const ModalManager = {
             const advancedPanel = document.getElementById('advanced-search-panel');
             if (advancedPanel) advancedPanel.inert = false;
             document.body.style.overflow = 'auto';
+
+            if (modalElem.contains(document.activeElement)) { document.activeElement.blur(); }
 
             if (!skipFocusRestore) {
                 let targetTrigger = this.externalOriginTrigger || entry?.trigger;

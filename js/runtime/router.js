@@ -442,11 +442,11 @@ function handleRoute() {
                         queryStr;
                 }
 
-                searchMovie(
-                    true,
-                    false,
-                    routeContext
-                );
+                if (window.isHistoryRestoration && typeof currentSearchQuery !== 'undefined' && currentSearchQuery === queryStr && document.getElementById('search-results')?.children.length > 0) {
+                    // DOM is already populated, let history api restore scroll position
+                } else {
+                    searchMovie(true, false, routeContext);
+                }
             } else {
                 navigate(
                     'platform',

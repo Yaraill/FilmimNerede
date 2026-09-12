@@ -444,7 +444,7 @@ body {
     display: flex;
 }
 #trailer-modal {
-    z-index: 10000;
+    z-index: 20000;
 }
 #random-modal {
     align-items: flex-start;
@@ -542,14 +542,7 @@ body {
     justify-content: center;
     align-items: center;
     width: fit-content;
-    z-index: 9999;
-}
-
-.city-selector-wrapper:hover {
-    background: var(--card-bg);
-    border-color: var(--accent-color);
-    box-shadow: 0 12px 40px rgba(var(--accent-color-rgb), 0.4), inset 0 1px 0 rgba(255,255,255,0.1);
-    transform: translateY(-3px) scale(1.02);
+    z-index: 10;
 }
 
 .location-icon {

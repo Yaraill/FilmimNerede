@@ -394,6 +394,26 @@ async function handleSearchInput(event) {
 
                 if (appendedCount > 0) {
                     box.style.display = 'block';
+
+                    // Prevent clipping by opening upward if necessary
+                    const rect = input.getBoundingClientRect();
+                    const spaceBelow = window.innerHeight - rect.bottom;
+                    const spaceAbove = rect.top;
+
+                    if (spaceBelow < 250 && spaceAbove > spaceBelow) {
+                        box.style.top = 'auto';
+                        box.style.bottom = '100%';
+                        box.style.marginTop = '0';
+                        box.style.marginBottom = '5px';
+                        box.style.maxHeight = Math.min(spaceAbove - 20, 250) + 'px';
+                    } else {
+                        box.style.top = '100%';
+                        box.style.bottom = 'auto';
+                        box.style.marginTop = '5px';
+                        box.style.marginBottom = '0';
+                        box.style.maxHeight = Math.min(spaceBelow - 20, 250) + 'px';
+                    }
+
                     input.setAttribute('aria-expanded', 'true');
                     if (typeof announceA11y === 'function') {
                         announceA11y(`${appendedCount} arama önerisi bulundu.`);

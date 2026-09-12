@@ -259,11 +259,8 @@ async function loadGenres() {
                 )
             ]);
 
-        const movieData =
-            await movieRes.json();
-
-        const tvData =
-            await tvRes.json();
+        const movieData = await movieRes.json();
+        const tvData = await tvRes.json();
 
         const normalizeGenres =
             value => {

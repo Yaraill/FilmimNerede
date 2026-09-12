@@ -451,7 +451,7 @@ async function runAccessibilityTests() {
         await page.keyboard.press('Enter');
         await page.waitForFunction(() => {
             const modal = document.getElementById('random-modal');
-            return modal && modal.classList.contains('active') && modal.getAttribute('aria-hidden') === 'false' && modal.contains(document.activeElement);
+            return modal && modal.classList.contains('active') && modal.getAttribute('aria-hidden') !== 'true' && modal.contains(document.activeElement);
         });
 
         const randomComputedDisplay = await page.evaluate(() => getComputedStyle(document.getElementById('random-modal')).display);
@@ -510,7 +510,7 @@ async function runAccessibilityTests() {
 
         await page.waitForFunction(() => {
             const modal = document.getElementById('details-modal');
-            return modal && modal.classList.contains('active') && modal.getAttribute('aria-hidden') === 'false';
+            return modal && modal.classList.contains('active') && modal.getAttribute('aria-hidden') !== 'true';
         });
 
         const detailsComputedDisplay = await page.evaluate(() => getComputedStyle(document.getElementById('details-modal')).display);
@@ -550,7 +550,7 @@ async function runAccessibilityTests() {
 
         await page.waitForFunction(() => {
             const tm = document.getElementById('trailer-modal');
-            return tm && tm.classList.contains('active') && tm.getAttribute('aria-hidden') === 'false' && tm.contains(document.activeElement);
+            return tm && tm.classList.contains('active') && tm.getAttribute('aria-hidden') !== 'true' && tm.contains(document.activeElement);
         });
 
         const trailerComputedDisplay = await page.evaluate(() => getComputedStyle(document.getElementById('trailer-modal')).display);

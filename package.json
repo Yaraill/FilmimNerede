@@ -4,7 +4,7 @@
     "puppeteer": "^25.4.0"
   },
   "scripts": {
-    "test": "npm run test:static && npm run test:browser && npm run test:xss && npm run test:home-performance && npm run test:omdb-proxy && npm run test:watch-time && npm run test:profile-backup && npm run test:url-filter-state && npm run test:accessibility && npm run test:pwa && npm run test:release-stabilization && npm run test:e2e",
+    "test": "npm run test:static && npm run test:browser && npm run test:xss && npm run test:home-performance && npm run test:omdb-proxy && npm run test:watch-time && npm run test:profile-backup && npm run test:url-filter-state && npm run test:accessibility && npm run test:pwa && npm run test:release-stabilization && npm run test:post-release-stability && npm run test:e2e",
     "test:static": "node tests/static-smoke.js",
     "test:browser": "node tests/browser-smoke.js",
     "test:xss": "node tests/xss-regression.js",
@@ -16,6 +16,7 @@
     "test:accessibility": "node tests/accessibility-regression.js",
     "test:pwa": "node tests/pwa-regression.js",
     "test:release-stabilization": "node tests/release-stabilization-regression.js",
+    "test:post-release-stability": "node tests/post-release-stability-regression.js",
     "test:e2e": "node tests/e2e-regression.js"
   }
 }
