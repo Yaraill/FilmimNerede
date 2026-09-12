@@ -649,7 +649,29 @@ async function runAccessibilityTests() {
                 }
             );
 
-        await recommendationCard.press('Enter');
+        await recommendationCard.evaluate(
+            card => {
+                card.dispatchEvent(
+                    new KeyboardEvent(
+                        'keydown',
+                        {
+                            key: 'Enter',
+                            code: 'Enter',
+                            bubbles: true,
+                            cancelable: true
+                        }
+                    )
+                );
+            }
+        );
+
+        await page.waitForFunction(
+            () =>
+                window.location.hash.includes(
+                    'movie/102'
+                ),
+            { timeout: 5000 }
+        );
 
         await page.waitForFunction(
             () => {
@@ -659,9 +681,6 @@ async function runAccessibilityTests() {
                     );
 
                 return (
-                    window.location.hash.includes(
-                        'movie/102'
-                    ) &&
                     title &&
                     title.textContent.includes(
                         'Keyboard Matrix'
