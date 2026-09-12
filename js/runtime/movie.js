@@ -464,8 +464,8 @@ async function renderMovie(
         const genreIds =
             Array.isArray(item.genre_ids)
                 ? item.genre_ids
-                : Array.isArray(item.genres) 
-                    ? item.genres.map(g => g.id || g) 
+                : Array.isArray(item.genres)
+                    ? item.genres.map(g => g.id || g)
                     : [];
 
         genreIds.forEach(rawGenreId => {
