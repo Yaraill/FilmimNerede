@@ -638,29 +638,38 @@ async function runAccessibilityTests() {
         assert(historyState1.hash.includes('movie/101'), 'Journey E FAILED: Route hash does not contain movie/101');
 
         // Activate real recommendation card for Movie 102 via keyboard Enter
-        await page.waitForFunction(() => {
-            const recCard =
-                document.querySelector(
-                    '#details-recommendations .recommendation-card'
-                );
-
-            if (!recCard || !recCard.isConnected) {
-                return false;
-            }
-
-            recCard.focus();
-
-            return (
-                document.activeElement === recCard
+        const recommendationCard =
+            await page.waitForSelector(
+                '#details-recommendations ' +
+                '.recommendation-card' +
+                '[aria-label="Keyboard Matrix detaylarını görüntüle"]',
+                {
+                    visible: true,
+                    timeout: 5000
+                }
             );
-        }, { timeout: 5000 });
 
-        await page.keyboard.press('Enter');
+        await recommendationCard.press('Enter');
 
-        await page.waitForFunction(() => {
-            const title = document.getElementById('details-title');
-            return title && title.textContent.includes('Keyboard Matrix');
-        });
+        await page.waitForFunction(
+            () => {
+                const title =
+                    document.getElementById(
+                        'details-title'
+                    );
+
+                return (
+                    window.location.hash.includes(
+                        'movie/102'
+                    ) &&
+                    title &&
+                    title.textContent.includes(
+                        'Keyboard Matrix'
+                    )
+                );
+            },
+            { timeout: 5000 }
+        );
 
         const historyState2 = await page.evaluate(() => ({
             index: history.state?.filmRehberiRouter?.index,
