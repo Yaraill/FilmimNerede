@@ -1767,10 +1767,26 @@ async function handleActorAutocomplete(
 
                         // Prevent clipping by opening upward if necessary
                         const rect = input.getBoundingClientRect();
-                        const spaceBelow = window.innerHeight - rect.bottom;
+
+                        const footerRect =
+                            document.querySelector('.site-footer')
+                                ?.getBoundingClientRect();
+
+                        const lowerBoundary =
+                            footerRect &&
+                            footerRect.top > rect.bottom
+                                ? Math.min(
+                                    window.innerHeight,
+                                    footerRect.top
+                                )
+                                : window.innerHeight;
+
+                        const spaceBelow =
+                            lowerBoundary - rect.bottom;
+
                         const spaceAbove = rect.top;
 
-                        if (spaceBelow < 250 && spaceAbove > spaceBelow) {
+                        if (spaceBelow < 120 && spaceAbove > spaceBelow) {
                             box.style.top = 'auto';
                             box.style.bottom = '100%';
                             box.style.marginTop = '0';
