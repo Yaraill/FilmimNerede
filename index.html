@@ -417,7 +417,19 @@
     <div id="trailer-modal" class="modal" onclick="closeTrailer(event)" role="dialog" aria-modal="true" aria-label="Fragman" aria-hidden="true">
         <div class="modal-content">
             <button type="button" class="close-btn" onclick="closeTrailer(null, true)" aria-label="Fragmanı Kapat" title="Kapat">&times;</button>
-        <button type="button" class="pip-btn" onclick="togglePiP(event)" title="Yüzen Oynatıcı (PiP)" aria-label="Yüzen Oynatıcı (PiP)" style="position:absolute; top:-38px; right: 40px; color:white; font-size: 24px; cursor: pointer; transition: color 0.2s; background:transparent; border:none;"><i class="fas fa-compress-alt" aria-hidden="true"></i></button>
+            <button
+                type="button"
+                class="pip-btn"
+                onclick="togglePiP(event)"
+                title="Yüzen Oynatıcı (PiP)"
+                aria-label="Yüzen Oynatıcı (PiP)"
+                aria-pressed="false"
+            >
+                <i
+                    class="fas fa-compress-alt"
+                    aria-hidden="true"
+                ></i>
+            </button>
             <div class="video-container" id="video-container">
                 <!-- YouTube iFrame buraya gelecek -->
             </div>

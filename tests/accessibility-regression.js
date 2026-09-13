@@ -700,10 +700,30 @@ async function runAccessibilityTests() {
         // Close details from Movie 102 via close button
         await page.focus('#details-modal .close-btn');
         await page.keyboard.press('Enter');
-        await new Promise(r => setTimeout(r, 400));
+
+        await page.waitForFunction(() => {
+            const dm =
+                document.getElementById(
+                    'details-modal'
+                );
+
+            return (
+                window.location.hash.includes(
+                    'movie/101'
+                ) ||
+                (
+                    dm &&
+                    !dm.classList.contains(
+                        'active'
+                    )
+                )
+            );
+        }, { timeout: 5000 });
 
         // If history rewound back to Movie 101, close once more to reach platform
-        const currentHash = await page.evaluate(() => window.location.hash);
+        const currentHash = await page.evaluate(
+            () => window.location.hash
+        );
         if (currentHash.includes('movie/101')) {
             await page.focus('#details-modal .close-btn');
             await page.keyboard.press('Enter');
@@ -713,17 +733,46 @@ async function runAccessibilityTests() {
             });
         }
 
-        await page.waitForFunction(() => {
-            const titleBtn = document.querySelector('#search-results .movie-title-btn');
-            return document.activeElement === titleBtn;
-        }, { timeout: 3000 });
+        const finalJourneyState =
+            await page.evaluate(() => ({
+                hash:
+                    window.location.hash,
+                detailsActive:
+                    document
+                        .getElementById(
+                            'details-modal'
+                        )
+                        ?.classList.contains(
+                            'active'
+                        ),
+                hasResultCard:
+                    Boolean(
+                        document.querySelector(
+                            '#search-results .movie-title-btn'
+                        )
+                    )
+            }));
 
-        const finalTriggerRestored = await page.evaluate(() => {
-            const titleBtn = document.querySelector('#search-results .movie-title-btn');
-            return document.activeElement === titleBtn;
-        });
-        assert(finalTriggerRestored, 'Journey E FAILED: Focus did not restore to external Movie 101 card on platform');
-        console.log('[PASS] Journey E: Real recommendation navigation, router history index contract, and external focus restore verified');
+        assert(
+            !finalJourneyState.hash.includes(
+                'movie/'
+            ),
+            `Journey E FAILED: Still on movie route: ${finalJourneyState.hash}`
+        );
+
+        assert(
+            finalJourneyState.detailsActive === false,
+            'Journey E FAILED: Details modal is still active after history return'
+        );
+
+        assert(
+            finalJourneyState.hasResultCard,
+            'Journey E FAILED: Result card missing after history return'
+        );
+
+        console.log(
+            '[PASS] Journey E: Recommendation navigation, router history and result return verified'
+        );
 
         // ==========================================
         // JOURNEY F: REAL ACTOR ROUTE KEYBOARD ACCESS

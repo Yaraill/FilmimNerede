@@ -181,18 +181,6 @@ let currentRouterIndex = -1;
 let lastRenderedHash = null;
 
 function handleRoute() {
-    const newIndex = history.state?.filmRehberiRouter?.index ?? 0;
-    if (currentRouterIndex === -1) {
-        currentRouterIndex = newIndex;
-        window.isHistoryRestoration = false;
-    } else if (!window._justNavigated) {
-        window.isHistoryRestoration = (newIndex !== currentRouterIndex);
-        currentRouterIndex = newIndex;
-    }
-    window._justNavigated = false;
-    const shouldRestoreDetailsFocus = Boolean(window.isNavigatingBack);
-    window.isNavigatingBack = false;
-    
     const route = parseRoute();
 
     const currentHash =
@@ -201,6 +189,26 @@ function handleRoute() {
     if (lastRenderedHash === currentHash) {
         return;
     }
+
+    const newIndex =
+        history.state?.filmRehberiRouter?.index ?? 0;
+
+    if (currentRouterIndex === -1) {
+        currentRouterIndex = newIndex;
+        window.isHistoryRestoration = false;
+    } else if (!window._justNavigated) {
+        window.isHistoryRestoration =
+            (newIndex !== currentRouterIndex);
+
+        currentRouterIndex = newIndex;
+    }
+
+    window._justNavigated = false;
+
+    const shouldRestoreDetailsFocus =
+        Boolean(window.isNavigatingBack);
+
+    window.isNavigatingBack = false;
 
     lastRenderedHash = currentHash;
 
@@ -219,7 +227,9 @@ function handleRoute() {
         signal: currentAbortController.signal,
         platformQuery: route.page === 'platform'
             ? (route.platformQuery || '')
-            : null
+            : null,
+        returningFromDetails:
+            shouldRestoreDetailsFocus
     };
 
     if (route.page !== 'movie' && route.page !== 'actor') {
@@ -235,16 +245,49 @@ function handleRoute() {
     const trailerModal =
         document.getElementById('trailer-modal');
 
+    const preserveTrailerPip =
+        Boolean(
+            trailerModal &&
+            trailerModal.classList.contains(
+                'active'
+            ) &&
+            trailerModal.classList.contains(
+                'pip-mode'
+            )
+        );
+
     const randomModal =
         document.getElementById('random-modal');
 
     // Transient overlays must never survive a real route/history change.
-    if (trailerModal) {
-        if (window.ModalManager && window.ModalManager.isModalOpen(trailerModal)) {
-            window.ModalManager.closeModal(trailerModal, { skipFocusRestore: true });
-        } else if (trailerModal.classList.contains('active')) {
-            trailerModal.classList.remove('active');
-            trailerModal.setAttribute('aria-hidden', 'true');
+    if (
+        trailerModal &&
+        !preserveTrailerPip
+    ) {
+        if (
+            window.ModalManager &&
+            window.ModalManager.isModalOpen(
+                trailerModal
+            )
+        ) {
+            window.ModalManager.closeModal(
+                trailerModal,
+                {
+                    skipFocusRestore: true
+                }
+            );
+        } else if (
+            trailerModal.classList.contains(
+                'active'
+            )
+        ) {
+            trailerModal.classList.remove(
+                'active'
+            );
+            trailerModal.setAttribute(
+                'aria-hidden',
+                'true'
+            );
             trailerModal.inert = true;
         }
     }
@@ -338,6 +381,34 @@ function handleRoute() {
 
     if (!window.ModalManager || !window.ModalManager.hasActiveModal()) {
         document.body.style.overflow = "auto";
+    }
+
+    if (
+        preserveTrailerPip &&
+        route.page !== 'movie' &&
+        route.page !== 'actor'
+    ) {
+        [
+            document.getElementById(
+                'main-content'
+            ),
+            document.querySelector(
+                '.navbar'
+            ),
+            document.querySelector(
+                '.site-footer'
+            ),
+            document.getElementById(
+                'advanced-search-panel'
+            )
+        ].forEach(element => {
+            if (element) {
+                element.inert = false;
+            }
+        });
+
+        document.body.style.overflow =
+            'auto';
     }
 
     switch (route.page) {

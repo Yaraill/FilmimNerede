@@ -2533,12 +2533,164 @@ async function openTrailer(
     }
 }
 
+function togglePiP(event) {
+    if (event) {
+        event.preventDefault();
+        event.stopPropagation();
+    }
+
+    const modal =
+        document.getElementById(
+            'trailer-modal'
+        );
+
+    if (
+        !modal ||
+        !modal.classList.contains(
+            'active'
+        )
+    ) {
+        return;
+    }
+
+    const enteringPip =
+        !modal.classList.contains(
+            'pip-mode'
+        );
+
+    modal.classList.toggle(
+        'pip-mode',
+        enteringPip
+    );
+
+    const pipBtn =
+        event?.currentTarget ||
+        modal.querySelector(
+            '.pip-btn'
+        );
+
+    if (pipBtn) {
+        pipBtn.setAttribute(
+            'aria-pressed',
+            enteringPip
+                ? 'true'
+                : 'false'
+        );
+
+        const label =
+            enteringPip
+                ? 'Normal oynatıcıya dön'
+                : 'Yüzen Oynatıcı (PiP)';
+
+        pipBtn.setAttribute(
+            'aria-label',
+            label
+        );
+
+        pipBtn.title =
+            label;
+    }
+
+    if (!window.ModalManager) {
+        return;
+    }
+
+    const stack =
+        window.ModalManager.stack || [];
+
+    const trailerIndex =
+        stack.findIndex(
+            entry =>
+                entry.element === modal
+        );
+
+    const previousEntry =
+        trailerIndex > 0
+            ? stack[
+                trailerIndex - 1
+            ]
+            : null;
+
+    if (previousEntry?.element) {
+        previousEntry.element.inert =
+            !enteringPip;
+
+        previousEntry.element
+            .classList.toggle(
+                'modal-underlay',
+                !enteringPip
+            );
+
+        if (enteringPip) {
+            previousEntry.element
+                .removeAttribute(
+                    'aria-hidden'
+                );
+        } else {
+            previousEntry.element
+                .setAttribute(
+                    'aria-hidden',
+                    'true'
+                );
+        }
+
+        return;
+    }
+
+    const backgroundElements = [
+        document.getElementById(
+            'main-content'
+        ),
+        document.querySelector(
+            '.navbar'
+        ),
+        document.querySelector(
+            '.site-footer'
+        ),
+        document.getElementById(
+            'advanced-search-panel'
+        )
+    ];
+
+    backgroundElements.forEach(
+        element => {
+            if (element) {
+                element.inert =
+                    !enteringPip;
+            }
+        }
+    );
+}
+
 function closeTrailer(event, force = false) {
     const modal = document.getElementById('trailer-modal');
     if (!modal) return;
 
     const isBackdropClick = Boolean(event && event.target === modal);
     if (force || isBackdropClick) {
+        modal.classList.remove(
+            'pip-mode'
+        );
+
+        const pipBtn =
+            modal.querySelector(
+                '.pip-btn'
+            );
+
+        if (pipBtn) {
+            pipBtn.setAttribute(
+                'aria-pressed',
+                'false'
+            );
+
+            pipBtn.setAttribute(
+                'aria-label',
+                'Yüzen Oynatıcı (PiP)'
+            );
+
+            pipBtn.title =
+                'Yüzen Oynatıcı (PiP)';
+        }
         const container = document.getElementById('video-container');
         if (window.ModalManager) {
             window.ModalManager.closeModal(modal);
@@ -2570,9 +2722,19 @@ function closeDetails(event, force = false) {
             const state = history.state;
             if (state && state.filmRehberiRouter && state.filmRehberiRouter.index > 0) {
                 window.isNavigatingBack = true;
+
+                const navigatingFromHash =
+                    window.location.hash;
+
                 history.back();
+
                 setTimeout(() => {
-                    window.isNavigatingBack = false;
+                    if (
+                        window.location.hash ===
+                        navigatingFromHash
+                    ) {
+                        window.isNavigatingBack = false;
+                    }
                 }, 300);
             } else {
                 navigate('platform', { replace: true });

@@ -893,13 +893,13 @@ const ModalManager = {
             }
             const closeBtn = modalElem.querySelector('.close-btn');
             if (closeBtn && typeof closeBtn.focus === 'function') {
-                closeBtn.focus();
+                closeBtn.focus({ preventScroll: true });
             } else {
                 const focusable = modalElem.querySelectorAll(
                     'button:not([disabled]), [href]:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
                 );
                 if (focusable.length > 0) {
-                    focusable[0].focus();
+                    focusable[0].focus({ preventScroll: true });
                 }
             }
         }, 50);
