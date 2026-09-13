@@ -650,6 +650,10 @@ body {
     z-index: 10;
 }
 
+.city-selector-wrapper:has(> .custom-select-container.open) {
+    z-index: 2400;
+}
+
 .location-icon {
     color: var(--accent-color);
     font-size: 1.6rem;
