@@ -25,6 +25,16 @@ body.light-theme {
     --modal-overlay: rgba(255, 255, 255, 0.85);
 }
 
+body.light-theme #common-actor-tab .premium-search-input {
+    background: rgba(15, 23, 42, 0.06) !important;
+    color: var(--text-color) !important;
+    border: 1px solid var(--glass-border) !important;
+}
+
+body.light-theme #common-actor-tab .premium-search-input::placeholder {
+    color: var(--text-muted) !important;
+}
+
 * {
     margin: 0;
     padding: 0;
