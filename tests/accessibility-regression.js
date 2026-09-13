@@ -58,7 +58,7 @@ const mockPersons = [
         popularity: 50.0,
         adult: false,
         known_for: [
-            { id: 101, title: 'Accessibility Inception', media_type: 'movie', adult: false }
+            { id: 101, title: 'Accessibility Inception', media_type: 'movie', adult: false, vote_count: 1000 }
         ]
     },
     {
@@ -69,7 +69,7 @@ const mockPersons = [
         popularity: 45.0,
         adult: false,
         known_for: [
-            { id: 102, title: 'Keyboard Matrix', media_type: 'movie', adult: false }
+            { id: 102, title: 'Keyboard Matrix', media_type: 'movie', adult: false, vote_count: 1000 }
         ]
     }
 ];

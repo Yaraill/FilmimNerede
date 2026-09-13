@@ -287,14 +287,20 @@ async function runTest() {
                                         index +
                                         1,
                                     name:
-                                        `Actor ${pageNumber}-${index + 1}`,
+                                        [
+                                            'Actor Alpha',
+                                            'Actor Beta',
+                                            'Actor Gamma'
+                                        ][index],
                                     adult:
                                         false,
+                                    known_for_department:
+                                        'Acting',
                                     popularity:
                                         100 -
                                         index,
                                     profile_path:
-                                        null,
+                                        '/actor.jpg',
                                     known_for: [
                                         {
                                             id:
@@ -303,6 +309,8 @@ async function runTest() {
                                                 index,
                                             adult:
                                                 false,
+                                            vote_count:
+                                                1000,
                                             original_language:
                                                 index === 0
                                                     ? 'ko'

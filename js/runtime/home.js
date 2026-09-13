@@ -362,6 +362,52 @@ async function fetchTrendingActorsData(
             return;
         }
 
+        const actorPopularity =
+            Number(
+                actor.popularity
+            );
+
+        if (
+            !Number.isFinite(
+                actorPopularity
+            ) ||
+            actorPopularity < 10
+        ) {
+            return;
+        }
+
+        if (
+            !isValidTmdbImagePath(
+                actor.profile_path
+            )
+        ) {
+            return;
+        }
+
+        const actorName =
+            actor.name
+                .trim()
+                .normalize('NFC');
+
+        if (
+            actor.known_for_department !==
+            'Acting'
+        ) {
+            return;
+        }
+
+        const hasOnlyLatinNameChars =
+            /^[\p{Script=Latin}\p{M}\s.'’\-]+$/u
+                .test(
+                    actorName
+                );
+
+        if (
+            !hasOnlyLatinNameChars
+        ) {
+            return;
+        }
+
         const knownFor =
             Array.isArray(
                 actor.known_for
@@ -370,19 +416,39 @@ async function fetchTrendingActorsData(
                     .known_for
                 : [];
 
+        const nonAdultKnownFor =
+            knownFor.filter(
+                work =>
+                    work &&
+                    work.adult !== true
+            );
+
         if (
-            knownFor.length ===
+            nonAdultKnownFor.length ===
             0
         ) {
             return;
         }
 
+        const hasRecognizableWork =
+            nonAdultKnownFor.some(
+                work => {
+                    const voteCount =
+                        Number(
+                            work?.vote_count
+                        );
+
+                    return (
+                        Number.isFinite(
+                            voteCount
+                        ) &&
+                        voteCount >= 250
+                    );
+                }
+            );
+
         if (
-            knownFor.some(
-                work =>
-                    work?.adult ===
-                    true
-            )
+            !hasRecognizableWork
         ) {
             return;
         }
@@ -394,8 +460,7 @@ async function fetchTrendingActorsData(
         actors.push({
             id: actorId,
             name:
-                actor.name
-                    .trim(),
+                actorName,
             profile_path:
                 isValidTmdbImagePath(
                     actor

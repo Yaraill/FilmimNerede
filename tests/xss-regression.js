@@ -657,17 +657,17 @@ async function runTest() {
                             );
 
                     check(
-                        actorNames.includes(
+                        !actorNames.includes(
                             '김민수'
                         ),
-                        'Non-Latin actor should render'
+                        'Non-Latin actor should be filtered'
                     );
 
                     check(
-                        actorNames.includes(
+                        !actorNames.includes(
                             payload
                         ),
-                        'Actor payload should render as text'
+                        'Invalid trending actor name should be filtered'
                     );
 
                     check(
