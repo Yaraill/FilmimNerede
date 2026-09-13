@@ -2532,6 +2532,33 @@ async function loadSmartRecommendations(
             // external veriler için sertleştirildi.
             list.innerHTML =
                 html;
+
+            finalMovies.forEach(item => {
+                const itemId =
+                    normalizeTmdbId(
+                        item?.id
+                    );
+
+                const mediaType =
+                    normalizeMediaType(
+                        item?.media_type,
+                        'movie'
+                    );
+
+                if (
+                    !itemId ||
+                    !mediaType
+                ) {
+                    return;
+                }
+
+                fetchAndInjectProviders(
+                    itemId,
+                    mediaType,
+                    item,
+                    routeContext
+                );
+            });
         }
     } catch (e) {
         if (

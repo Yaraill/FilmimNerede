@@ -22,7 +22,16 @@
 
     <!-- Üst Menü (Navbar) -->
     <nav class="navbar glass">
-        <div class="logo" style="cursor: pointer;" onclick="window.location.reload()" title="Anasayfaya Dön">
+        <div
+            class="logo"
+            style="cursor: pointer;"
+            onclick="navigate('home')"
+            onkeydown="if(event.key === 'Enter' || event.key === ' ') { event.preventDefault(); navigate('home'); }"
+            role="button"
+            tabindex="0"
+            aria-label="FilmimNerede ana sayfasına dön"
+            title="Anasayfaya Dön"
+        >
             <span class="highlight">Filmim</span>Nerede
         </div>
         <button type="button" class="menu-toggle" id="mobile-menu" onclick="toggleMobileMenu()" aria-label="Menüyü aç/kapat" aria-expanded="false" aria-controls="nav-links">

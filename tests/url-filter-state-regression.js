@@ -514,7 +514,7 @@ async function runTest() {
 
         await page.evaluate(() => {
             window.location.hash =
-                '#platform?media=hacker&genres=999&year=1900&rating=999&runtime=999&sort=evil&provider=-1&unknown=x';
+                '#platform?media=hacker&genres=invalid&year=1900&rating=999&runtime=999&sort=evil&provider=-1&unknown=x';
         });
         await page.waitForFunction(
             () =>

@@ -2379,30 +2379,17 @@ function searchByGenre(genreId) {
         return;
     }
 
-    genreId =
-        safeGenreId;
+    const params =
+        new URLSearchParams();
 
-    closeDetails(null, true);
-    resetPlatformView();
-    
-    const select = document.getElementById('genreFilter');
-    if (select) {
-        let matchedValue = "";
-        Array.from(select.options).forEach(opt => {
-            if (opt.value === String(genreId) || opt.value.split('|').includes(String(genreId))) {
-                matchedValue = opt.value;
-            }
-        });
-        
-        if (matchedValue) {
-            select.value = matchedValue;
-        } else {
-            select.value =
-                String(genreId);
-        }
-    }
-    
-    loadPlatformMovies(0, true);
+    params.set(
+        'genres',
+        String(safeGenreId)
+    );
+
+    navigate(
+        `platform?${params.toString()}`
+    );
 }
 
 async function openTrailer(

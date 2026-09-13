@@ -56,6 +56,46 @@ function mockApi(request) {
     if (reqUrl.includes('/genre/tv/list')) {
         return { genres: [{ id: 18, name: 'Dram' }] };
     }
+    if (reqUrl.includes('/trending/all/week')) {
+        return {
+            page: 1,
+            results: MOCK_MOVIES,
+            total_pages: 1,
+            total_results: MOCK_MOVIES.length
+        };
+    }
+
+    if (reqUrl.includes('/movie/1001/recommendations')) {
+        return {
+            page: 1,
+            results: [
+                {
+                    id: 2001,
+                    title: 'Test Oneri',
+                    media_type: 'movie',
+                    genre_ids: [28],
+                    poster_path: '/dummy.jpg',
+                    vote_average: 8.2,
+                    vote_count: 1500,
+                    adult: false,
+                    release_date: '2022-01-01'
+                }
+            ],
+            total_pages: 1,
+            total_results: 1
+        };
+    }
+
+    if (reqUrl.includes('/movie/1003/watch/providers')) {
+        return {
+            results: {
+                TR: {
+                    flatrate: []
+                }
+            }
+        };
+    }
+
     if (reqUrl.includes('/watch/providers')) {
         return { results: { TR: { flatrate: [{ provider_id: 8, provider_name: 'Netflix', logo_path: '/logo.png' }] } } };
     }
@@ -621,6 +661,755 @@ async function runTest() {
         if (pResetState.providerContainersCount < 3) throw new Error('providerContainersCount < 3 after platform reset');
 
         console.log('[PASS] Search / Platform / Cache flow tests passed');
+
+        // ============================================================
+        // 7. FINAL PRE-DEPLOY REGRESSION
+        // ============================================================
+        console.log(
+            'Running final pre-deploy regression tests...'
+        );
+
+        // ------------------------------------------------------------
+        // 7.A PLATFORM HARD REFRESH MUST LOAD TOP 10
+        // ------------------------------------------------------------
+        await page.goto(
+            'http://127.0.0.1:' +
+                PORT +
+                '/#platform',
+            {
+                waitUntil:
+                    'domcontentloaded',
+                timeout: 15000
+            }
+        );
+
+        await page.waitForFunction(
+            () =>
+                document.querySelectorAll(
+                    '#top10-grid .top10-card'
+                ).length > 0,
+            {
+                timeout: 8000
+            }
+        );
+
+        const hardRefreshState =
+            await page.evaluate(() => ({
+                hash:
+                    window.location.hash,
+                top10Count:
+                    document
+                        .querySelectorAll(
+                            '#top10-grid .top10-card'
+                        )
+                        .length,
+                top10Visible:
+                    getComputedStyle(
+                        document.getElementById(
+                            'top10-section'
+                        )
+                    ).display !== 'none'
+            }));
+
+        if (
+            hardRefreshState.hash !==
+            '#platform'
+        ) {
+            throw new Error(
+                'Platform hard refresh changed route: ' +
+                hardRefreshState.hash
+            );
+        }
+
+        if (
+            !hardRefreshState
+                .top10Visible ||
+            hardRefreshState
+                .top10Count < 1
+        ) {
+            throw new Error(
+                'Top 10 did not load after direct #platform refresh: ' +
+                JSON.stringify(
+                    hardRefreshState
+                )
+            );
+        }
+
+        console.log(
+            '[PASS] Platform hard refresh Top 10 regression passed'
+        );
+
+        // ------------------------------------------------------------
+        // 7.B CLEAR FILTERS MUST RESET REAL + CUSTOM UI
+        // ------------------------------------------------------------
+        await page.waitForFunction(
+            () =>
+                typeof window
+                    .syncPlatformSelect ===
+                    'function' &&
+                typeof window
+                    .clearAllFilters ===
+                    'function',
+            {
+                timeout: 5000
+            }
+        );
+
+        await page.evaluate(() => {
+            syncPlatformSelect(
+                'yearFilter',
+                '2026'
+            );
+
+            syncPlatformSelect(
+                'ratingFilter',
+                '8'
+            );
+
+            syncPlatformSelect(
+                'providerFilter',
+                '337'
+            );
+
+            syncPlatformSelect(
+                'runtimeFilter',
+                '150'
+            );
+
+            syncPlatformSelect(
+                'sortByFilter',
+                'vote_average.desc'
+            );
+
+            const mediaSelect =
+                document.getElementById(
+                    'mediaTypeFilter'
+                );
+
+            if (mediaSelect) {
+                mediaSelect.value =
+                    'movie';
+            }
+
+            document
+                .querySelectorAll(
+                    '.segment-btn'
+                )
+                .forEach(button =>
+                    button.classList.remove(
+                        'active'
+                    )
+                );
+
+            const movieSegment =
+                Array.from(
+                    document.querySelectorAll(
+                        '.segment-btn'
+                    )
+                ).find(button =>
+                    button.textContent
+                        .trim() ===
+                    'Filmler'
+                );
+
+            if (movieSegment) {
+                movieSegment
+                    .classList
+                    .add('active');
+            }
+
+            const genreFilter =
+                document.getElementById(
+                    'genreFilter'
+                );
+
+            if (genreFilter) {
+                genreFilter.value =
+                    '28|12|10759';
+            }
+
+            document
+                .querySelectorAll(
+                    '.genre-pill-btn'
+                )
+                .forEach(button =>
+                    button.classList.remove(
+                        'active'
+                    )
+                );
+
+            const actionButton =
+                Array.from(
+                    document.querySelectorAll(
+                        '.genre-pill-btn'
+                    )
+                ).find(button =>
+                    button.textContent
+                        .trim() ===
+                    'Aksiyon'
+                );
+
+            if (actionButton) {
+                actionButton
+                    .classList
+                    .add('active');
+            }
+
+            clearAllFilters();
+        });
+
+        const resetUiState =
+            await page.evaluate(() => {
+                const visibleValue =
+                    id => {
+                        const select =
+                            document
+                                .getElementById(
+                                    id
+                                );
+
+                        const wrapper =
+                            select
+                                ?.nextElementSibling;
+
+                        return wrapper
+                            ?.querySelector(
+                                '.custom-select-value'
+                            )
+                            ?.textContent
+                            ?.trim() ||
+                            '';
+                    };
+
+                return {
+                    media:
+                        document
+                            .getElementById(
+                                'mediaTypeFilter'
+                            )?.value,
+                    genre:
+                        document
+                            .getElementById(
+                                'genreFilter'
+                            )?.value,
+                    year:
+                        document
+                            .getElementById(
+                                'yearFilter'
+                            )?.value,
+                    rating:
+                        document
+                            .getElementById(
+                                'ratingFilter'
+                            )?.value,
+                    provider:
+                        document
+                            .getElementById(
+                                'providerFilter'
+                            )?.value,
+                    runtime:
+                        document
+                            .getElementById(
+                                'runtimeFilter'
+                            )?.value,
+                    sort:
+                        document
+                            .getElementById(
+                                'sortByFilter'
+                            )?.value,
+
+                    yearText:
+                        visibleValue(
+                            'yearFilter'
+                        ),
+                    ratingText:
+                        visibleValue(
+                            'ratingFilter'
+                        ),
+                    providerText:
+                        visibleValue(
+                            'providerFilter'
+                        ),
+                    runtimeText:
+                        visibleValue(
+                            'runtimeFilter'
+                        ),
+                    sortText:
+                        visibleValue(
+                            'sortByFilter'
+                        ),
+
+                    mediaActive:
+                        document
+                            .querySelector(
+                                '.segment-btn.active'
+                            )
+                            ?.textContent
+                            ?.trim(),
+
+                    genreActive:
+                        document
+                            .querySelector(
+                                '.genre-pill-btn.active'
+                            )
+                            ?.textContent
+                            ?.trim(),
+
+                    routeOnlyCount:
+                        document
+                            .querySelectorAll(
+                                '.route-only-genre-pill'
+                            )
+                            .length
+                };
+            });
+
+        if (
+            resetUiState.media !==
+                'all' ||
+            resetUiState.genre !==
+                '' ||
+            resetUiState.year !==
+                '' ||
+            resetUiState.rating !==
+                '0' ||
+            resetUiState.provider !==
+                '0' ||
+            resetUiState.runtime !==
+                '' ||
+            resetUiState.sort !==
+                'popularity.desc'
+        ) {
+            throw new Error(
+                'Native filter state did not reset: ' +
+                JSON.stringify(
+                    resetUiState
+                )
+            );
+        }
+
+        if (
+            resetUiState.yearText !==
+                'Tüm Yıllar' ||
+            resetUiState.ratingText !==
+                'Tüm Puanlar' ||
+            resetUiState.providerText !==
+                'Tüm Platformlar' ||
+            resetUiState.runtimeText !==
+                'Tüm Süreler' ||
+            resetUiState.sortText !==
+                'En Popüler' ||
+            resetUiState.mediaActive !==
+                'Tümü' ||
+            resetUiState.genreActive !==
+                'Hepsi' ||
+            resetUiState.routeOnlyCount !==
+                0
+        ) {
+            throw new Error(
+                'Custom filter UI did not reset: ' +
+                JSON.stringify(
+                    resetUiState
+                )
+            );
+        }
+
+        console.log(
+            '[PASS] Filter UI reset regression passed'
+        );
+
+        // ------------------------------------------------------------
+        // 7.C SEARCH PROVIDER LOGO FILTER MUST STAY IN SEARCH MODE
+        // ------------------------------------------------------------
+        await page.evaluate(() => {
+            navigate(
+                'search?q=test'
+            );
+        });
+
+        await page.waitForFunction(
+            () =>
+                window.location.hash ===
+                    '#search?q=test' &&
+                document.querySelectorAll(
+                    '#search-results .movie-card:not(.skeleton-card)'
+                ).length >= 3,
+            {
+                timeout: 8000
+            }
+        );
+
+        await page.evaluate(() => {
+            handlePlatformButtonClick(
+                337
+            );
+        });
+
+        await page.waitForFunction(
+            () =>
+                document
+                    .getElementById(
+                        'providerFilter'
+                    )
+                    ?.value ===
+                    '337' &&
+                document
+                    .querySelectorAll(
+                        '#search-results .skeleton-card'
+                    )
+                    .length === 0,
+            {
+                timeout: 8000
+            }
+        );
+
+        const providerFilteredState =
+            await page.evaluate(() => ({
+                hash:
+                    window.location.hash,
+                provider:
+                    document
+                        .getElementById(
+                            'providerFilter'
+                        )
+                        ?.value,
+                cards:
+                    document
+                        .querySelectorAll(
+                            '#search-results .movie-card:not(.skeleton-card)'
+                        )
+                        .length
+            }));
+
+        if (
+            providerFilteredState.hash !==
+            '#search?q=test'
+        ) {
+            throw new Error(
+                'Provider filtering left search route: ' +
+                providerFilteredState
+                    .hash
+            );
+        }
+
+        if (
+            providerFilteredState
+                .provider !==
+            '337'
+        ) {
+            throw new Error(
+                'Provider state not preserved in search mode'
+            );
+        }
+
+        if (
+            providerFilteredState
+                .cards !==
+            0
+        ) {
+            throw new Error(
+                'Disney+ mock filter should remove Netflix-only results, got cards=' +
+                providerFilteredState
+                    .cards
+            );
+        }
+
+        await page.evaluate(() => {
+            handlePlatformButtonClick(
+                337
+            );
+        });
+
+        await page.waitForFunction(
+            () =>
+                document
+                    .getElementById(
+                        'providerFilter'
+                    )
+                    ?.value ===
+                    '0' &&
+                document
+                    .querySelectorAll(
+                        '#search-results .movie-card:not(.skeleton-card)'
+                    )
+                    .length >= 3,
+            {
+                timeout: 8000
+            }
+        );
+
+        const providerClearedHash =
+            await page.evaluate(
+                () =>
+                    window.location.hash
+            );
+
+        if (
+            providerClearedHash !==
+            '#search?q=test'
+        ) {
+            throw new Error(
+                'Clearing provider filter changed search route: ' +
+                providerClearedHash
+            );
+        }
+
+        console.log(
+            '[PASS] Search provider filtering regression passed'
+        );
+
+        // ------------------------------------------------------------
+        // 7.D EXACT GENRE ROUTE MUST RESTORE VISUAL FILTER STATE
+        // ------------------------------------------------------------
+        await page.evaluate(() => {
+            navigate(
+                'platform?genres=14'
+            );
+        });
+
+        await page.waitForFunction(
+            () =>
+                window.location.hash ===
+                    '#platform?genres=14' &&
+                document
+                    .getElementById(
+                        'genreFilter'
+                    )
+                    ?.value ===
+                    '14' &&
+                Boolean(
+                    document
+                        .querySelector(
+                            '.route-only-genre-pill.active'
+                        )
+                ),
+            {
+                timeout: 8000
+            }
+        );
+
+        const genreRouteState =
+            await page.evaluate(() => {
+                const pill =
+                    document
+                        .querySelector(
+                            '.route-only-genre-pill.active'
+                        );
+
+                return {
+                    hash:
+                        window.location.hash,
+                    genre:
+                        document
+                            .getElementById(
+                                'genreFilter'
+                            )
+                            ?.value,
+                    pillText:
+                        pill
+                            ?.textContent
+                            ?.trim() ||
+                            ''
+                };
+            });
+
+        if (
+            genreRouteState.genre !==
+            '14' ||
+            !genreRouteState.pillText
+        ) {
+            throw new Error(
+                'Exact genre route was not reflected in filter UI: ' +
+                JSON.stringify(
+                    genreRouteState
+                )
+            );
+        }
+
+        console.log(
+            '[PASS] Exact genre route UI regression passed'
+        );
+
+        // ------------------------------------------------------------
+        // 7.E LOGO MUST USE SPA NAVIGATION, NOT FULL RELOAD
+        // ------------------------------------------------------------
+        await page.evaluate(() => {
+            navigate(
+                'profile'
+            );
+        });
+
+        await page.waitForFunction(
+            () =>
+                window.location.hash ===
+                '#profile',
+            {
+                timeout: 5000
+            }
+        );
+
+        await page.evaluate(() => {
+            window.__logoSpaSentinel =
+                'still-alive';
+        });
+
+        await page.click(
+            '.navbar .logo'
+        );
+
+        await page.waitForFunction(
+            () =>
+                window.location.hash ===
+                '#home',
+            {
+                timeout: 5000
+            }
+        );
+
+        const logoState =
+            await page.evaluate(() => ({
+                hash:
+                    window.location.hash,
+                sentinel:
+                    window
+                        .__logoSpaSentinel
+            }));
+
+        if (
+            logoState.hash !==
+                '#home' ||
+            logoState.sentinel !==
+                'still-alive'
+        ) {
+            throw new Error(
+                'Logo caused reload or failed SPA home navigation: ' +
+                JSON.stringify(
+                    logoState
+                )
+            );
+        }
+
+        console.log(
+            '[PASS] Logo SPA navigation regression passed'
+        );
+
+        // ------------------------------------------------------------
+        // 7.F SMART RECOMMENDATIONS PROVIDERS MUST SETTLE
+        // ------------------------------------------------------------
+        await page.evaluate(
+            async () => {
+                localStorage.setItem(
+                    'ratedMovies',
+                    JSON.stringify([
+                        {
+                            id: 1001,
+                            title:
+                                'Test Aksiyon',
+                            media_type:
+                                'movie',
+                            poster_path:
+                                '/dummy.jpg'
+                        }
+                    ])
+                );
+
+                localStorage.setItem(
+                    'movieRatings',
+                    JSON.stringify({
+                        1001: 10
+                    })
+                );
+
+                await loadSmartRecommendations();
+            }
+        );
+
+        await page.waitForFunction(
+            () =>
+                document
+                    .querySelectorAll(
+                        '#smart-recommendations-list .providers-container'
+                    )
+                    .length > 0,
+            {
+                timeout: 8000
+            }
+        );
+
+        await page.waitForFunction(
+            () => {
+                const containers =
+                    Array.from(
+                        document
+                            .querySelectorAll(
+                                '#smart-recommendations-list .providers-container'
+                            )
+                    );
+
+                return (
+                    containers.length >
+                        0 &&
+                    containers.every(
+                        container =>
+                            !container
+                                .textContent
+                                .includes(
+                                    'Platformlar aranıyor...'
+                                )
+                    )
+                );
+            },
+            {
+                timeout: 8000
+            }
+        );
+
+        const smartProviderState =
+            await page.evaluate(() => {
+                const containers =
+                    Array.from(
+                        document
+                            .querySelectorAll(
+                                '#smart-recommendations-list .providers-container'
+                            )
+                    );
+
+                return {
+                    count:
+                        containers.length,
+                    stuck:
+                        containers.filter(
+                            container =>
+                                container
+                                    .textContent
+                                    .includes(
+                                        'Platformlar aranıyor...'
+                                    )
+                        ).length
+                };
+            });
+
+        if (
+            smartProviderState.count <
+                1 ||
+            smartProviderState.stuck !==
+                0
+        ) {
+            throw new Error(
+                'Smart recommendation provider placeholder did not settle: ' +
+                JSON.stringify(
+                    smartProviderState
+                )
+            );
+        }
+
+        console.log(
+            '[PASS] Smart recommendation provider regression passed'
+        );
+
+        console.log(
+            '[PASS] Final pre-deploy regression tests passed'
+        );
 
         console.log('\n[PASS] All post-release stability tests passed!');
         process.exitCode = 0;

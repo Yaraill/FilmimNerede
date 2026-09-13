@@ -479,6 +479,17 @@ body {
 .close-btn:hover {
     color: var(--primary-color);
 }
+
+#advanced-search-panel > .close-btn {
+    right: auto;
+    width: 40px;
+    height: 40px;
+    padding: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    line-height: 1;
+}
 #trailer-modal .close-btn,
 #details-modal .close-btn {
     width: 38px;

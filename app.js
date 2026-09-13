@@ -478,7 +478,26 @@ function renderSection(tabId, routeContext = null) {
     } else if (tabId === 'vizyon') {
         loadUpcomingMovies(routeContext);
     } else if (tabId === 'platform') {
-        resetPlatformView(routeContext);
+        const top10Grid =
+            document.getElementById(
+                'top10-grid'
+            );
+
+        if (
+            top10Grid &&
+            !top10Grid.querySelector(
+                '.top10-card'
+            )
+        ) {
+            loadTop10Trending(
+                routeContext,
+                routePage
+            );
+        }
+
+        resetPlatformView(
+            routeContext
+        );
     } else if (tabId === 'profile') {
         loadProfile(routeContext);
     }

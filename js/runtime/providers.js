@@ -259,23 +259,16 @@ async function fetchAndInjectProviders(
                     }
                 );
             }
-        } else if (
-            filterProvId === 0
-        ) {
-            // [] truthy olduğu için eski kodda
-            // sessiz boş alan oluşabiliyordu.
-            // Boş liste gerçek empty-state'tir.
-            hasProv = false;
-
-            renderStaticMessage(
-                els,
-                "Türkiye'de yayını yok"
-            );
         }
 
-        // Provider filtresi aktifken eşleşme
-        // yoksa mevcut davranışı koru:
-        // burada ayrıca mesaj basma.
+        if (!hasProv) {
+            renderStaticMessage(
+                els,
+                filterProvId > 0
+                    ? 'Seçili platformda yayını yok'
+                    : "Türkiye'de yayını yok"
+            );
+        }
     } catch (err) {
         if (
             err.name ===

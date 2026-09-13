@@ -47,6 +47,21 @@ function sanitizePlatformFilterState(queryString = '') {
             .filter(Boolean)
     );
 
+    const sanitizedGenres =
+        genreOrder.filter(
+            value =>
+                requestedGenres.has(value)
+        );
+
+    requestedGenres.forEach(value => {
+        if (
+            /^[1-9]\d{0,5}$/.test(value) &&
+            !sanitizedGenres.includes(value)
+        ) {
+            sanitizedGenres.push(value);
+        }
+    });
+
     const readAllowed = (key, allowed, fallback) => {
         const value = params.get(key);
         return value !== null && allowed.has(value)
@@ -56,7 +71,7 @@ function sanitizePlatformFilterState(queryString = '') {
 
     return {
         media: readAllowed('media', allowedMedia, PLATFORM_FILTER_DEFAULTS.media),
-        genres: genreOrder.filter(value => requestedGenres.has(value)),
+        genres: sanitizedGenres,
         year: readAllowed('year', allowedYears, PLATFORM_FILTER_DEFAULTS.year),
         rating: readAllowed('rating', allowedRatings, PLATFORM_FILTER_DEFAULTS.rating),
         runtime: readAllowed('runtime', allowedRuntimes, PLATFORM_FILTER_DEFAULTS.runtime),
@@ -115,24 +130,90 @@ function buildPlatformRoute(state = getPlatformFilterStateFromUi()) {
 }
 
 function syncPlatformSelect(selectId, value) {
-    const select = document.getElementById(selectId);
-    if (!select) return;
+    const select =
+        document.getElementById(
+            selectId
+        );
 
-    select.value = value;
-    const wrapper = select.nextElementSibling;
-    if (!wrapper || !wrapper.classList.contains('custom-select-container')) {
+    if (!select) {
         return;
     }
 
-    const selectedOption = select.options[select.selectedIndex];
-    const triggerText = wrapper.querySelector('.custom-select-trigger span');
-    if (triggerText && selectedOption) {
-        triggerText.textContent = selectedOption.text;
+    select.value = value;
+
+    const selectedOption =
+        select.options[
+            select.selectedIndex
+        ];
+
+    const wrapper =
+        select.nextElementSibling;
+
+    if (
+        !wrapper ||
+        !wrapper.classList.contains(
+            'custom-select-container'
+        )
+    ) {
+        return;
     }
 
-    wrapper.querySelectorAll('.custom-option').forEach(option => {
-        option.classList.toggle('selected', option.dataset.value === value);
-    });
+    const trigger =
+        wrapper.querySelector(
+            '.custom-select-trigger'
+        );
+
+    const valueElement =
+        wrapper.querySelector(
+            '.custom-select-value'
+        );
+
+    if (
+        valueElement &&
+        selectedOption
+    ) {
+        valueElement.textContent =
+            selectedOption.text;
+    }
+
+    if (
+        trigger &&
+        selectedOption
+    ) {
+        const selectLabel =
+            select.getAttribute(
+                'aria-label'
+            ) ||
+            select.title ||
+            'Filtre';
+
+        trigger.setAttribute(
+            'aria-label',
+            `${selectLabel}: ${selectedOption.text}`
+        );
+    }
+
+    wrapper
+        .querySelectorAll(
+            '.custom-option'
+        )
+        .forEach(option => {
+            const isSelected =
+                option.dataset.value ===
+                String(value);
+
+            option.classList.toggle(
+                'selected',
+                isSelected
+            );
+
+            option.setAttribute(
+                'aria-selected',
+                isSelected
+                    ? 'true'
+                    : 'false'
+            );
+        });
 }
 
 function restorePlatformFilterState(state) {
@@ -168,11 +249,124 @@ function restorePlatformFilterState(state) {
             ?.match(/^setGenre\('([^']*)'/);
         if (!match) return;
         const value = match[1];
+        const matchesSelectedGenre =
+            selectedGenreSet.has(value) ||
+            value
+                .split('|')
+                .some(part =>
+                    selectedGenreSet.has(part)
+                );
+
         button.classList.toggle(
             'active',
-            value === '' ? selectedGenres.length === 0 : selectedGenreSet.has(value)
+            value === ''
+                ? selectedGenres.length === 0
+                : matchesSelectedGenre
         );
     });
+
+    const genrePillContainer =
+        document.querySelector(
+            '.premium-genre-pills'
+        );
+
+    if (genrePillContainer) {
+        genrePillContainer
+            .querySelectorAll(
+                '.route-only-genre-pill'
+            )
+            .forEach(button =>
+                button.remove()
+            );
+
+        const representedGenreIds =
+            new Set();
+
+        genrePillContainer
+            .querySelectorAll(
+                '.genre-pill-btn[onclick^="setGenre"]'
+            )
+            .forEach(button => {
+                const match =
+                    button
+                        .getAttribute(
+                            'onclick'
+                        )
+                        ?.match(
+                            /^setGenre\('([^']*)'/
+                        );
+
+                if (!match) {
+                    return;
+                }
+
+                String(match[1])
+                    .split('|')
+                    .filter(Boolean)
+                    .forEach(value =>
+                        representedGenreIds.add(
+                            value
+                        )
+                    );
+            });
+
+        state.genres.forEach(value => {
+            const genreValue =
+                String(value);
+
+            if (
+                representedGenreIds.has(
+                    genreValue
+                ) ||
+                !/^[1-9]\d{0,5}$/.test(
+                    genreValue
+                )
+            ) {
+                return;
+            }
+
+            const numericGenreId =
+                Number.parseInt(
+                    genreValue,
+                    10
+                );
+
+            const genreName =
+                String(
+                    genreMap[
+                        numericGenreId
+                    ] ||
+                    `Tür ${genreValue}`
+                );
+
+            const button =
+                document.createElement(
+                    'button'
+                );
+
+            button.type = 'button';
+
+            button.className =
+                'genre-pill-btn route-only-genre-pill active';
+
+            button.textContent =
+                genreName;
+
+            button.addEventListener(
+                'click',
+                () => {
+                    setGenre(
+                        genreValue,
+                        button
+                    );
+                }
+            );
+
+            genrePillContainer.appendChild(
+                button
+            );
+        });
+    }
 
     currentProvider = Number(state.provider) || 0;
     document.querySelectorAll('.provider-filter-btn').forEach(button => {
@@ -295,10 +489,20 @@ function resetPlatformView(routeContext = null) {
         return;
     }
 
+    const isPlatformFilterChange =
+        !window.isHistoryRestoration &&
+        currentMode === 'platform' &&
+        document.getElementById(
+            'search-results'
+        )?.children.length > 0;
+
     loadPlatformMovies(
         currentProvider,
         true,
-        Boolean(window.isHistoryRestoration),
+        Boolean(
+            window.isHistoryRestoration ||
+            isPlatformFilterChange
+        ),
         routeContext
     );
 }
@@ -321,7 +525,34 @@ function handlePlatformButtonClick(pid) {
     } else {
         currentProvider = pid;
     }
-    syncPlatformSelect('providerFilter', String(currentProvider));
+
+    syncPlatformSelect(
+        'providerFilter',
+        String(currentProvider)
+    );
+
+    document
+        .querySelectorAll(
+            '.provider-filter-btn'
+        )
+        .forEach(button => {
+            button.classList.toggle(
+                'active',
+                currentProvider > 0 &&
+                button.id ===
+                    `btn-prov-${currentProvider}`
+            );
+        });
+
+    if (currentMode === 'search') {
+        searchMovie(
+            true,
+            true
+        );
+
+        return;
+    }
+
     navigateToCurrentPlatformFilters();
 }
 
@@ -613,25 +844,44 @@ function clearAllFilters() {
     const allMediaBtn = document.querySelector('.segment-btn[onclick="setMediaType(\'all\', this)"]');
     if (allMediaBtn) allMediaBtn.classList.add('active');
     
-    // Sync custom selects if they exist
-    document.querySelectorAll('select.custom-select-hidden').forEach(select => {
-        const wrapper = select.nextElementSibling;
-        if (wrapper && wrapper.classList.contains('custom-select-container')) {
-            const selectedOption = select.options[select.selectedIndex];
-            if (selectedOption) {
-                const trigger = wrapper.querySelector('.custom-select-trigger span');
-                if (trigger) trigger.textContent = selectedOption.text;
-                
-                wrapper.querySelectorAll('.custom-option').forEach(opt => {
-                    opt.classList.remove('selected');
-                    if (opt.dataset.value === select.value) {
-                        opt.classList.add('selected');
-                    }
-                });
-            }
-        }
-    });
+    syncPlatformSelect(
+        'mediaTypeFilter',
+        'all'
+    );
+
+    syncPlatformSelect(
+        'yearFilter',
+        ''
+    );
+
+    syncPlatformSelect(
+        'ratingFilter',
+        '0'
+    );
+
+    syncPlatformSelect(
+        'providerFilter',
+        '0'
+    );
+
+    syncPlatformSelect(
+        'runtimeFilter',
+        ''
+    );
+
+    syncPlatformSelect(
+        'sortByFilter',
+        'popularity.desc'
+    );
     
+    document
+        .querySelectorAll(
+            '.route-only-genre-pill'
+        )
+        .forEach(button =>
+            button.remove()
+        );
+
     selectedGenres = [];
     document.querySelectorAll('.genre-pill-btn').forEach(b => b.classList.remove('active'));
     const hepsiBtn = document.querySelector('.genre-pill-btn[onclick*="\'\'"]');
