@@ -281,12 +281,13 @@ body.light-theme .navbar.scrolled {
 .movie-title {
     font-size: 1.1rem;
     font-weight: 600;
+    min-height: 2.7em;
     margin-bottom: auto; /* Pushes everything below it to the bottom */
     display: -webkit-box;
     -webkit-line-clamp: 2;
     -webkit-box-orient: vertical;
     overflow: hidden;
-    line-height: 1.3;
+    line-height: 1.35;
 }
 
 .movie-date {
@@ -298,7 +299,10 @@ body.light-theme .navbar.scrolled {
 /* Yayıncı Logoları */
 .providers-container {
     margin-top: 10px;
+    min-height: 38px;
     display: flex;
+    align-items: center;
+    justify-content: center;
     gap: 8px;
     flex-wrap: wrap;
 }
@@ -534,7 +538,9 @@ body.light-theme .view-mode-controls .action-btn:not(.active) {
     display: flex;
     justify-content: space-between;
     align-items: center;
+    min-height: 1.35rem;
     margin-bottom: 8px;
+    gap: 6px;
 }
 .rating {
     color: #fbbf24;
@@ -552,6 +558,36 @@ body.light-theme .view-mode-controls .action-btn:not(.active) {
     text-overflow: ellipsis;
     max-width: 60%;
     text-align: right;
+}
+.card-user-rating {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 0.75rem;
+    font-weight: 700;
+    color: #fbbf24;
+    background: rgba(251, 191, 36, 0.12);
+    border: 1px solid rgba(251, 191, 36, 0.35);
+    padding: 2px 7px;
+    border-radius: 6px;
+    white-space: nowrap;
+    flex-shrink: 0;
+}
+body.light-theme .card-user-rating {
+    background: rgba(217, 119, 6, 0.12);
+    color: #b45309;
+    border-color: rgba(217, 119, 6, 0.3);
+}
+.bottom-group {
+    margin-top: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding-top: 10px;
+    width: 100%;
+    max-width: 280px;
+    margin-left: auto;
+    margin-right: auto;
 }
 
 /* =========================================
@@ -2711,5 +2747,231 @@ button.menu-toggle {
     }
     .actor-header > div {
         width: 100%;
+    }
+}
+
+/* =========================================
+   UX10: Oyuncu Biyografisi (Line-clamp & Toggle)
+   ========================================= */
+.actor-bio-container {
+    margin-top: 10px;
+    font-size: 0.95rem;
+    line-height: 1.6;
+    color: var(--text-color);
+}
+.actor-birth-info {
+    margin-bottom: 8px;
+    color: var(--text-muted);
+    font-size: 0.9rem;
+}
+.actor-bio-text {
+    white-space: pre-wrap;
+    transition: max-height 0.3s ease;
+}
+.actor-bio-text.actor-bio-collapsed {
+    display: -webkit-box;
+    -webkit-line-clamp: 4;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+}
+.btn-bio-toggle {
+    background: none;
+    border: none;
+    color: var(--accent-color);
+    font-size: 0.85rem;
+    font-weight: 600;
+    cursor: pointer;
+    padding: 6px 0;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    margin-top: 4px;
+    transition: color 0.2s ease;
+}
+.btn-bio-toggle:hover {
+    color: var(--primary-hover);
+    text-decoration: underline;
+}
+
+/* =========================================
+   UX11: Afiş Oyunu Sonraki Soru & Boş Durumlar
+   ========================================= */
+.game-next-action-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    margin: 15px auto 0;
+    padding: 12px 28px;
+    font-size: 1.05rem;
+    font-weight: 700;
+    border-radius: 25px;
+    background: linear-gradient(135deg, var(--primary-color), var(--accent-color));
+    color: white;
+    border: none;
+    cursor: pointer;
+    box-shadow: 0 4px 15px rgba(229, 9, 20, 0.4);
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+.game-next-action-btn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 20px rgba(229, 9, 20, 0.6);
+}
+.common-empty-state {
+    grid-column: 1 / -1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 40px 20px;
+    text-align: center;
+    background: var(--card-bg);
+    border: 1px dashed var(--glass-border);
+    border-radius: 12px;
+    color: var(--text-muted);
+    margin: 20px 0;
+}
+.common-empty-state i {
+    font-size: 2.5rem;
+    color: var(--primary-color);
+    margin-bottom: 12px;
+    opacity: 0.8;
+}
+.common-empty-state h4 {
+    font-size: 1.2rem;
+    color: var(--text-color);
+    margin-bottom: 8px;
+    font-weight: 600;
+}
+.common-empty-state p {
+    font-size: 0.95rem;
+    max-width: 400px;
+    margin: 0;
+    line-height: 1.5;
+}
+
+/* =========================================
+   UX12: IMAX Şehir ve Salon Kartları
+   ========================================= */
+.imax-theaters-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 1.5rem;
+    max-width: 1100px;
+    margin: 30px auto;
+}
+.imax-city-card {
+    background: var(--card-bg);
+    border: 1px solid var(--glass-border);
+    border-radius: 12px;
+    padding: 20px;
+    box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+.imax-city-card:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 8px 25px rgba(0,0,0,0.3);
+}
+.imax-city-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 15px;
+    padding-bottom: 10px;
+    border-bottom: 1px solid var(--border-color);
+}
+.imax-city-name {
+    font-size: 1.25rem;
+    font-weight: 700;
+    color: var(--text-color);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+.imax-city-name i {
+    color: var(--primary-color);
+}
+.imax-count-badge {
+    background: rgba(229, 9, 20, 0.15);
+    color: var(--primary-color);
+    font-size: 0.8rem;
+    font-weight: 700;
+    padding: 3px 10px;
+    border-radius: 12px;
+    border: 1px solid rgba(229, 9, 20, 0.3);
+}
+.imax-theaters-list {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+.imax-theater-item {
+    background: rgba(255, 255, 255, 0.03);
+    border-radius: 8px;
+    padding: 10px 12px;
+    border: 1px solid var(--border-color);
+}
+body.light-theme .imax-theater-item {
+    background: rgba(0, 0, 0, 0.02);
+}
+.imax-theater-name {
+    font-weight: 600;
+    font-size: 0.95rem;
+    color: var(--text-color);
+    margin-bottom: 4px;
+}
+.imax-theater-meta {
+    font-size: 0.8rem;
+    color: var(--text-muted);
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+.imax-theater-tech {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    color: #00c6ff;
+    font-weight: 600;
+}
+body.light-theme .imax-theater-tech {
+    color: #0284c7;
+}
+
+/* =========================================
+   UX13: Yatay Kaydırma Görsel İpuçları
+   ========================================= */
+@media (min-width: 769px) {
+    #trending-actors-list::-webkit-scrollbar,
+    #curated-collections-list::-webkit-scrollbar,
+    #recently-viewed-grid::-webkit-scrollbar,
+    #top10-grid::-webkit-scrollbar {
+        display: block;
+        height: 6px;
+    }
+    #trending-actors-list::-webkit-scrollbar-track,
+    #curated-collections-list::-webkit-scrollbar-track,
+    #recently-viewed-grid::-webkit-scrollbar-track,
+    #top10-grid::-webkit-scrollbar-track {
+        background: transparent;
+    }
+    #trending-actors-list::-webkit-scrollbar-thumb,
+    #curated-collections-list::-webkit-scrollbar-thumb,
+    #recently-viewed-grid::-webkit-scrollbar-thumb,
+    #top10-grid::-webkit-scrollbar-thumb {
+        background: rgba(255, 255, 255, 0.15);
+        border-radius: 3px;
+    }
+    #trending-actors-list::-webkit-scrollbar-thumb:hover,
+    #curated-collections-list::-webkit-scrollbar-thumb:hover,
+    #recently-viewed-grid::-webkit-scrollbar-thumb:hover,
+    #top10-grid::-webkit-scrollbar-thumb:hover {
+        background: var(--primary-color);
+    }
+    body.light-theme #trending-actors-list::-webkit-scrollbar-thumb,
+    body.light-theme #curated-collections-list::-webkit-scrollbar-thumb,
+    body.light-theme #recently-viewed-grid::-webkit-scrollbar-thumb,
+    body.light-theme #top10-grid::-webkit-scrollbar-thumb {
+        background: rgba(0, 0, 0, 0.15);
     }
 }

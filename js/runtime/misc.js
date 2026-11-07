@@ -515,7 +515,7 @@ function makeGameGuess(guessedId, btn) {
         
         const nextBtn = document.getElementById('game-next-btn');
         if(nextBtn) {
-            nextBtn.style.display = 'block';
+            nextBtn.style.display = 'inline-flex';
         }
     } else {
         // Yanlış Bildi
@@ -592,7 +592,7 @@ function makeGameGuess(guessedId, btn) {
             // Otomatik geçiş kaldırıldı, kullanıcı next butonuna basacak.
             const nextBtn = document.getElementById('game-next-btn');
             if(nextBtn) {
-                nextBtn.style.display = 'block';
+                nextBtn.style.display = 'inline-flex';
             }
         }
     }

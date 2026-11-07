@@ -315,6 +315,22 @@ function createMovieCard(item, mediaType = "movie", tabContext = "") {
             ? item.overview
             : 'Konu özeti bulunmuyor.';
 
+    let userRatingBadgeHtml = '';
+    const savedRatings = typeof safeReadStorage === 'function'
+        ? safeReadStorage('movieRatings', {})
+        : (typeof localStorage !== 'undefined' ? JSON.parse(localStorage.getItem('movieRatings') || '{}') : {});
+    const userRating = (savedRatings && typeof getUserRatingForMedia === 'function')
+        ? getUserRatingForMedia(savedRatings, itemId, normalizedMediaType)
+        : null;
+
+    if (userRating !== null) {
+        userRatingBadgeHtml = `
+            <div class="card-user-rating" title="Puanınız: ${userRating}/10" aria-label="Puanınız: ${userRating}/10">
+                <i class="fas fa-star" aria-hidden="true"></i> Puanım: ${userRating}/10
+            </div>
+        `;
+    }
+
     return `
         <div
             class="movie-card"
@@ -349,9 +365,10 @@ function createMovieCard(item, mediaType = "movie", tabContext = "") {
 
             <div class="movie-info">
                 <div class="movie-meta">
-                    <span class="genre-list">
+                    <span class="genre-list" title="${escapeHtml(genres)}">
                         ${escapeHtml(genres)}
                     </span>
+                    ${userRatingBadgeHtml}
                 </div>
 
                 <div class="movie-title">
@@ -369,18 +386,7 @@ function createMovieCard(item, mediaType = "movie", tabContext = "") {
                     ${escapeHtml(overview)}
                 </div>
 
-                <div
-                    class="bottom-group"
-                    style="
-                        margin-top:auto;
-                        display:flex;
-                        flex-direction:column;
-                        gap:10px;
-                        padding-top:10px;
-                        width:100%;
-                        max-width:280px;
-                    "
-                >
+                <div class="bottom-group">
                     ${dateOrProviderHtml}
 
                     <div class="card-actions">

@@ -715,29 +715,29 @@ async function renderActor(
         document.createElement(
             'div'
         );
-
-    biographyContainer.style.cssText =
-        'max-height:110px;' +
-        'overflow-y:auto;' +
-        'padding-right:5px;' +
-        'white-space:pre-wrap;';
+    biographyContainer.className = 'actor-bio-container';
 
     if (
         birthYear ||
         birthPlace
     ) {
+        const birthP =
+            document.createElement(
+                'div'
+            );
+        birthP.className = 'actor-birth-info';
+
         const birthLabel =
             document.createElement(
                 'strong'
             );
-
         birthLabel.textContent =
-            'Doğum:';
+            'Doğum: ';
 
-        biographyContainer.append(
+        birthP.append(
             birthLabel,
             document.createTextNode(
-                ` ${
+                `${
                     [
                         birthYear,
                         birthPlace
@@ -745,19 +745,39 @@ async function renderActor(
                         .filter(Boolean)
                         .join(' ')
                 }`
-            ),
-            document.createElement(
-                'br'
             )
         );
+        biographyContainer.appendChild(birthP);
     }
 
     if (biography) {
-        biographyContainer.appendChild(
-            document.createTextNode(
-                biography
-            )
-        );
+        const bioTextEl =
+            document.createElement(
+                'div'
+            );
+        const shouldClamp = biography.length > 250;
+        bioTextEl.className = 'actor-bio-text' + (shouldClamp ? ' actor-bio-collapsed' : '');
+        bioTextEl.textContent = biography;
+        biographyContainer.appendChild(bioTextEl);
+
+        if (shouldClamp) {
+            const toggleBtn =
+                document.createElement(
+                    'button'
+                );
+            toggleBtn.type = 'button';
+            toggleBtn.className = 'btn-bio-toggle';
+            toggleBtn.setAttribute('aria-expanded', 'false');
+            toggleBtn.innerHTML = 'Devamını Oku <i class="fas fa-chevron-down" aria-hidden="true"></i>';
+            toggleBtn.addEventListener('click', () => {
+                const isCollapsed = bioTextEl.classList.toggle('actor-bio-collapsed');
+                toggleBtn.setAttribute('aria-expanded', String(!isCollapsed));
+                toggleBtn.innerHTML = isCollapsed
+                    ? 'Devamını Oku <i class="fas fa-chevron-down" aria-hidden="true"></i>'
+                    : 'Daha Az Göster <i class="fas fa-chevron-up" aria-hidden="true"></i>';
+            });
+            biographyContainer.appendChild(toggleBtn);
+        }
     }
 
     content.append(
@@ -2079,7 +2099,13 @@ async function findCommonMovies() {
         const commonResults = Array.isArray(data3.results) ? data3.results : [];
 
         if (commonResults.length === 0) {
-            html = "<p>Ortak film bulunamadı.</p>";
+            html = `
+                <div class="common-empty-state" style="grid-column: 1 / -1;">
+                    <i class="fas fa-film" aria-hidden="true"></i>
+                    <h4>Ortak Yapım Bulunamadı</h4>
+                    <p>Seçilen iki oyuncunun birlikte rol aldığı herhangi bir film veya yapım bulunmuyor.</p>
+                </div>
+            `;
         } else {
             commonResults.forEach(item => {
                 html += createMovieCard(

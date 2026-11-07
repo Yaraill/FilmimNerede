@@ -2107,8 +2107,13 @@ async function loadSmartRecommendations(
             }
 
             if (list) {
-                list.innerHTML =
-                    "<p style='color:var(--text-muted); width:100%; text-align:center; padding:20px; grid-column: 1/-1;'>Henüz hiç film puanlamadınız. Profilinize gidip izlediğiniz filmlere puan vererek size özel öneriler alabilirsiniz.</p>";
+                list.innerHTML = `
+                    <div class="recommendations-empty-state" style="grid-column: 1 / -1; text-align: center; padding: 30px 15px; color: var(--text-muted);">
+                        <i class="fas fa-magic" style="font-size: 2rem; color: var(--primary-color); margin-bottom: 12px; display: block;" aria-hidden="true"></i>
+                        <h4 style="color: var(--text-color); margin-bottom: 8px;">Henüz Yeterli Puanlama Yok</h4>
+                        <p style="max-width: 450px; margin: 0 auto; line-height: 1.5;">İzlediğiniz film veya dizilere puan vererek zevkinize özel akıllı önerileri burada görebilirsiniz.</p>
+                    </div>
+                `;
             }
         };
 

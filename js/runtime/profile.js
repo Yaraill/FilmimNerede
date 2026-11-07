@@ -100,6 +100,14 @@ function toggleWatchlist(btnElem, movieId, mediaType = null) {
     if (document.getElementById('profile') && document.getElementById('profile').classList.contains('active-tab')) {
         loadProfile();
     }
+
+    if (typeof loadSmartRecommendations === 'function') {
+        const homeTab = document.getElementById('now-playing');
+        const profileRecs = document.getElementById('profile-smart-recs');
+        if ((homeTab && homeTab.classList.contains('active-tab')) || (profileRecs && profileRecs.classList.contains('active-tab'))) {
+            loadSmartRecommendations();
+        }
+    }
 }
 
 function toggleRateMenu(id) {
@@ -169,6 +177,14 @@ function saveRating(id, rating, mediaType = null) {
         loadProfile();
     }
 
+    if (typeof loadSmartRecommendations === 'function') {
+        const homeTab = document.getElementById('now-playing');
+        const profileRecs = document.getElementById('profile-smart-recs');
+        if ((homeTab && homeTab.classList.contains('active-tab')) || (profileRecs && profileRecs.classList.contains('active-tab'))) {
+            loadSmartRecommendations();
+        }
+    }
+
     const textSpan = document.getElementById(`rate-text-${safeId}`);
     if (textSpan) textSpan.innerText = `Puanım: ${safeRating}/10`;
     const btn = textSpan ? textSpan.parentElement : null;
@@ -236,6 +252,14 @@ function removeRating(id, mediaType = null) {
 
     if (document.getElementById('profile') && document.getElementById('profile').classList.contains('active-tab')) {
         loadProfile();
+    }
+
+    if (typeof loadSmartRecommendations === 'function') {
+        const homeTab = document.getElementById('now-playing');
+        const profileRecs = document.getElementById('profile-smart-recs');
+        if ((homeTab && homeTab.classList.contains('active-tab')) || (profileRecs && profileRecs.classList.contains('active-tab'))) {
+            loadSmartRecommendations();
+        }
     }
 
     const textSpan = document.getElementById(`rate-text-${safeId}`);
@@ -687,6 +711,10 @@ function switchProfileTab(tabId, btnElem) {
         btnElem.style.background = '';
         btnElem.style.borderColor = '';
     }
+
+    if (tabId === 'profile-smart-recs' && typeof loadSmartRecommendations === 'function') {
+        loadSmartRecommendations();
+    }
 }
 
 if (typeof document !== 'undefined' && typeof document.addEventListener === 'function') {
@@ -1012,13 +1040,13 @@ ratedMovies.forEach(m => {
     if (ratedTvs.length === 0) {
         ratedTvGrid.innerHTML = "<div class='no-provider' style='grid-column: 1/-1;'>Puanladığınız dizi yok.</div>";
     } else {
-        ratedTvGrid.innerHTML = ratedTvs.map(item => createMovieCard(item, "tv", "")).join('');
+        ratedTvGrid.innerHTML = ratedTvs.map(item => createMovieCard(item, "tv", "rated")).join('');
     }
 
     if (ratedMoviesOnly.length === 0) {
         ratedMovieGrid.innerHTML = "<div class='no-provider' style='grid-column: 1/-1;'>Puanladığınız film yok.</div>";
     } else {
-        ratedMovieGrid.innerHTML = ratedMoviesOnly.map(item => createMovieCard(item, "movie", "")).join('');
+        ratedMovieGrid.innerHTML = ratedMoviesOnly.map(item => createMovieCard(item, "movie", "rated")).join('');
     }
     
     // Render Actors
@@ -1210,6 +1238,11 @@ ratedMovies.forEach(m => {
         if (!type || type === "undefined") type = item.first_air_date ? "tv" : "movie";
         fetchAndInjectProviders(item.id, type, item, routeContext);
     });
+
+    const smartRecsPanel = document.getElementById('profile-smart-recs');
+    if (smartRecsPanel && smartRecsPanel.classList.contains('active-tab') && typeof loadSmartRecommendations === 'function') {
+        loadSmartRecommendations();
+    }
 }
 
 const WATCH_TIME_CONCURRENCY =
