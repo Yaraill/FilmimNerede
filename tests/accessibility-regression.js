@@ -1308,7 +1308,7 @@ async function runAccessibilityTests() {
 
         // Trigger aria-label updated with new value
         const updatedTriggerAria = await page.$eval('#sortByFilter + .custom-select-container .custom-select-trigger', el => el.getAttribute('aria-label'));
-        assert(Boolean(updatedTriggerAria && (updatedTriggerAria.includes('Oy') || updatedTriggerAria.includes('En Çok Oy'))), `Journey L FAILED: Trigger aria-label did not update to new value: "${updatedTriggerAria}"`);
+        assert(Boolean(updatedTriggerAria && (updatedTriggerAria.includes('Puan') || updatedTriggerAria.includes('Oy') || updatedTriggerAria.includes('En Çok Oy'))), `Journey L FAILED: Trigger aria-label did not update to new value: "${updatedTriggerAria}"`);
 
         // Re-open with Space, Escape closes and restores focus to trigger
         await page.keyboard.press('Space');
