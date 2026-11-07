@@ -8,7 +8,7 @@
     <title>FilmimNerede - Türkiye Film & Dizi Rehberi</title>
     <!-- Google Fonts: Modern ve okunaklı bir font (Inter) -->
     <!-- Kendi CSS dosyamız -->
-    <link rel="stylesheet" href="style.css?v=51">
+    <link rel="stylesheet" href="style.css?v=52">
     <!-- Font Awesome (İkonlar için) -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/color-thief/2.3.0/color-thief.umd.js"></script>
@@ -190,16 +190,16 @@
                 <div id="top10-grid" class="collection-list"></div>
             </div>
 
-            <div class="search-box" style="display: flex; align-items: stretch;">
+            <div class="search-box">
                 <input type="text" id="searchInput" placeholder="Film, Dizi veya Oyuncu adı girin (Örn: timothée chalamet)..." onkeyup="handleSearchInput(event)" onkeypress="if(event.key === 'Enter') searchMovie(true)" autocomplete="off" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-haspopup="listbox" aria-controls="autocomplete-box" aria-label="Film, Dizi veya Oyuncu Ara">
                 <div id="autocomplete-box" class="autocomplete-suggestions" role="listbox" aria-label="Arama önerileri"></div>
-                <button type="button" onclick="searchMovie(true)" style="border-radius: 0;" aria-label="Film veya Dizi Ara">Ara</button>
-                <button type="button" id="surprise-btn" onclick="surpriseMe()" title="Rastgele Film Öner (Sürpriz Yap!)" aria-label="Rastgele Film Öner (Sürpriz Yap!)" style="background: var(--accent-color); border-radius: 0 25px 25px 0; border-left: 1px solid rgba(255,255,255,0.2); padding: 0 20px;"><i class="fas fa-dice" aria-hidden="true"></i></button>
+                <button type="button" class="search-submit-btn" onclick="searchMovie(true)" aria-label="Film veya Dizi Ara">Ara</button>
+                <button type="button" id="surprise-btn" onclick="surpriseMe()" title="Rastgele Film Öner (Sürpriz Yap!)" aria-label="Rastgele Film Öner (Sürpriz Yap!)"><i class="fas fa-dice" aria-hidden="true"></i></button>
             </div>
 
             
-            <div style="display: flex; flex-wrap: wrap; gap: 20px; justify-content: center; margin-top: 20px;">
-                <div class="platform-filters glass" style="flex: 1; min-width: 300px; display: flex; flex-direction: column; justify-content: center; padding: 20px; border-radius: 20px; margin-bottom: 0;">
+            <div class="platform-controls-row">
+                <div class="platform-filters glass">
                     <div id="platform-selection-area">
                         <h3 style="text-align:center; margin-bottom: 15px; color: var(--text-muted);">Veya Doğrudan Platform Seçin</h3>
                         <div class="provider-logos-filter">
@@ -220,11 +220,11 @@
                 </div>
                 
                 
-    <div class="filter-toggle-container glass" style="flex: 1; min-width: 300px; display: flex; align-items: center; justify-content: center; padding: 20px; border-radius: 20px;">
-        <button type="button" id="advanced-toggle-btn" onclick="toggleAdvancedSearch()" class="action-btn" aria-expanded="false" aria-controls="advanced-search-panel" style="padding: 15px 30px; font-size: 1.2rem; border-radius: 30px; background: linear-gradient(135deg, var(--primary-color), var(--accent-color)); color: white; box-shadow: 0 5px 15px rgba(229,9,20,0.4);"><i class="fas fa-sliders-h" aria-hidden="true"></i> Gelişmiş Filtreler</button>
-        <div class="view-mode-controls" style="display: flex; gap: 5px; margin-left: 20px;">
-            <button type="button" onclick="switchViewMode('grid')" id="viewGridBtn" class="action-btn active" aria-label="Izgara görünümü" aria-pressed="true" style="padding: 8px 15px; border-radius: 20px; background: rgba(0,0,0,0.5); color: white;"><i class="fas fa-th" aria-hidden="true"></i></button>
-            <button type="button" onclick="switchViewMode('list')" id="viewListBtn" class="action-btn" aria-label="Liste görünümü" aria-pressed="false" style="padding: 8px 15px; border-radius: 20px; background: rgba(0,0,0,0.5); color: white;"><i class="fas fa-list" aria-hidden="true"></i></button>
+    <div class="filter-toggle-container glass">
+        <button type="button" id="advanced-toggle-btn" onclick="toggleAdvancedSearch()" class="action-btn" aria-expanded="false" aria-controls="advanced-search-panel"><i class="fas fa-sliders-h" aria-hidden="true"></i> Gelişmiş Filtreler</button>
+        <div class="view-mode-controls">
+            <button type="button" onclick="switchViewMode('grid')" id="viewGridBtn" class="action-btn active" aria-label="Izgara görünümü" aria-pressed="true"><i class="fas fa-th" aria-hidden="true"></i></button>
+            <button type="button" onclick="switchViewMode('list')" id="viewListBtn" class="action-btn" aria-label="Liste görünümü" aria-pressed="false"><i class="fas fa-list" aria-hidden="true"></i></button>
         </div>
     </div>
     
@@ -314,7 +314,7 @@
             <div id="profile-smart-recs" class="profile-tab-content" role="tabpanel" aria-labelledby="tab-profile-smart-recs" tabindex="0" style="display:none;" hidden>
                 <div id="smart-recommendations-section">
                     <h3 style="margin-top: 20px; color:var(--text-color);">Puanladıklarınıza Göre Sizin İçin Öneriler</h3>
-                    <div id="smart-recommendations-list" class="profile-movie-grid" style="display: grid; grid-template-columns: repeat(7, 1fr); gap: 15px;">
+                    <div id="smart-recommendations-list" class="profile-movie-grid">
                         <span style="color:var(--text-muted); font-size:0.9rem;">Öneriler yükleniyor...</span>
                     </div>
                 </div>
@@ -378,23 +378,23 @@
             </div>
             
             <div id="common-actor-tab" class="game-tab-content" role="tabpanel" aria-labelledby="tab-common-actor" tabindex="0" style="display: none;" hidden>
-                <div class="glass" style="padding:30px; border-radius:20px; text-align:center; max-width:800px; margin: 40px auto 120px;">
+                <div class="glass common-actor-panel">
                     <h2 style="font-size: 2rem; margin-bottom: 15px;"><i class="fas fa-users" aria-hidden="true"></i> Ortak Oyuncu Aracı</h2>
                     <p style="color: var(--text-muted); margin-bottom: 25px; font-size: 1.1rem;">İki oyuncunun birlikte rol aldığı filmleri bulun!</p>
-                    <div style="display:flex; gap:20px; justify-content:center; flex-wrap:wrap;">
-                        <div style="position:relative; flex:1; min-width:200px;">
-                            <input type="text" id="actor1-input" class="premium-search-input" placeholder="1. Oyuncu Adı..." role="combobox" aria-autocomplete="list" aria-expanded="false" aria-haspopup="listbox" aria-controls="actor1-autocomplete" aria-label="1. Oyuncu Adı" style="width:100%; padding:10px; border-radius:10px; border:none; background:rgba(255,255,255,0.1); color:white; font-size:1.1rem;" onkeyup="handleActorAutocomplete(event, 1)" autocomplete="off">
+                    <div class="common-actor-inputs-row">
+                        <div class="common-actor-input-wrap">
+                            <input type="text" id="actor1-input" class="premium-search-input" placeholder="1. Oyuncu Adı..." role="combobox" aria-autocomplete="list" aria-expanded="false" aria-haspopup="listbox" aria-controls="actor1-autocomplete" aria-label="1. Oyuncu Adı" onkeyup="handleActorAutocomplete(event, 1)" autocomplete="off">
                             <div id="actor1-autocomplete" class="autocomplete-suggestions" role="listbox" aria-label="1. Oyuncu Önerileri" style="text-align: left; max-height: 250px; overflow-y: auto;"></div>
                         </div>
-                        <div style="position:relative; flex:1; min-width:200px;">
-                            <input type="text" id="actor2-input" class="premium-search-input" placeholder="2. Oyuncu Adı..." role="combobox" aria-autocomplete="list" aria-expanded="false" aria-haspopup="listbox" aria-controls="actor2-autocomplete" aria-label="2. Oyuncu Adı" style="width:100%; padding:10px; border-radius:10px; border:none; background:rgba(255,255,255,0.1); color:white; font-size:1.1rem;" onkeyup="handleActorAutocomplete(event, 2)" autocomplete="off">
+                        <div class="common-actor-input-wrap">
+                            <input type="text" id="actor2-input" class="premium-search-input" placeholder="2. Oyuncu Adı..." role="combobox" aria-autocomplete="list" aria-expanded="false" aria-haspopup="listbox" aria-controls="actor2-autocomplete" aria-label="2. Oyuncu Adı" onkeyup="handleActorAutocomplete(event, 2)" autocomplete="off">
                             <div id="actor2-autocomplete" class="autocomplete-suggestions" role="listbox" aria-label="2. Oyuncu Önerileri" style="text-align: left; max-height: 250px; overflow-y: auto;"></div>
                         </div>
-                        <button type="button" onclick="findCommonMovies()" class="action-btn" style="padding: 10px 30px; border-radius: 10px; background: linear-gradient(135deg, var(--primary-color), var(--accent-color)); color: white; border:none; cursor:pointer; font-size:1.1rem;">Bul</button>
+                        <button type="button" onclick="findCommonMovies()" class="action-btn common-actor-find-btn">Bul</button>
                     </div>
                     <div id="common-movies-result" style="margin-top: 30px; display:none;">
                         <h3 style="margin-bottom:15px; color:var(--accent-color);">Ortak Filmler</h3>
-                        <div id="common-movies-grid" style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; padding-bottom: 15px; justify-items: center;"></div>
+                        <div id="common-movies-grid" class="profile-movie-grid common-movies-grid"></div>
                     </div>
                 </div>
             </div>
@@ -535,7 +535,7 @@
 
 
 <div id="advanced-search-panel" class="drawer" style="display:none; flex-direction: column; align-items: center; padding: 20px;">
-    <button type="button" class="close-btn" onclick="toggleAdvancedSearch()" aria-label="Filtreleri Kapat" style="position:absolute; top:10px; left:20px; z-index:100; color:var(--text-color); font-size: 30px; cursor: pointer; background:transparent; border:none;">&times;</button>
+    <button type="button" class="close-btn" onclick="toggleAdvancedSearch()" aria-label="Filtreleri Kapat">&times;</button>
                     <h3 style="text-align:center; margin-bottom: 15px; color: var(--text-muted);">Arama & Filtreleme</h3>
                     <div style="display: flex; flex-direction: column; gap: 15px; width: 100%; align-items: center; margin-bottom: 20px;">
                         
