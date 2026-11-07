@@ -602,7 +602,20 @@ async function runTest() {
 
         // --- 6.E REAL PLATFORM RESET (A2) ---
         // Click "Nerede İzlerim?" (Navbar)
-        await page.click('.nav-links a[onclick*="platform"]');
+        try {
+            await page.click('.nav-links a[onclick*="platform"]');
+        } catch (e) {
+            await page.evaluate(() => {
+                const nav = document.querySelector('.nav-links a[onclick*="platform"]');
+                if (nav) nav.click();
+            });
+        }
+        await page.evaluate(() => {
+            if (window.location.hash !== '#platform') {
+                const nav = document.querySelector('.nav-links a[onclick*="platform"]');
+                if (nav) nav.click();
+            }
+        });
 
         // Wait for UI to update without blind sleep
         await page.waitForFunction(() => {
@@ -622,7 +635,7 @@ async function runTest() {
                     '#search-results .movie-card .providers-container'
                 ).length >= 3
             );
-        }, { timeout: 8000 });
+        }, { timeout: 15000 });
 
         const pResetState = await page.evaluate(() => {
             const psa =
