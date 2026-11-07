@@ -2323,7 +2323,7 @@ if (imdbId) {
 
         const rateText =
             hasRating
-                ? `⭐ ${myRating}/10`
+                ? `Puanım: ${myRating}/10`
                 : 'İzledim / Puan Ver';
 
         const rateClass =

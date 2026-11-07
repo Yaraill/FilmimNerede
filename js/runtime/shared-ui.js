@@ -87,6 +87,9 @@ function syncThemeState(isLight) {
         icon.setAttribute('aria-hidden', 'true');
         themeBtn.replaceChildren(icon);
         themeBtn.setAttribute('aria-pressed', lightTheme ? 'true' : 'false');
+        const label = lightTheme ? 'Koyu Temaya Geç' : 'Açık Temaya Geç';
+        themeBtn.setAttribute('aria-label', label);
+        themeBtn.title = label;
     }
 
     return lightTheme;

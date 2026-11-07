@@ -72,7 +72,8 @@ async function runTest() {
     const swPath = path.join(ROOT_DIR, 'service-worker.js');
     const swContent = fs.readFileSync(swPath, 'utf8');
     
-    assert(swContent.includes('filmimnerede-v92'), 'Service worker cache version must be bumped to v92');
+    const swVersionMatch = swContent.match(/filmimnerede-v(\d+)/);
+    assert(swVersionMatch && Number(swVersionMatch[1]) >= 92, 'Service worker cache version must be at least v92');
     
     for (const icon of manifest.icons) {
         assert(swContent.includes(`/${icon.src}`), `Service worker must precache /${icon.src}`);

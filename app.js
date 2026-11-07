@@ -194,18 +194,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const scrolled = window.scrollY;
         const navbar = document.querySelector('.navbar');
         if (navbar) {
-            if (scrolled > 50) {
-                if (document.body.classList.contains('light-theme')) {
-                    navbar.style.background = 'rgba(255, 255, 255, 0.5)';
-                    navbar.style.boxShadow = '0 4px 30px rgba(0, 0, 0, 0.1)';
-                } else {
-                    navbar.style.background = 'rgba(15, 23, 42, 0.5)';
-                    navbar.style.boxShadow = '0 4px 30px rgba(0, 0, 0, 0.5)';
-                }
-            } else {
-                navbar.style.background = 'rgba(255, 255, 255, 0.05)';
-                navbar.style.boxShadow = '0 4px 30px rgba(0, 0, 0, 0.1)';
-            }
+            navbar.classList.toggle('scrolled', scrolled > 50);
         }
     });
 

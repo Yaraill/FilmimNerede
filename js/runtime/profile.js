@@ -166,7 +166,7 @@ function saveRating(id, rating, mediaType = null) {
     }
 
     const textSpan = document.getElementById(`rate-text-${safeId}`);
-    if (textSpan) textSpan.innerText = `⭐ ${safeRating}/10`;
+    if (textSpan) textSpan.innerText = `Puanım: ${safeRating}/10`;
     const btn = textSpan ? textSpan.parentElement : null;
     if (btn) {
         btn.classList.add('active');
