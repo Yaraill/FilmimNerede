@@ -181,6 +181,21 @@ let currentRouterIndex = -1;
 let lastRenderedHash = null;
 
 function handleRoute() {
+    if (window.location.hash === '#main-content') {
+        const mainEl = document.getElementById('main-content');
+        if (mainEl) {
+            mainEl.focus();
+        }
+        const restoreHash =
+            lastRenderedHash && lastRenderedHash !== '#main-content'
+                ? lastRenderedHash
+                : '';
+        if (restoreHash) {
+            history.replaceState(history.state, '', restoreHash);
+        }
+        return;
+    }
+
     const route = parseRoute();
 
     const currentHash =

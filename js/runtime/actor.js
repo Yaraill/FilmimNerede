@@ -196,9 +196,20 @@ async function renderActor(
         
         const genreFilterStr = document.getElementById('genreFilter')?.value || "";
         if (genreFilterStr !== "") {
-            const selectedGenresArr = genreFilterStr.split(',').map(g => parseInt(g)).filter(g => !isNaN(g));
-            if (selectedGenresArr.length > 0) {
-                movies = movies.filter(m => m.genre_ids && selectedGenresArr.every(g => m.genre_ids.includes(g)));
+            const genreGroups = genreFilterStr
+                .split(',')
+                .map(groupStr =>
+                    groupStr
+                        .split('|')
+                        .map(part => parseInt(part, 10))
+                        .filter(g => !isNaN(g))
+                )
+                .filter(group => group.length > 0);
+            if (genreGroups.length > 0) {
+                movies = movies.filter(m => {
+                    const itemGenres = Array.isArray(m.genre_ids) ? m.genre_ids : [];
+                    return genreGroups.every(group => group.some(g => itemGenres.includes(g)));
+                });
             }
         } else if (filterGenre > 0) {
             movies = movies.filter(m => m.genre_ids && m.genre_ids.includes(parseInt(filterGenre)));
@@ -206,9 +217,16 @@ async function renderActor(
         
         const yearFilterStr = document.getElementById('yearFilter')?.value || "";
         if (yearFilterStr !== "") {
+            const selectedYear = parseInt(yearFilterStr, 10);
+            const isDecade = yearFilterStr.length === 4 && yearFilterStr.endsWith('0');
             movies = movies.filter(m => {
-                const y = m.release_date ? m.release_date.split('-')[0] : (m.first_air_date ? m.first_air_date.split('-')[0] : "");
-                return y === yearFilterStr;
+                const yStr = m.release_date ? m.release_date.split('-')[0] : (m.first_air_date ? m.first_air_date.split('-')[0] : "");
+                const y = parseInt(yStr, 10);
+                if (isNaN(y)) return false;
+                if (isDecade && !isNaN(selectedYear)) {
+                    return y >= selectedYear && y <= selectedYear + 9;
+                }
+                return yStr === yearFilterStr;
             });
         }
         
@@ -222,7 +240,7 @@ async function renderActor(
             movies = movies.filter(m => m.media_type === "movie");
             
             const validMovies = [];
-            const maxToCheck = Math.min(movies.length, 60);
+            const maxToCheck = Math.min(movies.length, Math.max(60, currentPage * 40));
             for (let i = 0; i < maxToCheck; i += 20) {
                 const chunk = movies.slice(i, Math.min(i + 20, maxToCheck));
                 const results =
@@ -357,6 +375,8 @@ async function renderActor(
             });
         } else if (sortBy.includes("vote_average")) {
             movies.sort((a, b) => b.vote_average - a.vote_average);
+        } else if (sortBy.includes("vote_count")) {
+            movies.sort((a, b) => (b.vote_count || 0) - (a.vote_count || 0));
         } else if (sortBy.includes("primary_release_date")) {
             movies.sort((a, b) => {
                 const dA = a.release_date || a.first_air_date;
@@ -370,9 +390,9 @@ async function renderActor(
         }
         
         if (filterProvId > 0) {
-            const regionStr = (filterProvId === 1899 || filterProvId === 384) ? 'US' : 'TR';
+            const regionStr = 'TR';
             const validMovies = [];
-            const maxToCheck = Math.min(movies.length, 60);
+            const maxToCheck = Math.min(movies.length, Math.max(60, currentPage * 40));
             for (let i = 0; i < maxToCheck; i += 20) {
                 const chunk = movies.slice(i, Math.min(i + 20, maxToCheck));
                 const results = await Promise.all(chunk.map(async m => {
@@ -2051,18 +2071,17 @@ async function findCommonMovies() {
             `&sort_by=popularity.desc` +
             `&language=tr-TR`
         );
+        if (!res3.ok) throw new Error(`HTTP ${res3.status}`);
 
         const data3 = await res3.json();
 
         let html = '';
+        const commonResults = Array.isArray(data3.results) ? data3.results : [];
 
-        if (
-            !data3.results ||
-            data3.results.length === 0
-        ) {
+        if (commonResults.length === 0) {
             html = "<p>Ortak film bulunamadı.</p>";
         } else {
-            data3.results.forEach(item => {
+            commonResults.forEach(item => {
                 html += createMovieCard(
                     item,
                     'movie',
@@ -2072,6 +2091,11 @@ async function findCommonMovies() {
         }
 
         grid.innerHTML = html;
+        commonResults.forEach(item => {
+            if (item && item.id) {
+                fetchAndInjectProviders(item.id, 'movie', item);
+            }
+        });
         makeScrollable(grid);
 
     } catch (e) {

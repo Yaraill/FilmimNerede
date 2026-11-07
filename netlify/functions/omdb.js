@@ -5,7 +5,7 @@ const OMDB_TIMEOUT_MS =
     9000;
 
 const IMDB_ID_PATTERN =
-    /^tt\d{7,}$/;
+    /^tt\d{7,10}$/;
 
 function jsonResponse(
     statusCode,
@@ -185,7 +185,10 @@ exports.handler =
             // response olarak aynen korunur.
             return jsonResponse(
                 200,
-                data
+                data,
+                {
+                    'Cache-Control': 'public, max-age=3600, s-maxage=86400'
+                }
             );
         } catch (error) {
             if (

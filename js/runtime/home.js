@@ -977,13 +977,14 @@ async function loadNowPlaying(routeContext = null, expectedPage = null) {
     if(document.getElementById('collections-section')) document.getElementById('collections-section').style.display = 'block';
     if(document.getElementById('trending-actors-section')) document.getElementById('trending-actors-section').style.display = 'block';
 
-    if (container.children.length > 0) return;
+    if (container && container.querySelector('.movie-card')) return;
     
     showSkeletons('now-playing-grid', 10);
     container.style.display = "";
     container.innerHTML = "<div class='loading'>Vizyondaki filmler çekiliyor...</div>";
     try {
         const res = await fetch(`${BASE_URL}/movie/now_playing?api_key=${API_KEY}&language=tr-TR&region=TR&page=1`, { signal: routeContext?.signal });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const data = await res.json();
         
         if (routeContext && expectedPage && !isRouteContextCurrent(routeContext, expectedPage)) return;
@@ -1026,13 +1027,14 @@ async function loadNowPlaying(routeContext = null, expectedPage = null) {
 
 async function loadUpcomingMovies(routeContext = null) {
     const container = document.getElementById('upcoming-movies');
-    if (container.children.length > 1) return; 
+    if (container && container.querySelector('.movie-card')) return; 
     
     container.style.display = "";
     container.innerHTML = "<div class='loading'>Gelecek filmler çekiliyor...</div>";
     try {
         const today = new Date().toISOString().split('T')[0];
-        const response = await fetch(`${BASE_URL}/discover/movie?api_key=${API_KEY}&language=tr-TR&region=TR&with_release_type=2|3|4&release_date.gte=${today}&sort_by=release_date.asc&popularity.gte=15&page=1`, { signal: routeContext?.signal });
+        const response = await fetch(`${BASE_URL}/discover/movie?api_key=${API_KEY}&language=tr-TR&region=TR&with_release_type=2|3&release_date.gte=${today}&sort_by=release_date.asc&popularity.gte=15&page=1`, { signal: routeContext?.signal });
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
         const data = await response.json();
         
         if (routeContext && !isRouteContextCurrent(routeContext, "vizyon")) return;
@@ -2128,9 +2130,8 @@ async function loadSmartRecommendations(
                 }
 
                 const mediaType =
-                    normalizeMediaType(
-                        movie
-                            ?.media_type,
+                    inferItemMediaType(
+                        movie,
                         'movie'
                     );
 
@@ -2138,25 +2139,16 @@ async function loadSmartRecommendations(
                     return null;
                 }
 
-                const ratingKey =
-                    String(movieId);
-
-                const storedRating =
-                    Object.prototype
-                        .hasOwnProperty
-                        .call(
-                            ratings,
-                            ratingKey
-                        )
-                        ? ratings[
-                            ratingKey
-                        ]
-                        : null;
-
                 const userRating =
-                    normalizeUserRating(
-                        storedRating
-                    ) ?? 5;
+                    (typeof getUserRatingForMedia === 'function'
+                        ? getUserRatingForMedia(
+                              ratings,
+                              movieId,
+                              mediaType
+                          )
+                        : normalizeUserRating(
+                              ratings[String(movieId)]
+                          )) ?? 5;
 
                 return {
                     ...movie,
@@ -2243,7 +2235,14 @@ async function loadSmartRecommendations(
                 )
             ) {
                 recommendedMovies.push(
-                    ...data.results
+                    ...data.results.map(rec => ({
+                        ...rec,
+                        media_type:
+                            normalizeMediaType(
+                                rec?.media_type,
+                                mediaType
+                            ) || mediaType
+                    }))
                 );
             }
         }
@@ -2363,26 +2362,41 @@ async function loadSmartRecommendations(
                         return false;
                     }
 
+                    const recMediaType =
+                        inferItemMediaType(
+                            movie,
+                            'movie'
+                        );
+
+                    const compositeKey =
+                        `${recMediaType}:${movieId}`;
+
                     if (
                         seen.has(
-                            movieId
+                            compositeKey
                         )
                     ) {
                         return false;
                     }
 
                     seen.add(
-                        movieId
+                        compositeKey
                     );
 
                     const alreadyRated =
-                        normalizeUserRating(
-                            ratings[
-                                String(
-                                    movieId
-                                )
-                            ]
-                        ) !== null;
+                        (typeof getUserRatingForMedia === 'function'
+                            ? getUserRatingForMedia(
+                                  ratings,
+                                  movieId,
+                                  recMediaType
+                              )
+                            : normalizeUserRating(
+                                  ratings[
+                                      String(
+                                          movieId
+                                      )
+                                  ]
+                              )) !== null;
 
                     return (
                         !alreadyRated
@@ -2479,23 +2493,33 @@ async function loadSmartRecommendations(
                             return false;
                         }
 
+                        const compositeKey =
+                            `movie:${movieId}`;
+
                         if (
                             seen.has(
-                                movieId
+                                compositeKey
                             )
                         ) {
                             return false;
                         }
 
-                        if (
-                            normalizeUserRating(
-                                ratings[
-                                    String(
-                                        movieId
-                                    )
-                                ]
-                            ) !== null
-                        ) {
+                        const alreadyRatedExtra =
+                            (typeof getUserRatingForMedia === 'function'
+                                ? getUserRatingForMedia(
+                                      ratings,
+                                      movieId,
+                                      'movie'
+                                  )
+                                : normalizeUserRating(
+                                      ratings[
+                                          String(
+                                              movieId
+                                          )
+                                      ]
+                                  )) !== null;
+
+                        if (alreadyRatedExtra) {
                             return false;
                         }
 
@@ -2525,9 +2549,11 @@ async function loadSmartRecommendations(
 
                         movie.id =
                             movieId;
+                        movie.media_type =
+                            'movie';
 
                         seen.add(
-                            movieId
+                            compositeKey
                         );
 
                         return true;

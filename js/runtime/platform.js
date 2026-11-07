@@ -508,10 +508,37 @@ function resetPlatformView(routeContext = null) {
 }
 
 
+function saveSearchFilterStateToSession(query) {
+    try {
+        if (!query) return;
+        const route = buildPlatformRoute();
+        const queryString = route.includes('?') ? route.split('?')[1] : '';
+        sessionStorage.setItem('search_filter_state', JSON.stringify({
+            q: String(query).trim(),
+            filters: queryString
+        }));
+    } catch (e) {}
+}
+
+function restoreSearchFilterStateFromSession(query) {
+    try {
+        const raw = sessionStorage.getItem('search_filter_state');
+        if (!raw) return false;
+        const parsed = JSON.parse(raw);
+        if (parsed && parsed.q === String(query).trim() && typeof parsed.filters === 'string' && parsed.filters.length > 0) {
+            const state = sanitizePlatformFilterState(parsed.filters);
+            restorePlatformFilterState(state);
+            return true;
+        }
+    } catch (e) {}
+    return false;
+}
+
 function applyPlatformFilters() {
     if (currentMode === "actor") {
         renderActor(currentActorId, document.getElementById('searchInput').value, true, currentJobType, 0, true);
     } else if (currentMode === "search") {
+        saveSearchFilterStateToSession(currentSearchQuery || document.getElementById('searchInput')?.value);
         searchMovie(true, true);
     } else {
         navigateToCurrentPlatformFilters();
@@ -545,6 +572,7 @@ function handlePlatformButtonClick(pid) {
         });
 
     if (currentMode === 'search') {
+        saveSearchFilterStateToSession(currentSearchQuery || document.getElementById('searchInput')?.value);
         searchMovie(
             true,
             true
@@ -616,6 +644,8 @@ async function loadPlatformMovies(providerId = 0, reset = true, isFilterChange =
     
     let typesToFetch = mediaType === "all" ? ["movie", "tv"] : [mediaType];
     let allResults = [];
+    let maxTotalPages = 1;
+    const sortBy = document.getElementById('sortByFilter') ? document.getElementById('sortByFilter').value : 'popularity.desc';
     
     try {
         for (let type of typesToFetch) {
@@ -625,11 +655,7 @@ async function loadPlatformMovies(providerId = 0, reset = true, isFilterChange =
             url += `&without_genres=10767,10763,10764,99`;
 
             if (providerId > 0) {
-                if (providerId === 1899 || providerId === 384) { 
-                    url += `&watch_region=US`; // HBO Max requires US region
-                } else {
-                    url += `&watch_region=TR`;
-                }
+                url += `&watch_region=TR`;
                 url += `&with_watch_providers=${providerId}`;
             }
             if (genre) url += `&with_genres=${encodeURIComponent(genre)}`;
@@ -652,13 +678,16 @@ async function loadPlatformMovies(providerId = 0, reset = true, isFilterChange =
                 }
             }
             
-            const sortBy = document.getElementById('sortByFilter') ? document.getElementById('sortByFilter').value : 'popularity.desc';
-            url += `&sort_by=${sortBy}`;
+            let apiSortBy = sortBy;
+            if (type === "tv") {
+                if (sortBy === "primary_release_date.desc") apiSortBy = "first_air_date.desc";
+                else if (sortBy === "primary_release_date.asc") apiSortBy = "first_air_date.asc";
+            }
+            url += `&sort_by=${apiSortBy}`;
             
             const runtime = document.getElementById('runtimeFilter') ? document.getElementById('runtimeFilter').value : "";
             
-            // Skip TV Shows if a runtime filter is active (runtime filters >90m apply almost exclusively to movies)
-            // TMDB API has very inaccurate episode runtimes for TV shows resulting in false positives like Supergirl.
+            // Skip TV Shows if a runtime filter is active
             if (type === "tv" && runtime) {
                 continue;
             }
@@ -676,24 +705,31 @@ async function loadPlatformMovies(providerId = 0, reset = true, isFilterChange =
             }
             
             const res = await fetch(url, { signal: routeContext?.signal });
+            if (!res.ok) throw new Error(`HTTP ${res.status}`);
             const data = await res.json();
             
             if (requestGeneration !== platformRequestGeneration || currentMode !== "platform") return;
             if (routeContext && !isRouteContextCurrent(routeContext, "platform")) return;
             
+            if (Number.isFinite(Number(data?.total_pages)) && Number(data.total_pages) > maxTotalPages) {
+                maxTotalPages = Number(data.total_pages);
+            }
+
             if (data.results && data.results.length > 0) {
                 let results = data.results;
                 
                 // Fetch strict runtime details if filter is active
                 if (runtime && type === "movie") {
-                    results = results.slice(0, 20); // Be mindful of performance
+                    results = results.slice(0, 20);
                     const detailedResults = await Promise.all(results.map(async (item) => {
                         try {
-                            const detailRes = await fetch(`${BASE_URL}/movie/${item.id}?api_key=${API_KEY}&language=tr-TR`);
+                            const detailRes = await fetch(`${BASE_URL}/movie/${item.id}?api_key=${API_KEY}&language=tr-TR`, { signal: routeContext?.signal });
+                            if (!detailRes.ok) return { item, runtime: null };
                             const detailData = await detailRes.json();
-                            return { item, runtime: detailData.runtime || 0 };
+                            const rtVal = Number(detailData?.runtime);
+                            return { item, runtime: (Number.isFinite(rtVal) && rtVal > 0) ? rtVal : null };
                         } catch(e) {
-                            return { item, runtime: 0 };
+                            return { item, runtime: null };
                         }
                     }));
                     
@@ -701,10 +737,11 @@ async function loadPlatformMovies(providerId = 0, reset = true, isFilterChange =
 
                     results = detailedResults.filter(detail => {
                         const rt = detail.runtime;
+                        if (!Number.isFinite(rt) || rt <= 0) return false;
                         if (runtime == '90') return rt <= 90;
-                        if (runtime == '120') return rt >= 90 && rt <= 105;
-                        if (runtime == '150') return rt >= 105 && rt <= 135;
-                        if (runtime == '180') return rt >= 135;
+                        if (runtime == '120') return rt > 90 && rt <= 105;
+                        if (runtime == '150') return rt > 105 && rt <= 135;
+                        if (runtime == '180') return rt > 135;
                         return true;
                     }).map(detail => detail.item);
                 }
@@ -720,13 +757,31 @@ async function loadPlatformMovies(providerId = 0, reset = true, isFilterChange =
         
         if (requestGeneration !== platformRequestGeneration || currentMode !== "platform") return;
 
-        allResults.sort((a, b) => b.popularity - a.popularity);
+        const getDateVal = (item) => {
+            const parsed = Date.parse(item.release_date || item.first_air_date || '');
+            return Number.isFinite(parsed) ? parsed : 0;
+        };
+
+        if (sortBy === 'vote_average.desc') {
+            allResults.sort((a, b) => Number(b.vote_average || 0) - Number(a.vote_average || 0));
+        } else if (sortBy === 'vote_count.desc') {
+            allResults.sort((a, b) => Number(b.vote_count || 0) - Number(a.vote_count || 0));
+        } else if (sortBy === 'primary_release_date.desc') {
+            allResults.sort((a, b) => getDateVal(b) - getDateVal(a));
+        } else if (sortBy === 'primary_release_date.asc') {
+            allResults.sort((a, b) => getDateVal(a) - getDateVal(b));
+        } else {
+            allResults.sort((a, b) => Number(b.popularity || 0) - Number(a.popularity || 0));
+        }
         
         const container = document.getElementById('search-results');
         if (reset) container.innerHTML = "";
         
         if (allResults.length === 0 && reset) {
             container.innerHTML = "<div class='loading'>Bu filtrelere uygun içerik bulunamadı.</div>";
+            if (currentPage < maxTotalPages) {
+                document.getElementById('loadMoreBtn').style.display = 'inline-block';
+            }
             return;
         }
         
@@ -757,7 +812,7 @@ async function loadPlatformMovies(providerId = 0, reset = true, isFilterChange =
             );
         }
         
-        if (allResults.length > 0) {
+        if (allResults.length > 0 || currentPage < maxTotalPages) {
             document.getElementById('loadMoreBtn').style.display = 'inline-block';
         }
         if (reset) document.getElementById('search-results').style.minHeight = '';

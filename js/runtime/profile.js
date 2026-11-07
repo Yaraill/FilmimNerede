@@ -1,22 +1,69 @@
-function toggleWatchlist(btnElem, movieId) {
-    const item = window.movieCache[movieId];
+let profileMutationGeneration = 0;
+
+function resolveProfileItemMediaType(item, explicitMediaType = null) {
+    const explicit = normalizeMediaType(explicitMediaType);
+    if (explicit) return explicit;
+    if (typeof inferItemMediaType === 'function') {
+        return inferItemMediaType(item, 'movie');
+    }
+    if (item && (item.first_air_date || (item.name && !item.title))) {
+        return 'tv';
+    }
+    return normalizeMediaType(item?.media_type, 'movie');
+}
+
+function isSameProfileMedia(entry, targetId, targetMediaType) {
+    const entryId = normalizeTmdbId(entry?.id);
+    if (entryId !== targetId) return false;
+    const entryType = resolveProfileItemMediaType(entry, null);
+    return entryType === targetMediaType;
+}
+
+function toggleWatchlist(btnElem, movieId, mediaType = null) {
+    const safeId = normalizeTmdbId(movieId);
+    if (!safeId) return;
+
+    const inferredBtnType = normalizeMediaType(mediaType) ||
+        normalizeMediaType(btnElem?.dataset?.mediaType) ||
+        (window.currentMovieId === safeId ? normalizeMediaType(window.currentMediaType) : null);
+
+    const item = (typeof getCachedMedia === 'function'
+        ? getCachedMedia(safeId, inferredBtnType)
+        : null) || window.movieCache?.[safeId];
     if (!item) return;
-    
-    let watchlist = JSON.parse(localStorage.getItem('watchlist')) || [];
-    const existingIndex = watchlist.findIndex(w => w.id === item.id);
+
+    const resolvedType = resolveProfileItemMediaType(item, inferredBtnType);
+    const normalizedItem = {
+        ...item,
+        id: safeId,
+        media_type: resolvedType
+    };
+
+    profileMutationGeneration++;
+    let watchlist = typeof safeReadStorage === 'function'
+        ? safeReadStorage('watchlist', [])
+        : [];
+    const existingIndex = watchlist.findIndex(w => isSameProfileMedia(w, safeId, resolvedType));
     const isAdding = existingIndex === -1;
-    
+
     if (!isAdding) {
         watchlist.splice(existingIndex, 1);
     } else {
-        watchlist.push(item);
+        watchlist.push(normalizedItem);
     }
-    
-    localStorage.setItem('watchlist', JSON.stringify(watchlist));
-    
-    // Global sync for all heart buttons for this movie
-    const allBtns = document.querySelectorAll(`button[onclick*="toggleWatchlist(this, ${item.id})"]`);
+
+    if (typeof safeWriteStorage === 'function') {
+        safeWriteStorage('watchlist', watchlist);
+    } else {
+        try { localStorage.setItem('watchlist', JSON.stringify(watchlist)); } catch (e) {}
+    }
+
+    const allBtns = document.querySelectorAll(
+        `button[data-media-id="${safeId}"][data-media-type="${resolvedType}"], button[onclick*="toggleWatchlist(this, ${safeId})"]`
+    );
     allBtns.forEach(btn => {
+        const btnType = normalizeMediaType(btn.dataset?.mediaType);
+        if (btnType && btnType !== resolvedType) return;
         if (!isAdding) {
             btn.classList.remove('active');
             btn.setAttribute('aria-pressed', 'false');
@@ -27,10 +74,10 @@ function toggleWatchlist(btnElem, movieId) {
             btn.setAttribute('aria-label', 'Listeden çıkar');
         }
     });
-    
-    // Explicit sync for the modal button if it's currently open for this movie
+
     const modalBtn = document.getElementById("modal-wl-btn");
-    if (modalBtn && window.currentMovieId === item.id) {
+    const modalMatchesType = !window.currentMediaType || window.currentMediaType === resolvedType;
+    if (modalBtn && window.currentMovieId === safeId && modalMatchesType) {
         if (!isAdding) {
             modalBtn.classList.remove('active');
             modalBtn.classList.add('inactive');
@@ -45,7 +92,7 @@ function toggleWatchlist(btnElem, movieId) {
             modalBtn.style.color = "";
         }
     }
-    
+
     if (document.getElementById('profile') && document.getElementById('profile').classList.contains('active-tab')) {
         loadProfile();
     }
@@ -56,18 +103,61 @@ function toggleRateMenu(id) {
     if (menu) menu.style.display = menu.style.display === 'none' ? 'flex' : 'none';
 }
 
-function saveRating(id, rating) {
-    const savedRatings = JSON.parse(localStorage.getItem('movieRatings') || '{}');
-    savedRatings[id] = rating;
-    localStorage.setItem('movieRatings', JSON.stringify(savedRatings));
-    
-    // Ayrıca "Listem" sekmesinde gözükmesi için ratedMovies dizisine de kaydedelim
-    const item = window.movieCache[id];
+function saveRating(id, rating, mediaType = null) {
+    const safeId = normalizeTmdbId(id);
+    const safeRating = normalizeUserRating(rating);
+    if (!safeId || safeRating === null) return;
+
+    const explicitType = normalizeMediaType(mediaType) ||
+        (window.currentMovieId === safeId ? normalizeMediaType(window.currentMediaType) : null);
+    const item = (typeof getCachedMedia === 'function'
+        ? getCachedMedia(safeId, explicitType)
+        : null) || window.movieCache?.[safeId];
+    const resolvedType = resolveProfileItemMediaType(item, explicitType);
+    const compositeKey = `${resolvedType}:${safeId}`;
+    const otherType = resolvedType === 'movie' ? 'tv' : 'movie';
+    const otherKey = `${otherType}:${safeId}`;
+
+    profileMutationGeneration++;
+    const savedRatings = typeof safeReadStorage === 'function'
+        ? { ...safeReadStorage('movieRatings', {}) }
+        : JSON.parse(localStorage.getItem('movieRatings') || '{}');
+
+    savedRatings[compositeKey] = safeRating;
+    if (savedRatings[otherKey] === undefined) {
+        savedRatings[safeId] = safeRating;
+    } else {
+        delete savedRatings[safeId];
+    }
+
+    if (typeof safeWriteStorage === 'function') {
+        safeWriteStorage('movieRatings', savedRatings);
+    } else {
+        try { localStorage.setItem('movieRatings', JSON.stringify(savedRatings)); } catch (e) {}
+    }
+
     if (item) {
-        let ratedMovies = JSON.parse(localStorage.getItem('ratedMovies') || '[]');
-        if (!ratedMovies.some(m => m.id === id)) {
-            ratedMovies.push(item);
-            localStorage.setItem('ratedMovies', JSON.stringify(ratedMovies));
+        const normalizedItem = {
+            ...item,
+            id: safeId,
+            media_type: resolvedType
+        };
+        let ratedMovies = typeof safeReadStorage === 'function'
+            ? safeReadStorage('ratedMovies', [])
+            : JSON.parse(localStorage.getItem('ratedMovies') || '[]');
+        const existingIdx = ratedMovies.findIndex(m => isSameProfileMedia(m, safeId, resolvedType));
+        if (existingIdx === -1) {
+            ratedMovies.push(normalizedItem);
+        } else {
+            ratedMovies[existingIdx] = {
+                ...ratedMovies[existingIdx],
+                ...normalizedItem
+            };
+        }
+        if (typeof safeWriteStorage === 'function') {
+            safeWriteStorage('ratedMovies', ratedMovies);
+        } else {
+            try { localStorage.setItem('ratedMovies', JSON.stringify(ratedMovies)); } catch (e) {}
         }
     }
 
@@ -75,52 +165,106 @@ function saveRating(id, rating) {
         loadProfile();
     }
 
-    const textSpan = document.getElementById(`rate-text-${id}`);
-    if (textSpan) textSpan.innerText = `⭐ ${rating}/10`;
+    const textSpan = document.getElementById(`rate-text-${safeId}`);
+    if (textSpan) textSpan.innerText = `⭐ ${safeRating}/10`;
     const btn = textSpan ? textSpan.parentElement : null;
     if (btn) {
         btn.classList.add('active');
         btn.classList.remove('inactive');
     }
-    const menu = document.getElementById(`rate-menu-${id}`);
+    const menu = document.getElementById(`rate-menu-${safeId}`);
     if (menu) menu.style.display = 'none';
 }
 
-function removeRating(id) {
-    const savedRatings = JSON.parse(localStorage.getItem('movieRatings') || '{}');
-    delete savedRatings[id];
-    localStorage.setItem('movieRatings', JSON.stringify(savedRatings));
-    
-    let ratedMovies = JSON.parse(localStorage.getItem('ratedMovies') || '[]');
-    ratedMovies = ratedMovies.filter(m => m.id !== id);
-    localStorage.setItem('ratedMovies', JSON.stringify(ratedMovies));
+function removeRating(id, mediaType = null) {
+    const safeId = normalizeTmdbId(id);
+    if (!safeId) return;
+
+    const explicitType = normalizeMediaType(mediaType) ||
+        (window.currentMovieId === safeId ? normalizeMediaType(window.currentMediaType) : null);
+    const item = (typeof getCachedMedia === 'function'
+        ? getCachedMedia(safeId, explicitType)
+        : null) || window.movieCache?.[safeId];
+    const resolvedType = explicitType || (item ? resolveProfileItemMediaType(item, null) : null);
+
+    profileMutationGeneration++;
+    const savedRatings = typeof safeReadStorage === 'function'
+        ? { ...safeReadStorage('movieRatings', {}) }
+        : JSON.parse(localStorage.getItem('movieRatings') || '{}');
+
+    if (resolvedType) {
+        const compositeKey = `${resolvedType}:${safeId}`;
+        const otherType = resolvedType === 'movie' ? 'tv' : 'movie';
+        const otherKey = `${otherType}:${safeId}`;
+        delete savedRatings[compositeKey];
+        if (savedRatings[otherKey] !== undefined) {
+            savedRatings[safeId] = savedRatings[otherKey];
+        } else {
+            delete savedRatings[safeId];
+        }
+    } else {
+        delete savedRatings[safeId];
+        delete savedRatings[`movie:${safeId}`];
+        delete savedRatings[`tv:${safeId}`];
+    }
+
+    if (typeof safeWriteStorage === 'function') {
+        safeWriteStorage('movieRatings', savedRatings);
+    } else {
+        try { localStorage.setItem('movieRatings', JSON.stringify(savedRatings)); } catch (e) {}
+    }
+
+    let ratedMovies = typeof safeReadStorage === 'function'
+        ? safeReadStorage('ratedMovies', [])
+        : JSON.parse(localStorage.getItem('ratedMovies') || '[]');
+    ratedMovies = ratedMovies.filter(m => {
+        const mId = normalizeTmdbId(m?.id);
+        if (mId !== safeId) return true;
+        if (!resolvedType) return false;
+        return resolveProfileItemMediaType(m, null) !== resolvedType;
+    });
+
+    if (typeof safeWriteStorage === 'function') {
+        safeWriteStorage('ratedMovies', ratedMovies);
+    } else {
+        try { localStorage.setItem('ratedMovies', JSON.stringify(ratedMovies)); } catch (e) {}
+    }
 
     if (document.getElementById('profile') && document.getElementById('profile').classList.contains('active-tab')) {
         loadProfile();
     }
 
-    const textSpan = document.getElementById(`rate-text-${id}`);
+    const textSpan = document.getElementById(`rate-text-${safeId}`);
     if (textSpan) textSpan.innerText = "İzledim / Puan Ver";
     const btn = textSpan ? textSpan.parentElement : null;
     if (btn) {
         btn.classList.remove('active');
         btn.classList.add('inactive');
     }
-    const menu = document.getElementById(`rate-menu-${id}`);
+    const menu = document.getElementById(`rate-menu-${safeId}`);
     if (menu) menu.style.display = 'none';
 }
 
 function renderRecentlyViewed(routeContext = null) {
-    const recent = JSON.parse(localStorage.getItem('recentlyViewed') || '[]');
+    const recent = typeof safeReadStorage === 'function'
+        ? safeReadStorage('recentlyViewed', [])
+        : [];
     const container = document.getElementById('recently-viewed-grid');
+    const section = document.getElementById('recently-viewed-section');
     if (!container) return;
-    
-    if (recent.length === 0) {
-        document.getElementById('recently-viewed-section').style.display = 'none';
+
+    if (!Array.isArray(recent) || recent.length === 0) {
+        if (section) section.style.display = 'none';
     } else {
-        document.getElementById('recently-viewed-section').style.display = 'block';
-        container.innerHTML = recent.map(item => createMovieCard(item, item.media_type, "")).join('');
-        recent.forEach(item => fetchAndInjectProviders(item.id, item.media_type, item, routeContext));
+        if (section) section.style.display = 'block';
+        container.innerHTML = recent.map(item => {
+            const mType = resolveProfileItemMediaType(item, null);
+            return createMovieCard(item, mType, "");
+        }).join('');
+        recent.forEach(item => {
+            const mType = resolveProfileItemMediaType(item, null);
+            fetchAndInjectProviders(item.id, mType, item, routeContext);
+        });
     }
 }
 
@@ -213,15 +357,16 @@ function normalizeBackupMovieList(value, fieldName, strict = true) {
     }
 
     const normalized = [];
-    const seenIds = new Set();
+    const seenKeys = new Set();
     value.forEach(item => {
         const safeItem = normalizeBackupMovieItem(item);
         if (!safeItem) {
             if (strict) throw new Error(`${fieldName} geçersiz kayıt içeriyor`);
             return;
         }
-        if (seenIds.has(safeItem.id)) return;
-        seenIds.add(safeItem.id);
+        const compositeKey = `${safeItem.media_type}:${safeItem.id}`;
+        if (seenKeys.has(compositeKey)) return;
+        seenKeys.add(compositeKey);
         normalized.push(safeItem);
     });
     return normalized;
@@ -266,9 +411,20 @@ function normalizeBackupRatings(value, strict = true) {
     }
 
     const normalized = {};
-    Object.entries(value).forEach(([rawId, rawRating]) => {
-        const id = normalizeTmdbId(rawId);
+    Object.entries(value).forEach(([rawKey, rawRating]) => {
         const rating = normalizeUserRating(rawRating);
+        const trimmedKey = String(rawKey || '').trim();
+        if (/^(movie|tv):d+$/.test(trimmedKey)) {
+            const [mType, idPart] = trimmedKey.split(':');
+            const id = normalizeTmdbId(idPart);
+            if (!id || rating === null) {
+                if (strict) throw new Error('movieRatings geçersiz kayıt içeriyor');
+                return;
+            }
+            normalized[`${mType}:${id}`] = rating;
+            return;
+        }
+        const id = normalizeTmdbId(trimmedKey);
         if (!id || rating === null) {
             if (strict) throw new Error('movieRatings geçersiz kayıt içeriyor');
             return;
@@ -327,13 +483,17 @@ function validateProfileBackupPayload(payload) {
     return normalizeProfileBackupData(payload.data, true);
 }
 
-function mergeBackupList(currentItems, importedItems, limit = null) {
+function mergeBackupList(currentItems, importedItems, limit = null, byMediaType = true) {
     const merged = [];
-    const seenIds = new Set();
+    const seenKeys = new Set();
     [...currentItems, ...importedItems].forEach(item => {
         const id = normalizeTmdbId(item?.id);
-        if (!id || seenIds.has(id)) return;
-        seenIds.add(id);
+        if (!id) return;
+        const key = byMediaType && (item?.media_type || item?.title || item?.name || item?.first_air_date)
+            ? `${resolveProfileItemMediaType(item, null)}:${id}`
+            : String(id);
+        if (seenKeys.has(key)) return;
+        seenKeys.add(key);
         merged.push(item);
     });
     return typeof limit === 'number' ? merged.slice(0, limit) : merged;
@@ -357,6 +517,7 @@ function mergeProfileBackupData(currentData, importedData) {
 }
 
 function writeProfileBackupData(data) {
+    profileMutationGeneration++;
     const previousValues = Object.fromEntries(
         PROFILE_BACKUP_STORAGE_KEYS.map(key => [key, localStorage.getItem(key)])
     );
@@ -564,8 +725,12 @@ function loadProfile(routeContext = null) {
     const actorsGrid = document.getElementById('favorite-actors-grid');
     const statsContainer = document.getElementById('profile-stats-container');
     
-    const watchlist = JSON.parse(localStorage.getItem('watchlist') || '[]');
-    const ratedMovies = JSON.parse(localStorage.getItem('ratedMovies') || '[]');
+    const watchlist = typeof safeReadStorage === 'function'
+        ? safeReadStorage('watchlist', [])
+        : [];
+    const ratedMovies = typeof safeReadStorage === 'function'
+        ? safeReadStorage('ratedMovies', [])
+        : [];
     let favoriteActors = [];
 
     try {
@@ -661,29 +826,77 @@ ratedMovies.forEach(m => {
     
     let genreCounts = {};
     ratedMovies.forEach(m => {
-        if (m.genre_ids) {
-            m.genre_ids.forEach(gId => {
-                genreCounts[gId] = (genreCounts[gId] || 0) + 1;
-            });
-        }
+        const gIds = Array.isArray(m?.genre_ids) && m.genre_ids.length > 0
+            ? m.genre_ids
+            : (Array.isArray(m?.genres) ? m.genres.map(g => g?.id).filter(Boolean) : []);
+        gIds.forEach(gId => {
+            const safeGId = normalizeTmdbId(gId);
+            if (safeGId) {
+                genreCounts[safeGId] = (genreCounts[safeGId] || 0) + 1;
+            }
+        });
     });
-    
+
     let favoriteGenre = "Belirsiz";
     if (Object.keys(genreCounts).length > 0) {
         const topGenreId = Object.keys(genreCounts).reduce((a, b) => genreCounts[a] > genreCounts[b] ? a : b);
         const allGenres = Object.values(window.genresCache || {}).flat();
         const genreObj = allGenres.find(g => String(g.id) === String(topGenreId));
-        if (genreObj) favoriteGenre = genreObj.name;
+        if (genreObj) {
+            favoriteGenre = genreObj.name;
+        } else if (typeof genreMap === 'object' && genreMap && genreMap[topGenreId]) {
+            favoriteGenre = genreMap[topGenreId];
+        } else if (typeof window !== 'undefined' && window.genreMap && window.genreMap[topGenreId]) {
+            favoriteGenre = window.genreMap[topGenreId];
+        } else {
+            for (const m of ratedMovies) {
+                const matched = Array.isArray(m?.genres)
+                    ? m.genres.find(g => String(g?.id) === String(topGenreId) && g?.name)
+                    : null;
+                if (matched) {
+                    favoriteGenre = String(matched.name);
+                    break;
+                }
+            }
+        }
     }
-    
-    const savedRatings = JSON.parse(localStorage.getItem('movieRatings') || '{}');
-    const ratingsArray = Object.values(savedRatings);
-    const avgRating = ratingsArray.length > 0 ? (ratingsArray.reduce((a,b)=>a+b,0) / ratingsArray.length).toFixed(1) : 0;
-    
+
+    const savedRatings = typeof safeReadStorage === 'function'
+        ? safeReadStorage('movieRatings', {})
+        : {};
+    const ratingValues = [];
+    if (ratedMovies.length > 0) {
+        ratedMovies.forEach(m => {
+            const mId = normalizeTmdbId(m?.id);
+            if (!mId) return;
+            const mType = resolveProfileItemMediaType(m, null);
+            const rVal = typeof getUserRatingForMedia === 'function'
+                ? getUserRatingForMedia(savedRatings, mId, mType)
+                : normalizeUserRating(savedRatings[`${mType}:${mId}`] ?? savedRatings[mId]);
+            if (rVal !== null) ratingValues.push(rVal);
+        });
+    } else {
+        Object.values(savedRatings).forEach(v => {
+            const rVal = normalizeUserRating(v);
+            if (rVal !== null) ratingValues.push(rVal);
+        });
+    }
+    const avgRating = ratingValues.length > 0
+        ? (ratingValues.reduce((a, b) => a + b, 0) / ratingValues.length).toFixed(1)
+        : 0;
+
+    const uniqueMediaKeys = new Set();
+    [...watchlist, ...ratedMovies].forEach(item => {
+        const id = normalizeTmdbId(item?.id);
+        if (!id) return;
+        uniqueMediaKeys.add(`${resolveProfileItemMediaType(item, null)}:${id}`);
+    });
+    const totalUniqueContent = uniqueMediaKeys.size;
+
     statsContainer.innerHTML = `
         <div class="stat-card" style="border-top: 2px solid var(--primary-color); position:relative; overflow:hidden;">
             <i class="fas fa-film" style="position:absolute; right:-10px; bottom:-10px; font-size:4rem; color:rgba(128,128,128,0.1);"></i>
-            <div class="stat-value" style="background: -webkit-linear-gradient(45deg, var(--primary-color), var(--accent-color)); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">${watchlist.length + ratedMovies.length}</div>
+            <div class="stat-value" style="background: -webkit-linear-gradient(45deg, var(--primary-color), var(--accent-color)); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">${totalUniqueContent}</div>
             <div class="stat-label" style="font-weight:600; letter-spacing:1px; font-size:0.9rem;">Toplam İçerik</div>
         </div>
         <div class="stat-card" style="border-top: 2px solid #00c6ff; position:relative; overflow:hidden;">
@@ -1164,6 +1377,11 @@ async function calculateExactWatchTime(
     }
 
     let updated = false;
+    const startGeneration = profileMutationGeneration;
+    const hadStoredRatedAtStart = (() => {
+        try { return localStorage.getItem('ratedMovies') !== null; } catch (e) { return false; }
+    })();
+    const computedRuntimeByKey = new Map();
 
     // Aynı hesaplama invocation'ı
     // içinde mediaType:id dedup.
@@ -1336,6 +1554,11 @@ async function calculateExactWatchTime(
                 item.exact_runtime_mins_v2 =
                     minutes;
 
+                computedRuntimeByKey.set(
+                    `${mediaType}:${itemId}`,
+                    minutes
+                );
+
                 updated = true;
 
                 return minutes;
@@ -1364,14 +1587,33 @@ async function calculateExactWatchTime(
             0
         );
 
-    if (updated) {
+    if (updated && !signal?.aborted) {
         try {
-            localStorage.setItem(
-                'ratedMovies',
-                JSON.stringify(
-                    ratedMovies
-                )
-            );
+            const currentRaw = localStorage.getItem('ratedMovies');
+            if (currentRaw !== null) {
+                const currentList = JSON.parse(currentRaw);
+                if (Array.isArray(currentList)) {
+                    let changedCurrent = false;
+                    currentList.forEach(entry => {
+                        const entryId = normalizeTmdbId(entry?.id);
+                        if (!entryId) return;
+                        const entryType = resolveProfileItemMediaType(entry, null);
+                        const runtimeVal = computedRuntimeByKey.get(`${entryType}:${entryId}`);
+                        if (runtimeVal && entry.exact_runtime_mins_v2 !== runtimeVal) {
+                            entry.exact_runtime_mins_v2 = runtimeVal;
+                            changedCurrent = true;
+                        }
+                    });
+                    if (changedCurrent) {
+                        localStorage.setItem('ratedMovies', JSON.stringify(currentList));
+                    }
+                }
+            } else if (!hadStoredRatedAtStart && profileMutationGeneration === startGeneration) {
+                localStorage.setItem(
+                    'ratedMovies',
+                    JSON.stringify(ratedMovies)
+                );
+            }
         } catch (error) {
             console.warn(
                 'Watch time cache yazılamadı:',

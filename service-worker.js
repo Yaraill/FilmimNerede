@@ -51,16 +51,23 @@ self.addEventListener('fetch', event => {
   event.respondWith(
     fetch(event.request)
       .then(response => {
-        // Cache the fresh response
-        const clonedResponse = response.clone();
-        caches.open(CACHE_NAME).then(cache => {
-          cache.put(event.request, clonedResponse);
-        });
+        if (response && response.ok && response.type === 'basic') {
+          const clonedResponse = response.clone();
+          caches.open(CACHE_NAME).then(cache => {
+            cache.put(event.request, clonedResponse);
+          });
+        }
         return response;
       })
       .catch(() => {
-        // If network fails, try the cache
-        return caches.match(event.request);
+        return caches.match(event.request).then(cached => {
+          if (cached) return cached;
+          return new Response('Çevrimdışı: İçerik önbellekte bulunamadı.', {
+            status: 503,
+            statusText: 'Service Unavailable',
+            headers: { 'Content-Type': 'text/plain; charset=utf-8' }
+          });
+        });
       })
   );
 });
@@ -71,7 +78,7 @@ self.addEventListener('activate', event => {
     caches.keys().then(cacheNames => {
       return Promise.all(
         cacheNames.map(cache => {
-          if (cache !== CACHE_NAME) {
+          if (cache.startsWith('filmimnerede-') && cache !== CACHE_NAME) {
             return caches.delete(cache);
           }
         })

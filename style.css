@@ -42,6 +42,10 @@ body.light-theme #common-actor-tab .premium-search-input::placeholder {
     font-family: 'Inter', sans-serif;
 }
 
+html, body {
+    overflow-x: clip;
+}
+
 body {
     background-color: var(--bg-color);
     color: var(--text-color);
@@ -2179,7 +2183,7 @@ body.light-theme ::-webkit-scrollbar-thumb:hover {
     .nav-links {
         position: fixed;
         top: 0;
-        right: -100%;
+        right: 0;
         width: 250px;
         height: 100vh;
         background: rgba(15, 23, 42, 0.95);
@@ -2188,7 +2192,10 @@ body.light-theme ::-webkit-scrollbar-thumb:hover {
         flex-direction: column;
         align-items: center;
         justify-content: center;
-        transition: right 0.4s cubic-bezier(0.68, -0.55, 0.265, 1.55);
+        transform: translateX(100%);
+        visibility: hidden;
+        pointer-events: none;
+        transition: transform 0.4s cubic-bezier(0.68, -0.55, 0.265, 1.55), visibility 0.4s;
         z-index: 999;
         box-shadow: -10px 0 30px rgba(0,0,0,0.5);
     }
@@ -2198,6 +2205,9 @@ body.light-theme ::-webkit-scrollbar-thumb:hover {
     }
     .nav-links.active {
         right: 0;
+        transform: translateX(0);
+        visibility: visible;
+        pointer-events: auto;
     }
     .menu-toggle.active .bar:nth-child(2) { opacity: 0; }
     .menu-toggle.active .bar:nth-child(1) { transform: translateY(9px) rotate(45deg); }

@@ -119,7 +119,7 @@ let slider = null;
 
 document.addEventListener('mousedown', (e) => {
     const target = e.target.closest('.cast-list') || e.target.closest('.collection-list') || e.target.closest('#recently-viewed-grid');
-    if (!target) return;
+    if (!target || target.dataset.isScrollable === "true") return;
     
     isDown = true;
     slider = target;
@@ -228,7 +228,13 @@ function toggleAdvancedSearch() {
 }
 
 async function executeDiscover() {
-    const type = document.getElementById('discover-type').value;
+    const discoverTypeEl = document.getElementById('discover-type');
+    if (!discoverTypeEl) {
+        if (typeof toggleAdvancedSearch === 'function') toggleAdvancedSearch();
+        if (typeof applyPlatformFilters === 'function') applyPlatformFilters();
+        return;
+    }
+    const type = discoverTypeEl.value;
     const yearMin = document.getElementById('discover-year-min').value;
     const yearMax = document.getElementById('discover-year-max').value;
     const rating = document.getElementById('discover-rating').value;
@@ -349,7 +355,11 @@ async function startNewGame() {
         // Rastgele 1-10 arası popüler film sayfası
         const randomPage = Math.floor(Math.random() * 20) + 1;
         const res = await fetch(`${BASE_URL}/discover/movie?api_key=${API_KEY}&language=tr-TR&page=${randomPage}&vote_count.gte=500&with_original_language=en|tr&sort_by=popularity.desc`);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const data = await res.json();
+        if (!Array.isArray(data?.results) || data.results.length === 0) {
+            throw new Error('Film verisi alınamadı');
+        }
         
         let shuffled = data.results.filter(m => !playedGameMovies.includes(m.id)).sort(() => 0.5 - Math.random());
         
@@ -453,7 +463,15 @@ async function startNewGame() {
         }, 100);
     } catch (err) {
         console.error(err);
-        document.getElementById('game-loading').innerHTML = 'Oyun yüklenirken hata oluştu.';
+        const loadingEl = document.getElementById('game-loading');
+        if (loadingEl) {
+            loadingEl.innerHTML = 'Oyun yüklenirken hata oluştu. Lütfen tekrar deneyin.';
+        }
+        const startBtn = document.getElementById('game-start-btn');
+        if (startBtn) {
+            startBtn.style.display = 'inline-block';
+            startBtn.innerHTML = '<i class="fas fa-redo"></i> Tekrar Dene';
+        }
     }
 }
 

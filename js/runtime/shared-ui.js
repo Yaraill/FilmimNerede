@@ -110,7 +110,7 @@ function buyTicket(movieId) {
         document.getElementById('citySelect').focus();
         return;
     }
-    const movie = window.movieCache[movieId];
+    const movie = (typeof getCachedMedia === "function" ? getCachedMedia(movieId, "movie") : null) || window.movieCache[movieId];
     if (!movie) return;
 
     // Biletinial yönlendirme
@@ -164,16 +164,19 @@ function createMovieCard(item, mediaType = "movie", tabContext = "") {
         getSafeTmdbImageUrl(
             item.poster_path,
             IMAGE_BASE,
-            'https://placehold.co/500x750/1a1a2e/ffffff?text=Afis+Yok'
+            'assets/placeholder.svg'
         );
 
-    const allGenres =
-        Array.isArray(item.genre_ids)
-            ? item.genre_ids
-                .map(id => genreMap[id])
-                .filter(Boolean)
-                .map(name => String(name))
-            : [];
+    const normalizedGenreIds = Array.isArray(item.genre_ids) && item.genre_ids.length > 0
+        ? item.genre_ids.map(id => normalizeTmdbId(id)).filter(Boolean)
+        : (Array.isArray(item.genres)
+            ? item.genres.map(g => normalizeTmdbId(g?.id)).filter(Boolean)
+            : []);
+
+    const allGenres = normalizedGenreIds
+        .map(id => genreMap[id])
+        .filter(Boolean)
+        .map(name => String(name));
 
     const genres =
         allGenres.slice(0, 3).join(', ') +
@@ -203,21 +206,25 @@ function createMovieCard(item, mediaType = "movie", tabContext = "") {
     }
 
     const isSaved =
-        watchlist.some(
-            entry =>
-                normalizeTmdbId(entry?.id) ===
-                itemId
-        )
+        watchlist.some(entry => {
+            if (normalizeTmdbId(entry?.id) !== itemId) return false;
+            const entryType = typeof inferItemMediaType === 'function'
+                ? inferItemMediaType(entry, null)
+                : normalizeMediaType(entry?.media_type, null);
+            return !entryType || entryType === normalizedMediaType;
+        })
             ? 'active'
             : '';
 
-    window.movieCache[itemId] = {
+    const cachedItemObj = {
         id: itemId,
         title: title,
         name: title,
         release_date:
             item.release_date ||
             item.first_air_date,
+        first_air_date:
+            item.first_air_date || '',
         poster_path:
             item.poster_path,
         backdrop_path:
@@ -227,12 +234,12 @@ function createMovieCard(item, mediaType = "movie", tabContext = "") {
         vote_average:
             item.vote_average,
         genre_ids:
-            Array.isArray(item.genre_ids)
-                ? item.genre_ids
-                : [],
+            normalizedGenreIds,
         media_type:
             normalizedMediaType
     };
+    window.movieCache[itemId] = cachedItemObj;
+    window.movieCache[`${normalizedMediaType}:${itemId}`] = cachedItemObj;
 
     let dateOrProviderHtml = '';
 
@@ -264,7 +271,7 @@ function createMovieCard(item, mediaType = "movie", tabContext = "") {
     } else {
         dateOrProviderHtml = `
             <div
-                class="movie-date providers-container providers-${itemId}"
+                class="movie-date providers-container providers-${normalizedMediaType}-${itemId} providers-${itemId}" data-media-type="${normalizedMediaType}"
             >
                 <span
                     style="font-size:0.8rem; color:var(--text-muted)"
@@ -317,7 +324,7 @@ function createMovieCard(item, mediaType = "movie", tabContext = "") {
             <button
                 type="button"
                 class="btn-heart ${isSaved}"
-                onclick="toggleWatchlist(this, ${itemId})"
+                data-media-id="${itemId}" data-media-type="${normalizedMediaType}" onclick="toggleWatchlist(this, ${itemId}, '${normalizedMediaType}')"
                 title="Listeme Ekle/Çıkar"
                 aria-label="${isSaved ? 'Listeden çıkar' : 'Listeme ekle'}"
                 aria-pressed="${isSaved ? 'true' : 'false'}"
@@ -329,9 +336,11 @@ function createMovieCard(item, mediaType = "movie", tabContext = "") {
                 src="${escapeHtml(poster)}"
                 alt="${escapeHtml(title)}"
                 class="movie-poster"
+                loading="lazy"
+                decoding="async"
                 style="cursor:pointer"
                 onclick="openDetails(${itemId}, '${normalizedMediaType}')"
-                onmouseenter="startHoverSlideshow(this, ${itemId})"
+                onmouseenter="startHoverSlideshow(this, ${itemId}, '${normalizedMediaType}')"
                 onmouseleave="stopHoverSlideshow(this)"
             >
 
@@ -393,7 +402,7 @@ function createMovieCard(item, mediaType = "movie", tabContext = "") {
 
 let hoverSlideshowTimer = null;
 let hoverSlideshowInterval = null;
-async function startHoverSlideshow(imgElement, movieId) {
+async function startHoverSlideshow(imgElement, movieId, mediaType = null) {
     const safeMovieId =
         normalizeTmdbId(movieId);
 
@@ -421,15 +430,15 @@ async function startHoverSlideshow(imgElement, movieId) {
 
         if (movieId) {
             if (!window.movieImagesCache) window.movieImagesCache = {};
-            if (!window.movieImagesCache[movieId]) {
+            const item = typeof getCachedMedia === 'function'
+                ? getCachedMedia(movieId, mediaType)
+                : window.movieCache[movieId];
+            const type = normalizeMediaType(mediaType) || normalizeMediaType(item?.media_type, 'movie');
+            const imageCacheKey = `${type}:${movieId}`;
+            if (!window.movieImagesCache[imageCacheKey]) {
                 try {
-                    const item = window.movieCache[movieId];
-                    const type =
-                        normalizeMediaType(
-                            item?.media_type,
-                            'movie'
-                        );
                     const res = await fetch(`${BASE_URL}/${type}/${movieId}/images?api_key=${API_KEY}`);
+                    if (!res.ok) return;
                     const data = await res.json();
                     const extraImages =
                         (data.backdrops || [])
@@ -445,10 +454,10 @@ async function startHoverSlideshow(imgElement, movieId) {
                     if (extraImages.length > 0) {
                         images = extraImages;
                     }
-                    window.movieImagesCache[movieId] = images;
+                    window.movieImagesCache[imageCacheKey] = images;
                 } catch (e) {}
             } else {
-                images = window.movieImagesCache[movieId];
+                images = window.movieImagesCache[imageCacheKey];
             }
         }
 
@@ -514,13 +523,29 @@ function stopHoverSlideshow(imgElement) {
 // =========================================
 // MOBILE HAMBURGER MENU
 // =========================================
+function syncMobileMenuA11y() {
+    const menuToggle = document.getElementById('mobile-menu');
+    const navLinks = document.querySelector('.nav-links');
+    if (!navLinks) return;
+    const isMobileViewport = typeof window !== 'undefined' && window.innerWidth <= 768;
+    const isActive = Boolean(menuToggle && menuToggle.classList.contains('active') && navLinks.classList.contains('active'));
+    if (isMobileViewport && !isActive) {
+        navLinks.inert = true;
+        navLinks.setAttribute('aria-hidden', 'true');
+    } else {
+        navLinks.inert = false;
+        navLinks.removeAttribute('aria-hidden');
+    }
+}
+
 function toggleMobileMenu() {
     const menuToggle = document.getElementById('mobile-menu');
     const navLinks = document.querySelector('.nav-links');
     if (menuToggle && navLinks) {
         const isActive = menuToggle.classList.toggle('active');
-        navLinks.classList.toggle('active');
+        navLinks.classList.toggle('active', isActive);
         menuToggle.setAttribute('aria-expanded', isActive ? 'true' : 'false');
+        syncMobileMenuA11y();
     }
 }
 
@@ -531,7 +556,19 @@ function closeMobileMenu(restoreFocus = true) {
         menuToggle.classList.remove('active');
         menuToggle.setAttribute('aria-expanded', 'false');
         if (navLinks) navLinks.classList.remove('active');
+        syncMobileMenuA11y();
         if (restoreFocus) menuToggle.focus();
+    } else {
+        syncMobileMenuA11y();
+    }
+}
+
+if (typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
+    window.addEventListener('resize', syncMobileMenuA11y);
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', syncMobileMenuA11y);
+    } else {
+        syncMobileMenuA11y();
     }
 }
 

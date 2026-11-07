@@ -42,11 +42,13 @@ function openDetails(movieId, mediaType = null) {
         return;
     }
 
+    const cachedItem =
+        typeof getCachedMedia === 'function'
+            ? getCachedMedia(safeMovieId, null)
+            : window.movieCache[safeMovieId];
     const cachedMediaType =
         normalizeMediaType(
-            window.movieCache[
-                safeMovieId
-            ]?.media_type
+            cachedItem?.media_type
         );
 
     if (cachedMediaType) {
@@ -102,6 +104,7 @@ async function renderMovie(
         }
     }
     window.currentMovieId = movieId;
+    window.currentMediaType = requestedMediaType || null;
 
     // Önceki detaydan kalan IMDb ID'nin
     // yeni yapımın episode linklerine sızmasını önle.
@@ -109,33 +112,43 @@ async function renderMovie(
 
     try {
     let data;
+    let verifiedFromPrimaryFetch = false;
     try {
         if (requestedMediaType === 'tv') {
             let res = await fetch(`${BASE_URL}/tv/${movieId}?api_key=${API_KEY}&language=tr-TR`, { signal: routeContext?.signal });
             data = await res.json();
-            data.title = data.name;
-            data.media_type = "tv";
+            if (res.ok && data && data.status_code !== 34) {
+                data.title = data.name || data.title;
+                data.media_type = "tv";
+                verifiedFromPrimaryFetch = true;
+            }
         } else if (requestedMediaType === 'movie') {
             let res = await fetch(`${BASE_URL}/movie/${movieId}?api_key=${API_KEY}&language=tr-TR`, { signal: routeContext?.signal });
             data = await res.json();
-            data.media_type = "movie";
+            if (res.ok && data && data.status_code !== 34) {
+                data.media_type = "movie";
+                verifiedFromPrimaryFetch = true;
+            }
         } else {
             let res = await fetch(`${BASE_URL}/movie/${movieId}?api_key=${API_KEY}&language=tr-TR`, { signal: routeContext?.signal });
             data = await res.json();
-            if (data.status_code === 34) {
+            if (!res.ok || data.status_code === 34) {
                 res = await fetch(`${BASE_URL}/tv/${movieId}?api_key=${API_KEY}&language=tr-TR`, { signal: routeContext?.signal });
                 data = await res.json();
-                data.title = data.name;
-                data.media_type = "tv";
+                if (res.ok && data && data.status_code !== 34) {
+                    data.title = data.name || data.title;
+                    data.media_type = "tv";
+                    verifiedFromPrimaryFetch = true;
+                }
             } else {
                 data.media_type = "movie";
+                verifiedFromPrimaryFetch = true;
             }
         }
         
         if (routeContext && routeContext.generation !== routeGeneration) {
             return; 
         }
-        
         
         const fetchedId =
             normalizeTmdbId(data?.id);
@@ -158,8 +171,11 @@ async function renderMovie(
                         : 'movie'
                 );
 
-            window.movieCache[movieId] =
-                data;
+            if (typeof setCachedMedia === 'function') {
+                setCachedMedia(data, data.media_type);
+            } else {
+                window.movieCache[movieId] = data;
+            }
         }
     } catch(e) {
         if (e.name === 'AbortError') return;
@@ -169,12 +185,21 @@ async function renderMovie(
     if (!isRouteContextCurrent(routeContext, "movie", movieId)) return;
     
     const item =
-        window.movieCache[movieId];
+        typeof getCachedMedia === 'function'
+            ? getCachedMedia(movieId, requestedMediaType)
+            : window.movieCache[movieId];
 
     if (
         !item ||
         typeof item !== 'object'
     ) {
+        if (detailsTitle) {
+            detailsTitle.textContent = 'Yapım detayları yüklenemedi';
+        }
+        const overviewEl = document.getElementById('details-overview');
+        if (overviewEl) {
+            overviewEl.textContent = 'Bağlantı hatası nedeniyle yapım bilgileri alınamadı. Lütfen daha sonra tekrar deneyin.';
+        }
         return;
     }
 
@@ -182,7 +207,8 @@ async function renderMovie(
 
     item.media_type =
         normalizeMediaType(
-            item.media_type
+            item.media_type,
+            requestedMediaType
         ) ||
         (
             item.first_air_date ||
@@ -194,59 +220,25 @@ async function renderMovie(
                 : 'movie'
         );
 
-    // Quick API validation for legacy items that might have wrong media_type
-    try {
-        let verifyRes = await fetch(`${BASE_URL}/${item.media_type}/${item.id}?api_key=${API_KEY}&language=tr-TR`, { signal: routeContext?.signal });
-        let verifyData = await verifyRes.json();
-        if (verifyData.status_code === 34) {
-            item.media_type = item.media_type === "movie" ? "tv" : "movie";
-            window.movieCache[movieId].media_type = item.media_type;
-            
-            let wl = [];
+    window.currentMediaType = item.media_type;
 
-            try {
-                const parsedWatchlist =
-                    JSON.parse(
-                        localStorage.getItem(
-                            'watchlist'
-                        ) ||
-                        '[]'
-                    );
-
-                if (
-                    Array.isArray(
-                        parsedWatchlist
-                    )
-                ) {
-                    wl = parsedWatchlist;
+    // Quick API validation only for legacy unverified items that might have wrong media_type
+    if (!verifiedFromPrimaryFetch && !requestedMediaType) {
+        try {
+            let verifyRes = await fetch(`${BASE_URL}/${item.media_type}/${item.id}?api_key=${API_KEY}&language=tr-TR`, { signal: routeContext?.signal });
+            let verifyData = await verifyRes.json();
+            if (verifyData.status_code === 34) {
+                item.media_type = item.media_type === "movie" ? "tv" : "movie";
+                window.currentMediaType = item.media_type;
+                if (typeof setCachedMedia === 'function') {
+                    setCachedMedia(item, item.media_type);
+                } else if (window.movieCache[movieId]) {
+                    window.movieCache[movieId].media_type = item.media_type;
                 }
-            } catch (error) {
-                console.warn(
-                    'Watchlist okunamadı:',
-                    error
-                );
             }
-
-            const wlIndex =
-                wl.findIndex(
-                    entry =>
-                        normalizeTmdbId(
-                            entry?.id
-                        ) === item.id
-                );
-
-            if (wlIndex > -1) {
-                wl[wlIndex].media_type =
-                    item.media_type;
-
-                localStorage.setItem(
-                    'watchlist',
-                    JSON.stringify(wl)
-                );
-            }
+        } catch(e) {
+            if (e.name === 'AbortError') return;
         }
-    } catch(e) {
-        if (e.name === 'AbortError') return;
     }
 
     if (!isRouteContextCurrent(routeContext, "movie", movieId)) return;
@@ -282,9 +274,15 @@ async function renderMovie(
     recent =
         recent.filter(
             entry =>
-                normalizeTmdbId(
-                    entry?.id
-                ) !== item.id
+                !(
+                    normalizeTmdbId(
+                        entry?.id
+                    ) === item.id &&
+                    inferItemMediaType(
+                        entry,
+                        item.media_type
+                    ) === item.media_type
+                )
         );
 
     recent.unshift(item);
@@ -600,11 +598,37 @@ async function renderMovie(
                 return;
             }
 
-            if (
-                tr &&
-                Array.isArray(tr.flatrate) &&
-                tr.flatrate.length > 0
-            ) {
+            const flatrateList = tr && Array.isArray(tr.flatrate) ? tr.flatrate : [];
+            const freeList = [
+                ...(tr && Array.isArray(tr.free) ? tr.free : []),
+                ...(tr && Array.isArray(tr.ads) ? tr.ads : [])
+            ];
+            const transactionalList = [
+                ...(tr && Array.isArray(tr.rent) ? tr.rent : []),
+                ...(tr && Array.isArray(tr.buy) ? tr.buy : [])
+            ];
+
+            let activeProviders = [];
+            let labelText = 'İzlenebilir:';
+
+            if (flatrateList.length > 0) {
+                activeProviders = flatrateList;
+                labelText = 'İzlenebilir:';
+            } else if (freeList.length > 0) {
+                activeProviders = freeList;
+                labelText = 'Ücretsiz:';
+            } else if (transactionalList.length > 0) {
+                const seenIds = new Set();
+                activeProviders = transactionalList.filter(p => {
+                    const pid = p?.provider_id || p?.provider_name;
+                    if (!pid || seenIds.has(pid)) return false;
+                    seenIds.add(pid);
+                    return true;
+                });
+                labelText = 'Kiralık / Satın Al:';
+            }
+
+            if (activeProviders.length > 0) {
                 const watchLink =
                     getSafeHttpUrl(
                         tr.link,
@@ -625,7 +649,7 @@ async function renderMovie(
                     'font-weight:bold;';
 
                 label.textContent =
-                    'İzlenebilir:';
+                    labelText;
 
                 const fragment =
                     document.createDocumentFragment();
@@ -635,7 +659,7 @@ async function renderMovie(
                     document.createTextNode(' ')
                 );
 
-                tr.flatrate.forEach(provider => {
+                activeProviders.forEach(provider => {
                     const providerName =
                         String(
                             provider?.provider_name ||
@@ -708,7 +732,7 @@ async function renderMovie(
                 );
             } else {
                 provContainer.innerHTML =
-                    "<span style='color:var(--text-muted); font-size:0.9rem;'>Türkiye'de dijital yayını yok</span>";
+                    "<span style='color:var(--text-muted); font-size:0.9rem;'>Türkiye'de dijital yayını bulunamadı</span>";
             }
         }).catch(err => {
             if (err.name === 'AbortError') return;
@@ -777,7 +801,11 @@ async function renderMovie(
                         entry =>
                             normalizeTmdbId(
                                 entry?.id
-                            ) === item.id
+                            ) === item.id &&
+                            inferItemMediaType(
+                                entry,
+                                item.media_type
+                            ) === item.media_type
                     );
 
                 if (recentIndex > -1) {
@@ -2211,12 +2239,21 @@ if (imdbId) {
         );
     }
 
+    const safeActionMediaType =
+        normalizeMediaType(
+            item.media_type
+        ) || 'movie';
+
     const isInWatchlist =
         watchlist.some(
             entry =>
                 normalizeTmdbId(
                     entry?.id
-                ) === item.id
+                ) === item.id &&
+                inferItemMediaType(
+                    entry,
+                    safeActionMediaType
+                ) === safeActionMediaType
         );
 
     const wlText =
@@ -2230,7 +2267,7 @@ if (imdbId) {
             : 'inactive';
 
     const wlBtnHtml =
-        `<button id="modal-wl-btn" onclick="toggleWatchlist(this, ${item.id})" class="btn-watchlist ${wlClass}"><i class="fas fa-heart"></i> ${wlText}</button>`;
+        `<button id="modal-wl-btn" onclick="toggleWatchlist(this, ${item.id}, '${safeActionMediaType}')" class="btn-watchlist ${wlClass}"><i class="fas fa-heart"></i> ${wlText}</button>`;
 
     const isUpcoming =
         item.release_date &&
@@ -2271,9 +2308,15 @@ if (imdbId) {
         }
 
         const myRating =
-            normalizeUserRating(
-                savedRatings[item.id]
-            );
+            typeof getUserRatingForMedia === 'function'
+                ? getUserRatingForMedia(
+                      savedRatings,
+                      item.id,
+                      safeActionMediaType
+                  )
+                : normalizeUserRating(
+                      savedRatings[item.id]
+                  );
 
         const hasRating =
             myRating !== null;
@@ -2309,13 +2352,13 @@ if (imdbId) {
                         [1,2,3,4,5,6,7,8,9,10]
                             .map(
                                 n =>
-                                    `<button onclick="saveRating(${item.id}, ${n})" style="width:28px; height:28px; border-radius:5px; background:var(--primary-color); color:white; border:none; cursor:pointer;">${n}</button>`
+                                    `<button onclick="saveRating(${item.id}, ${n}, '${safeActionMediaType}')" style="width:28px; height:28px; border-radius:5px; background:var(--primary-color); color:white; border:none; cursor:pointer;">${n}</button>`
                             )
                             .join('')
                     }
 
                     <button
-                        onclick="removeRating(${item.id})"
+                        onclick="removeRating(${item.id}, '${safeActionMediaType}')"
                         style="width:100%; margin-top:5px; padding:5px; border-radius:5px; background:rgba(229,9,20,0.8); color:white; border:none; cursor:pointer;"
                     >
                         Puanı Sil
@@ -2324,21 +2367,12 @@ if (imdbId) {
             </div>
         `;
     }
-        
-    const safeActionMediaType =
-        normalizeMediaType(
-            item.media_type
-        );
-
-    if (!safeActionMediaType) {
-        return;
-    }
 
     const trailerBtnHtml =
         `<button onclick="openTrailer(${item.id}, '${safeActionMediaType}')" class="btn-watchlist inactive" style="margin-top: 10px;"><i class="fas fa-play"></i> Fragmanı İzle</button>`;
 
     const shareBtnHtml =
-        `<button onclick="shareMovie(${item.id})" class="btn-watchlist inactive" style="margin-top: 10px; background:rgba(255,255,255,0.05);"><i class="fas fa-share-alt"></i> Paylaş</button>`;
+        `<button onclick="shareMovie(${item.id}, '${safeActionMediaType}')" class="btn-watchlist inactive" style="margin-top: 10px; background:rgba(255,255,255,0.05);"><i class="fas fa-share-alt"></i> Paylaş</button>`;
 
     
     const actionsDiv = document.querySelector('.details-left');
@@ -3111,7 +3145,7 @@ async function loadSeasonEpisodes(
     }
 }
 
-function shareMovie(id) {
+function shareMovie(id, mediaType = null) {
     const safeId =
         normalizeTmdbId(id);
 
@@ -3119,17 +3153,39 @@ function shareMovie(id) {
         return;
     }
 
+    const cachedItem =
+        typeof getCachedMedia === 'function'
+            ? getCachedMedia(safeId, mediaType)
+            : window.movieCache?.[safeId];
+
+    const resolvedMediaType =
+        normalizeMediaType(mediaType) ||
+        normalizeMediaType(window.currentMediaType) ||
+        normalizeMediaType(cachedItem?.media_type);
+
+    const routeSuffix = resolvedMediaType
+        ? `#movie/${safeId}/${resolvedMediaType}`
+        : `#movie/${safeId}`;
+
     const url =
-        `${window.location.origin}${window.location.pathname}#movie/${safeId}`;
+        `${window.location.origin}${window.location.pathname}${routeSuffix}`;
+
     if (navigator.share) {
         navigator.share({
             title: 'FilmimNerede',
-            text: 'Bu filme mutlaka göz atmalısın!',
+            text: 'Bu yapıma mutlaka göz atmalısın!',
             url: url
-        }).catch(console.error);
-    } else {
+        }).catch(err => {
+            if (err && err.name === 'AbortError') return;
+            console.warn('Paylaşım iptal edildi veya başarısız oldu:', err);
+        });
+    } else if (navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
         navigator.clipboard.writeText(url).then(() => {
             alert('Bağlantı kopyalandı: ' + url);
+        }).catch(() => {
+            prompt('Bağlantıyı kopyalayın:', url);
         });
+    } else {
+        prompt('Bağlantıyı kopyalayın:', url);
     }
 }

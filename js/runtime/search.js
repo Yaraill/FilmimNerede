@@ -165,11 +165,7 @@ async function applySearchResultFilters(
             );
 
     if (providerId) {
-        const region =
-            providerId === 1899 ||
-            providerId === 384
-                ? 'US'
-                : 'TR';
+        const region = 'TR';
 
         const providerFiltered = [];
 
@@ -478,6 +474,19 @@ async function applySearchResultFilters(
         );
     } else if (
         state.sort ===
+        'vote_count.desc'
+    ) {
+        filtered.sort(
+            (a, b) =>
+                Number(
+                    b.vote_count || 0
+                ) -
+                Number(
+                    a.vote_count || 0
+                )
+        );
+    } else if (
+        state.sort ===
         'primary_release_date.desc'
     ) {
         filtered.sort(
@@ -525,6 +534,7 @@ async function searchMovie(reset = true, isFilterChange = false, routeContext = 
                 : '';
 
         if (requestedQuery) {
+            try { sessionStorage.removeItem('search_filter_state'); } catch (e) {}
             clearAllFilters();
 
             restorePlatformFilterState(
@@ -570,17 +580,23 @@ async function searchMovie(reset = true, isFilterChange = false, routeContext = 
         currentPage = 1;
 
         if (!isFilterChange) {
-            document
-                .querySelectorAll(
-                    '.provider-filter-btn'
-                )
-                .forEach(button =>
-                    button.classList.remove(
-                        'active'
-                    )
-                );
+            const restoredFromSession =
+                typeof restoreSearchFilterStateFromSession === 'function' &&
+                restoreSearchFilterStateFromSession(currentSearchQuery);
 
-            currentProvider = 0;
+            if (!restoredFromSession) {
+                document
+                    .querySelectorAll(
+                        '.provider-filter-btn'
+                    )
+                    .forEach(button =>
+                        button.classList.remove(
+                            'active'
+                        )
+                    );
+
+                currentProvider = 0;
+            }
         }
 
         updateCustomOptionVisibility('sortByFilter', 'order.asc', false);
@@ -634,35 +650,56 @@ async function searchMovie(reset = true, isFilterChange = false, routeContext = 
     const requestPage = currentPage;
 
     try {
-        const res = await fetch(`${BASE_URL}/search/multi?api_key=${API_KEY}&language=tr-TR&query=${encodeURIComponent(requestQuery)}&page=${requestPage}&include_adult=false`, { signal: routeContext?.signal });
-        const data = await res.json();
+        let pageToFetch = requestPage;
+        let totalPages = 1;
+        let filtered = [];
+        let scanAttempts = 0;
 
-        if (requestGeneration !== searchRequestGeneration) return;
-        if (routeContext && (routeContext.signal?.aborted || routeContext.generation !== routeGeneration)) return;
-        if (requestQuery !== currentSearchQuery) return;
+        while (scanAttempts < 3) {
+            scanAttempts++;
+            const res = await fetch(`${BASE_URL}/search/multi?api_key=${API_KEY}&language=tr-TR&query=${encodeURIComponent(requestQuery)}&page=${pageToFetch}&include_adult=false`, { signal: routeContext?.signal });
+            if (!res.ok) throw new Error(`HTTP ${res.status}`);
+            const data = await res.json();
 
-        // Filter out people and talk shows locally
-        let filtered = data.results.filter(item => {
-            if (item.media_type === "person") return false;
-            if (item.genre_ids && (item.genre_ids.includes(10767) || item.genre_ids.includes(10763) || item.genre_ids.includes(10764) || item.genre_ids.includes(99))) return false;
-            if (item.title?.toLowerCase().includes('making of') || item.name?.toLowerCase().includes('making of')) return false;
-            if (item.title?.toLowerCase().includes('marvel studios assembled')) return false;
-            if (item.title?.toLowerCase().includes('the odyssey: the making of')) return false;
-            return true;
-        });
+            if (requestGeneration !== searchRequestGeneration) return;
+            if (routeContext && (routeContext.signal?.aborted || routeContext.generation !== routeGeneration)) return;
+            if (requestQuery !== currentSearchQuery) return;
 
-        // Benzersiz sonuçları filtrele
-        filtered = filtered.filter((v, i, a) => a.findIndex(t => (t.id === v.id)) === i);
+            totalPages = Number(data?.total_pages) || 1;
+            const rawResults = Array.isArray(data?.results) ? data.results : [];
 
-        filtered =
-            await applySearchResultFilters(
-                filtered,
-                routeContext,
-                requestGeneration
+            let pageFiltered = rawResults.filter(item => {
+                if (item.media_type === "person") return false;
+                if (item.genre_ids && (item.genre_ids.includes(10767) || item.genre_ids.includes(10763) || item.genre_ids.includes(10764) || item.genre_ids.includes(99))) return false;
+                if (item.title?.toLowerCase().includes('making of') || item.name?.toLowerCase().includes('making of')) return false;
+                if (item.title?.toLowerCase().includes('marvel studios assembled')) return false;
+                if (item.title?.toLowerCase().includes('the odyssey: the making of')) return false;
+                return true;
+            });
+
+            // Benzersiz sonuçları (media_type + id bazında) filtrele (B01)
+            pageFiltered = pageFiltered.filter((v, i, a) =>
+                a.findIndex(t => t.id === v.id && (t.media_type || 'movie') === (v.media_type || 'movie')) === i
             );
 
-        if (filtered === null) {
-            return;
+            pageFiltered =
+                await applySearchResultFilters(
+                    pageFiltered,
+                    routeContext,
+                    requestGeneration
+                );
+
+            if (pageFiltered === null) {
+                return;
+            }
+
+            filtered = filtered.concat(pageFiltered);
+            currentPage = pageToFetch;
+
+            if (filtered.length > 0 || pageToFetch >= totalPages) {
+                break;
+            }
+            pageToFetch++;
         }
 
         const container = document.getElementById('search-results');
@@ -671,6 +708,11 @@ async function searchMovie(reset = true, isFilterChange = false, routeContext = 
         if (filtered.length === 0 && reset) {
             container.innerHTML = "<div class='loading'>Sonuç bulunamadı.</div>";
             document.getElementById('search-results').style.minHeight = '';
+            if (currentPage < totalPages) {
+                document.getElementById('loadMoreBtn').style.display = 'inline-block';
+            } else {
+                document.getElementById('loadMoreBtn').style.display = 'none';
+            }
             return;
         }
 
@@ -701,7 +743,7 @@ async function searchMovie(reset = true, isFilterChange = false, routeContext = 
             );
         }
 
-        if (filtered.length > 0) {
+        if (filtered.length > 0 || currentPage < totalPages) {
             document.getElementById('loadMoreBtn').style.display = 'inline-block';
         } else {
             document.getElementById('loadMoreBtn').style.display = 'none';
