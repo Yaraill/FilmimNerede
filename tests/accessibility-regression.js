@@ -1779,7 +1779,7 @@ async function runAccessibilityTests() {
         await page.focus('#search-results .btn-heart');
         await page.keyboard.press('Enter');
         const watchlistAdded = await page.evaluate(() => {
-            const buttons = Array.from(document.querySelectorAll('button[onclick*="toggleWatchlist(this, 101)"]'));
+            const buttons = Array.from(document.querySelectorAll('button[data-media-id="101"], button[onclick*="toggleWatchlist(this, 101"]'));
             const stored = JSON.parse(localStorage.getItem('watchlist') || '[]');
             return {
                 saved: stored.some(item => item.id === 101),
@@ -1803,7 +1803,7 @@ async function runAccessibilityTests() {
         await page.focus('#search-results .btn-heart');
         await page.keyboard.press('Enter');
         const watchlistRemoved = await page.evaluate(() => {
-            const buttons = Array.from(document.querySelectorAll('button[onclick*="toggleWatchlist(this, 101)"]'));
+            const buttons = Array.from(document.querySelectorAll('button[data-media-id="101"], button[onclick*="toggleWatchlist(this, 101"]'));
             const stored = JSON.parse(localStorage.getItem('watchlist') || '[]');
             return {
                 saved: stored.some(item => item.id === 101),

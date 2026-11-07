@@ -2266,8 +2266,11 @@ if (imdbId) {
             ? 'active'
             : 'inactive';
 
+    const wlAriaLabel = isInWatchlist ? 'Listeden çıkar' : 'Listeme ekle';
+    const wlAriaPressed = isInWatchlist ? 'true' : 'false';
+
     const wlBtnHtml =
-        `<button id="modal-wl-btn" onclick="toggleWatchlist(this, ${item.id}, '${safeActionMediaType}')" class="btn-watchlist ${wlClass}"><i class="fas fa-heart"></i> ${wlText}</button>`;
+        `<button id="modal-wl-btn" data-media-id="${item.id}" data-media-type="${safeActionMediaType}" onclick="toggleWatchlist(this, ${item.id}, '${safeActionMediaType}')" class="btn-watchlist ${wlClass}" aria-label="${wlAriaLabel}" aria-pressed="${wlAriaPressed}"><i class="fas fa-heart" aria-hidden="true"></i> ${wlText}</button>`;
 
     const isUpcoming =
         item.release_date &&

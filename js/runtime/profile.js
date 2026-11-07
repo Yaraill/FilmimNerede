@@ -59,7 +59,7 @@ function toggleWatchlist(btnElem, movieId, mediaType = null) {
     }
 
     const allBtns = document.querySelectorAll(
-        `button[data-media-id="${safeId}"][data-media-type="${resolvedType}"], button[onclick*="toggleWatchlist(this, ${safeId})"]`
+        `button[data-media-id="${safeId}"][data-media-type="${resolvedType}"], button[data-media-id="${safeId}"]:not([data-media-type]), button[onclick*="toggleWatchlist(this, ${safeId})"], button[onclick*="toggleWatchlist(this, ${safeId},"]`
     );
     allBtns.forEach(btn => {
         const btnType = normalizeMediaType(btn.dataset?.mediaType);
@@ -81,12 +81,16 @@ function toggleWatchlist(btnElem, movieId, mediaType = null) {
         if (!isAdding) {
             modalBtn.classList.remove('active');
             modalBtn.classList.add('inactive');
+            modalBtn.setAttribute('aria-pressed', 'false');
+            modalBtn.setAttribute('aria-label', 'Listeme ekle');
             modalBtn.innerHTML = '<i class="fas fa-heart"></i> Listeme Ekle';
             modalBtn.style.background = "";
             modalBtn.style.color = "";
         } else {
             modalBtn.classList.remove('inactive');
             modalBtn.classList.add('active');
+            modalBtn.setAttribute('aria-pressed', 'true');
+            modalBtn.setAttribute('aria-label', 'Listeden çıkar');
             modalBtn.innerHTML = `<i class="fas fa-heart"></i> Listeden Çıkar`;
             modalBtn.style.background = "";
             modalBtn.style.color = "";
