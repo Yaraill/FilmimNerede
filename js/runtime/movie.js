@@ -23,6 +23,212 @@ function normalizeImdbRating(value) {
     return numeric.toFixed(1);
 }
 
+const MOVIE_DETAIL_CACHE_TTL_MS = 2000;
+const MOVIE_DETAIL_CACHE_MAX_ENTRIES = 50;
+const MOVIE_DETAIL_APPEND_PARAM = 'videos,credits,recommendations,external_ids';
+const movieDetailCache = new Map();
+const movieDetailInflight = new Map();
+const movieCollectionCache = new Map();
+const movieCollectionInflight = new Map();
+
+function createMovieAbortError() {
+    const err = new Error('The operation was aborted.');
+    err.name = 'AbortError';
+    return err;
+}
+
+function getShortLivedCacheEntry(cache, key, ttlMs) {
+    if (!key) return null;
+    const entry = cache.get(key);
+    if (!entry) return null;
+    if (Date.now() - entry.timestamp > ttlMs) {
+        cache.delete(key);
+        return null;
+    }
+    return entry.data;
+}
+
+function setShortLivedCacheEntry(cache, key, data, maxEntries) {
+    if (!key || !data || typeof data !== 'object') return;
+    if (cache.has(key)) {
+        cache.delete(key);
+    } else if (cache.size >= maxEntries) {
+        const oldestKey = cache.keys().next().value;
+        if (oldestKey) {
+            cache.delete(oldestKey);
+        }
+    }
+    cache.set(key, { data, timestamp: Date.now() });
+}
+
+function getMovieDetailCacheKey(mediaType, id) {
+    if (typeof getMediaKey === 'function') {
+        return getMediaKey(mediaType, id);
+    }
+    const safeType = normalizeMediaType(mediaType);
+    const safeId = normalizeTmdbId(id);
+    return safeType && safeId ? `${safeType}:${safeId}` : null;
+}
+
+function getCachedExtendedMediaDetail(mediaType, id) {
+    const key = getMovieDetailCacheKey(mediaType, id);
+    return getShortLivedCacheEntry(
+        movieDetailCache,
+        key,
+        MOVIE_DETAIL_CACHE_TTL_MS
+    );
+}
+
+function runWithSharedInflight(inflightMap, key, signal, fetcher) {
+    if (signal?.aborted) {
+        return Promise.reject(createMovieAbortError());
+    }
+
+    let entry = inflightMap.get(key);
+    if (!entry || entry.controller?.signal?.aborted) {
+        const controller =
+            typeof AbortController === 'function'
+                ? new AbortController()
+                : null;
+        entry = {
+            subscribers: 0,
+            controller,
+            promise: null
+        };
+        entry.promise = Promise.resolve()
+            .then(() => fetcher(controller ? controller.signal : undefined))
+            .finally(() => {
+                if (inflightMap.get(key) === entry) {
+                    inflightMap.delete(key);
+                }
+            });
+        inflightMap.set(key, entry);
+    }
+
+    entry.subscribers += 1;
+
+    if (!signal) {
+        return entry.promise.finally(() => {
+            entry.subscribers = Math.max(0, entry.subscribers - 1);
+        });
+    }
+
+    return new Promise((resolve, reject) => {
+        let settled = false;
+
+        const onAbort = () => {
+            if (settled) return;
+            settled = true;
+            signal.removeEventListener('abort', onAbort);
+            entry.subscribers = Math.max(0, entry.subscribers - 1);
+            if (entry.subscribers === 0 && entry.controller) {
+                if (inflightMap.get(key) === entry) {
+                    inflightMap.delete(key);
+                }
+                entry.controller.abort();
+            }
+            reject(createMovieAbortError());
+        };
+
+        signal.addEventListener('abort', onAbort, { once: true });
+
+        entry.promise.then(
+            result => {
+                if (settled) return;
+                settled = true;
+                signal.removeEventListener('abort', onAbort);
+                entry.subscribers = Math.max(0, entry.subscribers - 1);
+                resolve(result);
+            },
+            error => {
+                if (settled) return;
+                settled = true;
+                signal.removeEventListener('abort', onAbort);
+                entry.subscribers = Math.max(0, entry.subscribers - 1);
+                reject(error);
+            }
+        );
+    });
+}
+
+async function fetchExtendedMediaDetail(mediaType, id, signal) {
+    if (signal?.aborted) {
+        throw createMovieAbortError();
+    }
+
+    const safeType = normalizeMediaType(mediaType);
+    const safeId = normalizeTmdbId(id);
+    const key = getMovieDetailCacheKey(safeType, safeId);
+    if (!safeType || !safeId || !key) {
+        return { ok: false, data: null };
+    }
+
+    const cached = getCachedExtendedMediaDetail(safeType, safeId);
+    if (cached) {
+        return { ok: true, data: cached, fromCache: true };
+    }
+
+    return runWithSharedInflight(movieDetailInflight, key, signal, async sharedSignal => {
+        const res = await fetch(
+            `${BASE_URL}/${safeType}/${safeId}?api_key=${API_KEY}&language=tr-TR&append_to_response=${MOVIE_DETAIL_APPEND_PARAM}`,
+            sharedSignal ? { signal: sharedSignal } : undefined
+        );
+        const data = await res.json();
+        if (res.ok && data && data.status_code !== 34) {
+            if (safeType === 'tv') {
+                data.title = data.name || data.title;
+            }
+            data.media_type = safeType;
+            setShortLivedCacheEntry(
+                movieDetailCache,
+                key,
+                data,
+                MOVIE_DETAIL_CACHE_MAX_ENTRIES
+            );
+            return { ok: true, data };
+        }
+        return { ok: false, data };
+    });
+}
+
+async function fetchCollectionDetail(collectionId, signal) {
+    if (signal?.aborted) {
+        throw createMovieAbortError();
+    }
+
+    const safeCollectionId = normalizeTmdbId(collectionId);
+    if (!safeCollectionId) {
+        return null;
+    }
+
+    const key = `collection:${safeCollectionId}`;
+    const cached = getShortLivedCacheEntry(
+        movieCollectionCache,
+        key,
+        MOVIE_DETAIL_CACHE_TTL_MS
+    );
+    if (cached) {
+        return cached;
+    }
+
+    return runWithSharedInflight(movieCollectionInflight, key, signal, async sharedSignal => {
+        const colRes = await fetch(
+            `${BASE_URL}/collection/${safeCollectionId}?api_key=${API_KEY}&language=tr-TR`,
+            sharedSignal ? { signal: sharedSignal } : undefined
+        );
+        const colData = await colRes.json();
+        if (colRes.ok && colData && colData.status_code !== 34) {
+            setShortLivedCacheEntry(
+                movieCollectionCache,
+                key,
+                colData,
+                MOVIE_DETAIL_CACHE_MAX_ENTRIES
+            );
+        }
+        return colData;
+    });
+}
+
 
 function openDetails(movieId, mediaType = null) {
     const safeMovieId =
@@ -112,37 +318,41 @@ async function renderMovie(
 
     try {
     let data;
+    let extendedData = null;
     let verifiedFromPrimaryFetch = false;
     try {
-        if (requestedMediaType === 'tv') {
-            let res = await fetch(`${BASE_URL}/tv/${movieId}?api_key=${API_KEY}&language=tr-TR`, { signal: routeContext?.signal });
-            data = await res.json();
-            if (res.ok && data && data.status_code !== 34) {
-                data.title = data.name || data.title;
-                data.media_type = "tv";
+        if (requestedMediaType === 'tv' || requestedMediaType === 'movie') {
+            const result = await fetchExtendedMediaDetail(
+                requestedMediaType,
+                movieId,
+                routeContext?.signal
+            );
+            data = result.data;
+            if (result.ok && data) {
                 verifiedFromPrimaryFetch = true;
-            }
-        } else if (requestedMediaType === 'movie') {
-            let res = await fetch(`${BASE_URL}/movie/${movieId}?api_key=${API_KEY}&language=tr-TR`, { signal: routeContext?.signal });
-            data = await res.json();
-            if (res.ok && data && data.status_code !== 34) {
-                data.media_type = "movie";
-                verifiedFromPrimaryFetch = true;
+                extendedData = data;
             }
         } else {
-            let res = await fetch(`${BASE_URL}/movie/${movieId}?api_key=${API_KEY}&language=tr-TR`, { signal: routeContext?.signal });
-            data = await res.json();
-            if (!res.ok || data.status_code === 34) {
-                res = await fetch(`${BASE_URL}/tv/${movieId}?api_key=${API_KEY}&language=tr-TR`, { signal: routeContext?.signal });
-                data = await res.json();
-                if (res.ok && data && data.status_code !== 34) {
-                    data.title = data.name || data.title;
-                    data.media_type = "tv";
+            let result = await fetchExtendedMediaDetail(
+                'movie',
+                movieId,
+                routeContext?.signal
+            );
+            data = result.data;
+            if (!result.ok) {
+                result = await fetchExtendedMediaDetail(
+                    'tv',
+                    movieId,
+                    routeContext?.signal
+                );
+                data = result.data;
+                if (result.ok && data) {
                     verifiedFromPrimaryFetch = true;
+                    extendedData = data;
                 }
-            } else {
-                data.media_type = "movie";
+            } else if (data) {
                 verifiedFromPrimaryFetch = true;
+                extendedData = data;
             }
         }
         
@@ -762,9 +972,14 @@ async function renderMovie(
     castContainer.innerHTML = "<div style='color:#ccc'>Oyuncular yükleniyor...</div>";
     if(recContainer) recContainer.innerHTML = "<div style='color:#ccc'>Öneriler yükleniyor...</div>";
 
-    fetch(`${BASE_URL}/${item.media_type}/${item.id}?api_key=${API_KEY}&language=tr-TR&append_to_response=videos,credits,recommendations,external_ids`, { signal: routeContext?.signal })
-        .then(res => res.json())
+    const fullDataPromise = extendedData
+        ? Promise.resolve(extendedData)
+        : fetchExtendedMediaDetail(item.media_type, item.id, routeContext?.signal)
+            .then(result => (result.ok && result.data ? result.data : (result.data || {})));
+
+    fullDataPromise
         .then(async fullData => {
+            if (!fullData || typeof fullData !== 'object') return;
             if (!isRouteContextCurrent(routeContext, "movie", movieId)) return;
             if (fullData.overview) {
                 document.getElementById('details-overview').innerText = fullData.overview;
@@ -1602,7 +1817,7 @@ if (imdbId) {
                             'assets/placeholder.svg'
                         );
 
-                    window.movieCache[recId] = {
+                    const recItem = {
                         id: recId,
                         title: recTitle,
                         name: recTitle,
@@ -1627,6 +1842,12 @@ if (imdbId) {
                         media_type:
                             recMediaType
                     };
+
+                    if (typeof setCachedMedia === 'function') {
+                        setCachedMedia(recItem, recMediaType);
+                    } else {
+                        window.movieCache[recId] = recItem;
+                    }
 
                     const card =
                         document.createElement(
@@ -1943,18 +2164,11 @@ if (imdbId) {
                     );
 
                 if (collectionId) {
-                    const colRes =
-                        await fetch(
-                            `${BASE_URL}/collection/${collectionId}?api_key=${API_KEY}&language=tr-TR`,
-                            {
-                                signal:
-                                    routeContext
-                                        ?.signal
-                            }
-                        );
-
                     const colData =
-                        await colRes.json();
+                        await fetchCollectionDetail(
+                            collectionId,
+                            routeContext?.signal
+                        );
 
                     if (
                         !isRouteContextCurrent(
@@ -1967,6 +2181,7 @@ if (imdbId) {
                     }
 
                     if (
+                        colData &&
                         Array.isArray(
                             colData.parts
                         ) &&
@@ -2066,9 +2281,7 @@ if (imdbId) {
                                         'assets/placeholder.svg'
                                     );
 
-                                window.movieCache[
-                                    partId
-                                ] = {
+                                const partItem = {
                                     id: partId,
                                     title:
                                         partTitle,
@@ -2093,6 +2306,12 @@ if (imdbId) {
                                     media_type:
                                         'movie'
                                 };
+
+                                if (typeof setCachedMedia === 'function') {
+                                    setCachedMedia(partItem, 'movie');
+                                } else {
+                                    window.movieCache[partId] = partItem;
+                                }
 
                                 const card =
                                     document
@@ -2440,13 +2659,16 @@ async function openTrailer(
         return;
     }
 
+    const cachedItemForTrailer =
+        typeof getCachedMedia === 'function'
+            ? getCachedMedia(safeId, mediaType)
+            : window.movieCache?.[safeId];
+
     const safeMediaType =
         normalizeMediaType(
             mediaType,
             normalizeMediaType(
-                window.movieCache[
-                    safeId
-                ]?.media_type
+                cachedItemForTrailer?.media_type
             )
         );
 
@@ -2499,43 +2721,44 @@ async function openTrailer(
     }
 
     try {
-        const res =
-            await fetch(
-                `${BASE_URL}/${safeMediaType}/${safeId}/videos?api_key=${API_KEY}`
+        const findBestYouTubeVideo = videoList => {
+            if (!Array.isArray(videoList) || videoList.length === 0) {
+                return null;
+            }
+            return (
+                videoList.find(
+                    video =>
+                        video?.site === 'YouTube' &&
+                        video?.type === 'Trailer' &&
+                        isValidYouTubeVideoId(video?.key)
+                ) ||
+                videoList.find(
+                    video =>
+                        video?.site === 'YouTube' &&
+                        isValidYouTubeVideoId(video?.key)
+                ) ||
+                null
             );
+        };
 
-        const data =
-            await res.json();
+        const cachedExtended =
+            getCachedExtendedMediaDetail(safeMediaType, safeId) ||
+            (typeof getCachedMedia === 'function'
+                ? getCachedMedia(safeId, safeMediaType)
+                : window.movieCache?.[safeId]);
 
-        const videos =
-            Array.isArray(
-                data.results
-            )
-                ? data.results
-                : [];
-
-        let trailer =
-            videos.find(
-                video =>
-                    video.site ===
-                        'YouTube' &&
-                    video.type ===
-                        'Trailer' &&
-                    isValidYouTubeVideoId(
-                        video.key
-                    )
-            );
+        let trailer = findBestYouTubeVideo(cachedExtended?.videos?.results);
 
         if (!trailer) {
-            trailer =
-                videos.find(
-                    video =>
-                        video.site ===
-                            'YouTube' &&
-                        isValidYouTubeVideoId(
-                            video.key
-                        )
+            const res =
+                await fetch(
+                    `${BASE_URL}/${safeMediaType}/${safeId}/videos?api_key=${API_KEY}`
                 );
+
+            const data =
+                await res.json();
+
+            trailer = findBestYouTubeVideo(data?.results);
         }
 
         if (trailer) {

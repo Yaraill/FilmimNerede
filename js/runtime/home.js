@@ -1,14 +1,52 @@
 let trendingActorsAutoScrollInterval = null;
 let curatedCollectionsAutoScrollInterval = null;
+let trendingActorsRenderToken = 0;
+let curatedCollectionsRenderToken = 0;
 
 const HOME_TRENDING_ACTORS_CONCURRENCY = 3;
+const HOME_TRENDING_ACTORS_STAGE1_PAGES = 3;
 const HOME_COLLECTION_CONCURRENCY = 4;
+const HOME_INITIAL_COLLECTION_COUNT = 6;
 
 const HOME_TRENDING_ACTORS_TTL_MS =
     5 * 60 * 1000;
 
 const HOME_COLLECTION_TTL_MS =
     10 * 60 * 1000;
+
+const HOME_CURATED_COLLECTIONS = [
+    { id: 86311, title: "Marvel Sinematik Evreni" },
+    { id: 1241, title: "Harry Potter Serisi" },
+    { id: 10, title: "Star Wars Efsanesi" },
+    { id: 119, title: "Yüzüklerin Efendisi" },
+    { id: 404609, title: "John Wick Serisi" },
+    { id: 2344, title: "Matrix Serisi" },
+    { id: 531241, title: "Spider-Man (MCU) Serisi" },
+    { id: 119932, title: "Karanlık Şövalye Üçlemesi" },
+    { id: 748, title: "X-Men Koleksiyonu" },
+    { id: 9485, title: "Hızlı ve Öfkeli Serisi" },
+    { id: 8735, title: "Görevimiz Tehlike Serisi" },
+    { id: 131635, title: "Açlık Oyunları Serisi" },
+    { id: 196419, title: "Labirent Serisi" },
+    { id: 230, title: "Baba (Godfather) Serisi" },
+    { id: 295, title: "Karayip Korsanları Serisi" },
+    { id: 328, title: "Jurassic Park Serisi" },
+    { id: 1703, title: "Alacakaranlık Efsanesi" },
+    { id: 525, title: "Terminatör Serisi" },
+    { id: 2150, title: "Shrek Serisi" },
+    { id: 84, title: "Indiana Jones Serisi" },
+    { id: 645, title: "James Bond Serisi" },
+    { id: 10194, title: "Oyuncak Hikayesi Serisi" },
+    { id: 87096, title: "Avatar Serisi" },
+    { id: 133931, title: "Testere (Saw) Serisi" },
+    { id: 8091, title: "Yaratık (Alien) Serisi" },
+    { id: 1575, title: "Rocky Efsanesi" },
+    { id: 8650, title: "Transformers Serisi" },
+    { id: 264, title: "Geleceğe Dönüş Serisi" },
+    { id: 8945, title: "Mad Max Serisi" },
+    { id: 1570, title: "Zor Ölüm (Die Hard) Serisi" },
+    { id: 86066, title: "Çılgın Hırsız Serisi" }
+];
 
 let trendingActorsCache = {
     timestamp: 0,
@@ -23,6 +61,9 @@ const curatedCollectionCache =
 const curatedCollectionInFlight =
     new Map();
 
+let activeCollectionFetches = 0;
+const collectionFetchWaiters = [];
+
 function createHomeAbortError() {
     const error =
         new Error('Aborted');
@@ -31,6 +72,244 @@ function createHomeAbortError() {
         'AbortError';
 
     return error;
+}
+
+function getHomeSizedImageBase(size, fallbackBase) {
+    if (typeof getSizedTmdbImageBase === 'function') {
+        return getSizedTmdbImageBase(size, fallbackBase);
+    }
+    const base =
+        typeof fallbackBase === 'string' && fallbackBase
+            ? fallbackBase
+            : 'https://image.tmdb.org/t/p/w500';
+    return base.replace(/\/t\/p\/[^/]+$/, `/t/p/${size}`);
+}
+
+/**
+ * Waits until a visible home section nears the viewport via IntersectionObserver,
+ * with a deterministic fallback timer so offscreen or headless layouts never stall.
+ */
+function waitForHomeSectionVisible(target, signal = null, fallbackDelayMs = 250) {
+    if (signal?.aborted) {
+        return Promise.reject(createHomeAbortError());
+    }
+    if (!target || target.offsetParent === null || typeof IntersectionObserver !== 'function') {
+        return Promise.resolve();
+    }
+
+    return new Promise((resolve, reject) => {
+        let settled = false;
+        let observer = null;
+        let fallbackTimer = null;
+
+        const cleanup = () => {
+            if (observer) {
+                observer.disconnect();
+                observer = null;
+            }
+            if (fallbackTimer !== null) {
+                clearTimeout(fallbackTimer);
+                fallbackTimer = null;
+            }
+            if (signal) {
+                signal.removeEventListener('abort', onAbort);
+            }
+        };
+
+        const finish = () => {
+            if (settled) return;
+            settled = true;
+            cleanup();
+            resolve();
+        };
+
+        const onAbort = () => {
+            if (settled) return;
+            settled = true;
+            cleanup();
+            reject(createHomeAbortError());
+        };
+
+        if (signal) {
+            signal.addEventListener('abort', onAbort, { once: true });
+        }
+
+        observer = new IntersectionObserver(
+            entries => {
+                if (entries.some(entry => entry.isIntersecting || entry.intersectionRatio > 0)) {
+                    finish();
+                }
+            },
+            { rootMargin: '250px' }
+        );
+        observer.observe(target);
+
+        fallbackTimer = setTimeout(finish, fallbackDelayMs);
+    });
+}
+
+/**
+ * Defers secondary home batches to idle time or immediate user interaction,
+ * while supporting abort signals and synchronous flush for direct callers.
+ */
+function waitForHomeDeferredStage(
+    container = null,
+    signal = null,
+    { idleTimeoutMs = 450, fallbackDelayMs = 120, externalControl = null } = {}
+) {
+    if (signal?.aborted) {
+        return Promise.reject(createHomeAbortError());
+    }
+
+    return new Promise((resolve, reject) => {
+        let settled = false;
+        let idleId = null;
+        let timerId = null;
+
+        const interactionEvents = ['scroll', 'pointerenter', 'focusin'];
+
+        const cleanup = () => {
+            if (idleId !== null && typeof cancelIdleCallback === 'function') {
+                cancelIdleCallback(idleId);
+                idleId = null;
+            }
+            if (timerId !== null) {
+                clearTimeout(timerId);
+                timerId = null;
+            }
+            if (container) {
+                interactionEvents.forEach(evt => {
+                    container.removeEventListener(evt, finish);
+                });
+            }
+            if (signal) {
+                signal.removeEventListener('abort', onAbort);
+            }
+            if (externalControl && externalControl.flush === finish) {
+                externalControl.flush = null;
+            }
+        };
+
+        const finish = () => {
+            if (settled) return;
+            settled = true;
+            cleanup();
+            resolve();
+        };
+
+        const onAbort = () => {
+            if (settled) return;
+            settled = true;
+            cleanup();
+            reject(createHomeAbortError());
+        };
+
+        if (externalControl) {
+            externalControl.flush = finish;
+        }
+
+        if (signal) {
+            signal.addEventListener('abort', onAbort, { once: true });
+        }
+
+        if (container) {
+            interactionEvents.forEach(evt => {
+                container.addEventListener(evt, finish, { once: true, passive: true });
+            });
+        }
+
+        if (typeof requestIdleCallback === 'function') {
+            idleId = requestIdleCallback(() => finish(), { timeout: idleTimeoutMs });
+        } else {
+            timerId = setTimeout(finish, fallbackDelayMs);
+        }
+    });
+}
+
+function acquireCollectionFetchSlot(signal = null) {
+    if (signal?.aborted) {
+        return Promise.reject(createHomeAbortError());
+    }
+    if (activeCollectionFetches < HOME_COLLECTION_CONCURRENCY) {
+        activeCollectionFetches++;
+        return Promise.resolve();
+    }
+
+    return new Promise((resolve, reject) => {
+        const entry = {};
+
+        const cleanup = () => {
+            if (signal) {
+                signal.removeEventListener('abort', onAbort);
+            }
+        };
+
+        const onAbort = () => {
+            const idx = collectionFetchWaiters.indexOf(entry);
+            if (idx !== -1) {
+                collectionFetchWaiters.splice(idx, 1);
+            }
+            cleanup();
+            reject(createHomeAbortError());
+        };
+
+        entry.resolve = () => {
+            cleanup();
+            activeCollectionFetches++;
+            resolve();
+        };
+
+        if (signal) {
+            signal.addEventListener('abort', onAbort, { once: true });
+        }
+
+        collectionFetchWaiters.push(entry);
+    });
+}
+
+function releaseCollectionFetchSlot() {
+    activeCollectionFetches = Math.max(0, activeCollectionFetches - 1);
+    while (activeCollectionFetches < HOME_COLLECTION_CONCURRENCY && collectionFetchWaiters.length > 0) {
+        const next = collectionFetchWaiters.shift();
+        next.resolve();
+    }
+}
+
+function startHorizontalAutoScroll(container, setTimer, getTimer) {
+    const existing = getTimer();
+    if (existing !== null) {
+        clearInterval(existing);
+        setTimer(null);
+    }
+
+    if (typeof prefersReducedMotion === 'function' && prefersReducedMotion()) {
+        return;
+    }
+
+    let direction = 1;
+    const timer = setInterval(() => {
+        if (
+            document.hidden ||
+            !container.isConnected ||
+            container.offsetParent === null ||
+            container.classList.contains('active')
+        ) {
+            return;
+        }
+
+        container.scrollLeft += direction;
+
+        if (
+            container.scrollLeft >=
+            container.scrollWidth - container.clientWidth - 1
+        ) {
+            direction = -1;
+        } else if (container.scrollLeft <= 0) {
+            direction = 1;
+        }
+    }, 30);
+
+    setTimer(timer);
 }
 
 async function runHomeTasksWithConcurrency(
@@ -229,99 +508,7 @@ function consumeSharedHomeTask(
     );
 }
 
-async function fetchTrendingActorsData(
-    signal
-) {
-    const pages =
-        Array.from(
-            {
-                length: 8
-            },
-            (
-                _,
-                index
-            ) =>
-                index + 1
-        );
-
-    const pageResults =
-        await runHomeTasksWithConcurrency(
-            pages,
-            HOME_TRENDING_ACTORS_CONCURRENCY,
-            async page => {
-                try {
-                    const response =
-                        await fetch(
-                            `${BASE_URL}/person/popular?api_key=${API_KEY}&language=tr-TR&page=${page}`,
-                            {
-                                signal
-                            }
-                        );
-
-                    if (
-                        !response.ok
-                    ) {
-                        console.warn(
-                            `Trending actor page ${page} alınamadı: HTTP ${response.status}`
-                        );
-
-                        return {
-                            ok: false,
-                            results: []
-                        };
-                    }
-
-                    const data =
-                        await response
-                            .json();
-
-                    return {
-                        ok: true,
-                        results:
-                            Array.isArray(
-                                data
-                                    ?.results
-                            )
-                                ? data
-                                    .results
-                                : []
-                    };
-                } catch (error) {
-                    if (
-                        error.name ===
-                        'AbortError'
-                    ) {
-                        throw error;
-                    }
-
-                    console.warn(
-                        `Trending actor page ${page} alınamadı:`,
-                        error
-                    );
-
-                    return {
-                        ok: false,
-                        results: []
-                    };
-                }
-            }
-        );
-
-    const successfulPages =
-        pageResults.filter(
-            result =>
-                result?.ok
-        );
-
-    if (
-        successfulPages.length ===
-        0
-    ) {
-        throw new Error(
-            'Trending actor pages unavailable'
-        );
-    }
-
+function filterValidTrendingActors(successfulPages) {
     const allActors =
         successfulPages.flatMap(
             result =>
@@ -478,8 +665,146 @@ async function fetchTrendingActorsData(
     );
 }
 
+async function fetchTrendingActorPage(page, signal) {
+    try {
+        const response =
+            await fetch(
+                `${BASE_URL}/person/popular?api_key=${API_KEY}&language=tr-TR&page=${page}`,
+                {
+                    signal
+                }
+            );
+
+        if (
+            !response.ok
+        ) {
+            console.warn(
+                `Trending actor page ${page} alınamadı: HTTP ${response.status}`
+            );
+
+            return {
+                ok: false,
+                results: []
+            };
+        }
+
+        const data =
+            await response
+                .json();
+
+        return {
+            ok: true,
+            results:
+                Array.isArray(
+                    data
+                        ?.results
+                )
+                    ? data
+                        .results
+                    : []
+        };
+    } catch (error) {
+        if (
+            error.name ===
+            'AbortError'
+        ) {
+            throw error;
+        }
+
+        console.warn(
+            `Trending actor page ${page} alınamadı:`,
+            error
+        );
+
+        return {
+            ok: false,
+            results: []
+        };
+    }
+}
+
+async function fetchTrendingActorsData(
+    signal,
+    { notifyStage1 = null, deferControl = null } = {}
+) {
+    const stage1Pages =
+        Array.from(
+            {
+                length: HOME_TRENDING_ACTORS_STAGE1_PAGES
+            },
+            (_, index) => index + 1
+        );
+
+    const stage2Pages =
+        Array.from(
+            {
+                length: 8 - HOME_TRENDING_ACTORS_STAGE1_PAGES
+            },
+            (_, index) => index + HOME_TRENDING_ACTORS_STAGE1_PAGES + 1
+        );
+
+    const stage1Results =
+        await runHomeTasksWithConcurrency(
+            stage1Pages,
+            HOME_TRENDING_ACTORS_CONCURRENCY,
+            page => fetchTrendingActorPage(page, signal)
+        );
+
+    const stage1Successful =
+        stage1Results.filter(result => result?.ok);
+
+    if (
+        stage1Successful.length > 0 &&
+        typeof notifyStage1 === 'function' &&
+        !signal?.aborted
+    ) {
+        const partialActors =
+            filterValidTrendingActors(stage1Successful);
+        if (partialActors.length > 0) {
+            notifyStage1(partialActors);
+        }
+    }
+
+    if (deferControl?.shouldDefer && !signal?.aborted) {
+        await waitForHomeDeferredStage(
+            deferControl.container || null,
+            signal,
+            {
+                idleTimeoutMs: 400,
+                fallbackDelayMs: 120,
+                externalControl: deferControl
+            }
+        );
+    }
+
+    const stage2Results =
+        await runHomeTasksWithConcurrency(
+            stage2Pages,
+            HOME_TRENDING_ACTORS_CONCURRENCY,
+            page => fetchTrendingActorPage(page, signal)
+        );
+
+    const successfulPages =
+        [...stage1Results, ...stage2Results].filter(
+            result =>
+                result?.ok
+        );
+
+    if (
+        successfulPages.length ===
+        0
+    ) {
+        throw new Error(
+            'Trending actor pages unavailable'
+        );
+    }
+
+    return filterValidTrendingActors(successfulPages);
+}
+
 function getTrendingActorsData(
-    signal = null
+    signal = null,
+    { onStage1Actors = null, deferStage2 = false, container = null } = {}
 ) {
     if (
         signal?.aborted
@@ -523,13 +848,34 @@ function getTrendingActorsData(
         !trendingActorsInFlight
     ) {
         let entry = null;
+        const stage1Listeners = new Set();
+        const deferControl = {
+            shouldDefer: Boolean(deferStage2),
+            container,
+            flush: null
+        };
+
+        if (typeof onStage1Actors === 'function') {
+            stage1Listeners.add(onStage1Actors);
+        }
 
         entry =
             createSharedHomeTask(
                 async sharedSignal => {
                     const actors =
                         await fetchTrendingActorsData(
-                            sharedSignal
+                            sharedSignal,
+                            {
+                                deferControl,
+                                notifyStage1: partialActors => {
+                                    entry.stage1Actors = partialActors;
+                                    stage1Listeners.forEach(listener => {
+                                        try {
+                                            listener(partialActors);
+                                        } catch (err) {}
+                                    });
+                                }
+                            }
                         );
 
                     trendingActorsCache = {
@@ -551,8 +897,26 @@ function getTrendingActorsData(
                 }
             );
 
+        entry.stage1Listeners = stage1Listeners;
+        entry.stage1Actors = null;
+        entry.deferControl = deferControl;
+
         trendingActorsInFlight =
             entry;
+    } else {
+        if (!deferStage2 && trendingActorsInFlight.deferControl) {
+            trendingActorsInFlight.deferControl.shouldDefer = false;
+            if (typeof trendingActorsInFlight.deferControl.flush === 'function') {
+                trendingActorsInFlight.deferControl.flush();
+            }
+        }
+        if (typeof onStage1Actors === 'function') {
+            if (Array.isArray(trendingActorsInFlight.stage1Actors) && trendingActorsInFlight.stage1Actors.length > 0) {
+                onStage1Actors(trendingActorsInFlight.stage1Actors);
+            } else if (trendingActorsInFlight.stage1Listeners) {
+                trendingActorsInFlight.stage1Listeners.add(onStage1Actors);
+            }
+        }
     }
 
     return consumeSharedHomeTask(
@@ -596,52 +960,57 @@ async function fetchCuratedCollectionData(
     collectionId,
     signal
 ) {
-    const response =
-        await fetch(
-            `${BASE_URL}/collection/${collectionId}?api_key=${API_KEY}&language=tr-TR`,
+    await acquireCollectionFetchSlot(signal);
+    try {
+        const response =
+            await fetch(
+                `${BASE_URL}/collection/${collectionId}?api_key=${API_KEY}&language=tr-TR`,
+                {
+                    signal
+                }
+            );
+
+        if (!response.ok) {
+            throw new Error(
+                `Collection HTTP ${response.status}`
+            );
+        }
+
+        const data =
+            await response.json();
+
+        const responseCollectionId =
+            normalizeTmdbId(
+                data?.id
+            );
+
+        if (
+            responseCollectionId !==
+                collectionId ||
+            !Array.isArray(
+                data?.parts
+            )
+        ) {
+            console.warn(
+                `Collection ${collectionId} için geçersiz TMDB cevabı alındı.`
+            );
+
+            return null;
+        }
+
+        curatedCollectionCache.set(
+            collectionId,
             {
-                signal
+                timestamp:
+                    Date.now(),
+                data
             }
         );
 
-    if (!response.ok) {
-        throw new Error(
-            `Collection HTTP ${response.status}`
-        );
+        return data;
+    } finally {
+        releaseCollectionFetchSlot();
     }
-
-    const data =
-        await response.json();
-
-    const responseCollectionId =
-        normalizeTmdbId(
-            data?.id
-        );
-
-    if (
-        responseCollectionId !==
-            collectionId ||
-        !Array.isArray(
-            data?.parts
-        )
-    ) {
-        console.warn(
-            `Collection ${collectionId} için geçersiz TMDB cevabı alındı.`
-        );
-
-        return null;
-    }
-
-    curatedCollectionCache.set(
-        collectionId,
-        {
-            timestamp:
-                Date.now(),
-            data
-        }
-    );
-
-    return data;
 }
 
 function getCuratedCollectionData(
@@ -734,6 +1103,10 @@ async function loadTop10Trending(
                 }
             );
 
+        if (!res.ok) {
+            throw new Error(`Top 10 HTTP ${res.status}`);
+        }
+
         const data =
             await res.json();
 
@@ -816,6 +1189,9 @@ async function loadTop10Trending(
             document
                 .createDocumentFragment();
 
+        const top10PosterBase =
+            getHomeSizedImageBase('w342', IMAGE_BASE);
+
         top10.forEach(
             (
                 {
@@ -829,13 +1205,11 @@ async function loadTop10Trending(
                 const poster =
                     getSafeTmdbImageUrl(
                         item.poster_path,
-                        IMAGE_BASE,
+                        top10PosterBase,
                         'assets/placeholder.svg'
                     );
 
-                window.movieCache[
-                    itemId
-                ] = {
+                const cachedEntry = {
                     id: itemId,
                     title,
                     name: title,
@@ -861,6 +1235,13 @@ async function loadTop10Trending(
                     media_type:
                         mediaType
                 };
+
+                if (typeof setCachedMedia === 'function') {
+                    setCachedMedia(cachedEntry, mediaType);
+                } else {
+                    window.movieCache[itemId] = cachedEntry;
+                    window.movieCache[`${mediaType}:${itemId}`] = cachedEntry;
+                }
 
                 const card =
                     document
@@ -904,6 +1285,12 @@ async function loadTop10Trending(
 
                 image.loading =
                     'lazy';
+
+                image.decoding =
+                    'async';
+
+                image.width = 140;
+                image.height = 210;
 
                 image.style.cssText =
                     'width:100%;' +
@@ -977,11 +1364,10 @@ async function loadNowPlaying(routeContext = null, expectedPage = null) {
     if(document.getElementById('collections-section')) document.getElementById('collections-section').style.display = 'block';
     if(document.getElementById('trending-actors-section')) document.getElementById('trending-actors-section').style.display = 'block';
 
-    if (container && container.querySelector('.movie-card')) return;
+    if (!container || container.querySelector('.movie-card:not(.skeleton-card)')) return;
     
-    showSkeletons('now-playing-grid', 10);
     container.style.display = "";
-    container.innerHTML = "<div class='loading'>Vizyondaki filmler çekiliyor...</div>";
+    showSkeletons('now-playing-grid', 10);
     try {
         const res = await fetch(`${BASE_URL}/movie/now_playing?api_key=${API_KEY}&language=tr-TR&region=TR&page=1`, { signal: routeContext?.signal });
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -996,16 +1382,9 @@ async function loadNowPlaying(routeContext = null, expectedPage = null) {
         ? data.results
         : [];
 
-        let html = '';
-
-        results.forEach(movie => {
-            html +=
-                createMovieCard(
-                    movie,
-                    'movie',
-                    'now-playing'
-                );
-        });
+        const html = typeof createMovieCardsBatch === 'function'
+            ? createMovieCardsBatch(results, 'movie', 'now-playing')
+            : results.map(movie => createMovieCard(movie, 'movie', 'now-playing')).join('');
 
         container.innerHTML =
             html;
@@ -1027,7 +1406,7 @@ async function loadNowPlaying(routeContext = null, expectedPage = null) {
 
 async function loadUpcomingMovies(routeContext = null) {
     const container = document.getElementById('upcoming-movies');
-    if (container && container.querySelector('.movie-card')) return; 
+    if (!container || container.querySelector('.movie-card:not(.skeleton-card)')) return;
     
     container.style.display = "";
     container.innerHTML = "<div class='loading'>Gelecek filmler çekiliyor...</div>";
@@ -1046,16 +1425,9 @@ async function loadUpcomingMovies(routeContext = null) {
         ? data.results
         : [];
 
-let html = '';
-
-results.forEach(movie => {
-    html +=
-        createMovieCard(
-            movie,
-            'movie',
-            'upcoming'
-        );
-});
+const html = typeof createMovieCardsBatch === 'function'
+    ? createMovieCardsBatch(results, 'movie', 'upcoming')
+    : results.map(movie => createMovieCard(movie, 'movie', 'upcoming')).join('');
 
 container.innerHTML =
     html;
@@ -1063,6 +1435,164 @@ container.innerHTML =
         if (error.name === 'AbortError') return;
         container.innerHTML = "<div class='loading'>Hata oluştu.</div>";
     }
+}
+
+function buildTrendingActorCard(actor, actorImageBase) {
+    const actorId =
+        normalizeTmdbId(
+            actor?.id
+        );
+
+    if (!actorId) {
+        return null;
+    }
+
+    if (
+        typeof actor.name !==
+            'string' ||
+        !actor.name.trim()
+    ) {
+        return null;
+    }
+
+    const actorName =
+        actor.name.trim();
+
+    const profile =
+        getSafeTmdbImageUrl(
+            actor
+                .profile_path,
+            actorImageBase,
+            'assets/placeholder.svg'
+        );
+
+    const card =
+        document
+            .createElement(
+                'div'
+            );
+
+    card.className =
+        'story-item';
+
+    card.dataset.actorId =
+        String(actorId);
+
+    const image =
+        document
+            .createElement(
+                'img'
+            );
+
+    image.src =
+        profile;
+
+    image.alt =
+        actorName;
+
+    image.className =
+        'story-img';
+
+    image.loading =
+        'lazy';
+
+    image.decoding =
+        'async';
+
+    image.width = 80;
+    image.height = 80;
+
+    const name =
+        document
+            .createElement(
+                'div'
+            );
+
+    name.className =
+        'story-name';
+
+    name.title =
+        actorName;
+
+    name.textContent =
+        actorName;
+
+    card.setAttribute('role', 'button');
+    card.setAttribute('tabindex', '0');
+    card.setAttribute('aria-label', `${actorName} detaylarını görüntüle`);
+
+    card.append(
+        image,
+        name
+    );
+
+    const activateActor = () => {
+        openActorDetails(
+            actorId,
+            actorName
+        );
+    };
+
+    card.addEventListener(
+        'click',
+        activateActor
+    );
+
+    card.addEventListener(
+        'keydown',
+        (e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                activateActor();
+            }
+        }
+    );
+
+    return card;
+}
+
+function renderTrendingActorsIntoContainer(container, actors, { appendOnly = false } = {}) {
+    const actorImageBase =
+        getHomeSizedImageBase('w185', IMAGE_BASE);
+
+    if (appendOnly) {
+        const existingIds = new Set(
+            Array.from(container.querySelectorAll('.story-item[data-actor-id]'))
+                .map(el => el.dataset.actorId)
+        );
+        if (existingIds.size > 0) {
+            const appendFragment = document.createDocumentFragment();
+            actors.forEach(actor => {
+                const actorId = normalizeTmdbId(actor?.id);
+                if (!actorId || existingIds.has(String(actorId))) {
+                    return;
+                }
+                const card = buildTrendingActorCard(actor, actorImageBase);
+                if (card) {
+                    appendFragment.appendChild(card);
+                }
+            });
+            if (appendFragment.childNodes.length > 0) {
+                container.appendChild(appendFragment);
+            }
+            return;
+        }
+    }
+
+    const fragment =
+        document
+            .createDocumentFragment();
+
+    actors.forEach(actor => {
+        const card = buildTrendingActorCard(actor, actorImageBase);
+        if (card) {
+            fragment.appendChild(card);
+        }
+    });
+
+    container.replaceChildren(
+        fragment
+    );
 }
 
 async function loadTrendingActors(
@@ -1078,216 +1608,70 @@ async function loadTrendingActors(
         return;
     }
 
+    const renderToken =
+        ++trendingActorsRenderToken;
+
+    const isStillValid = () => {
+        if (renderToken !== trendingActorsRenderToken) {
+            return false;
+        }
+        if (routeContext?.signal?.aborted) {
+            return false;
+        }
+        if (
+            routeContext &&
+            expectedPage &&
+            !isRouteContextCurrent(
+                routeContext,
+                expectedPage
+            )
+        ) {
+            return false;
+        }
+        return true;
+    };
+
+    let renderedStage1 = false;
+
     try {
         const actors =
             await getTrendingActorsData(
                 routeContext
-                    ?.signal
-            );
-
-        if (
-            routeContext
-                ?.signal
-                ?.aborted
-        ) {
-            return;
-        }
-
-        if (
-            routeContext &&
-            expectedPage &&
-            !isRouteContextCurrent(
-                routeContext,
-                expectedPage
-            )
-        ) {
-            return;
-        }
-
-        const fragment =
-            document
-                .createDocumentFragment();
-
-        actors.forEach(actor => {
-            const actorId =
-                normalizeTmdbId(
-                    actor?.id
-                );
-
-            if (!actorId) {
-                return;
-            }
-
-            if (
-                typeof actor.name !==
-                    'string' ||
-                !actor.name.trim()
-            ) {
-                return;
-            }
-
-            const actorName =
-                actor.name.trim();
-
-            const profile =
-                getSafeTmdbImageUrl(
-                    actor
-                        .profile_path,
-                    IMAGE_BASE,
-                    'assets/placeholder.svg'
-                );
-
-            const card =
-                document
-                    .createElement(
-                        'div'
-                    );
-
-            card.className =
-                'story-item';
-
-            const image =
-                document
-                    .createElement(
-                        'img'
-                    );
-
-            image.src =
-                profile;
-
-            image.alt =
-                actorName;
-
-            image.className =
-                'story-img';
-
-            image.loading =
-                'lazy';
-
-            const name =
-                document
-                    .createElement(
-                        'div'
-                    );
-
-            name.className =
-                'story-name';
-
-            name.title =
-                actorName;
-
-            name.textContent =
-                actorName;
-
-            card.setAttribute('role', 'button');
-            card.setAttribute('tabindex', '0');
-            card.setAttribute('aria-label', `${actorName} detaylarını görüntüle`);
-
-            card.append(
-                image,
-                name
-            );
-
-            const activateActor = () => {
-                openActorDetails(
-                    actorId,
-                    actorName
-                );
-            };
-
-            card.addEventListener(
-                'click',
-                activateActor
-            );
-
-            card.addEventListener(
-                'keydown',
-                (e) => {
-                    if (e.key === 'Enter' || e.key === ' ') {
-                        e.preventDefault();
-                        activateActor();
+                    ?.signal,
+                {
+                    deferStage2: Boolean(routeContext),
+                    container,
+                    onStage1Actors: partialActors => {
+                        if (!isStillValid()) {
+                            return;
+                        }
+                        renderTrendingActorsIntoContainer(container, partialActors, { appendOnly: false });
+                        renderedStage1 = true;
+                        startHorizontalAutoScroll(
+                            container,
+                            timer => { trendingActorsAutoScrollInterval = timer; },
+                            () => trendingActorsAutoScrollInterval
+                        );
+                        makeScrollable(container);
                     }
                 }
             );
 
-            fragment.appendChild(
-                card
-            );
-        });
-
-        if (
-            routeContext
-                ?.signal
-                ?.aborted
-        ) {
+        if (!isStillValid()) {
             return;
         }
 
-        if (
-            routeContext &&
-            expectedPage &&
-            !isRouteContextCurrent(
-                routeContext,
-                expectedPage
-            )
-        ) {
-            return;
-        }
-
-        container.replaceChildren(
-            fragment
+        renderTrendingActorsIntoContainer(
+            container,
+            actors,
+            { appendOnly: renderedStage1 }
         );
 
-        let direction = 1;
-
-        if (
-            trendingActorsAutoScrollInterval !==
-            null
-        ) {
-            clearInterval(
-                trendingActorsAutoScrollInterval
-            );
-            trendingActorsAutoScrollInterval = null;
-        }
-
-        if (typeof prefersReducedMotion === 'function' && prefersReducedMotion()) {
-            return;
-        }
-
-        trendingActorsAutoScrollInterval =
-            setInterval(
-                () => {
-                    if (
-                        !container
-                            .classList
-                            .contains(
-                                'active'
-                            )
-                    ) {
-                        container.scrollLeft +=
-                            direction;
-
-                        if (
-                            container.scrollLeft >=
-                            (
-                                container.scrollWidth -
-                                container.clientWidth -
-                                1
-                            )
-                        ) {
-                            direction =
-                                -1;
-                        } else if (
-                            container.scrollLeft <=
-                            0
-                        ) {
-                            direction =
-                                1;
-                        }
-                    }
-                },
-                30
-            );
+        startHorizontalAutoScroll(
+            container,
+            timer => { trendingActorsAutoScrollInterval = timer; },
+            () => trendingActorsAutoScrollInterval
+        );
 
         makeScrollable(
             container
@@ -1305,20 +1689,253 @@ async function loadTrendingActors(
             error
         );
 
-        if (
-            routeContext &&
-            expectedPage &&
-            !isRouteContextCurrent(
-                routeContext,
-                expectedPage
-            )
-        ) {
+        if (!isStillValid()) {
             return;
         }
 
         container.innerHTML =
             "<div style='color:red'>Oyuncular yüklenemedi.</div>";
     }
+}
+
+function buildCuratedCollectionCard(result, backdropBase, posterBase) {
+    if (!result || !result.data) {
+        return null;
+    }
+
+    const {
+        data,
+        c,
+        collectionId
+    } = result;
+
+    const responseCollectionId =
+        normalizeTmdbId(
+            data?.id
+        );
+
+    if (
+        responseCollectionId !==
+        collectionId
+    ) {
+        return null;
+    }
+
+    const parts =
+        Array.isArray(
+            data.parts
+        )
+            ? data.parts
+            : [];
+
+    if (
+        parts.length ===
+        0
+    ) {
+        return null;
+    }
+
+    const collectionName =
+        String(
+            data.name ||
+            c.title ||
+            'Koleksiyon'
+        );
+
+    const posterFallback =
+        getSafeTmdbImageUrl(
+            data.poster_path,
+            posterBase,
+            'assets/placeholder.svg'
+        );
+
+    const poster =
+        getSafeTmdbImageUrl(
+            data.backdrop_path,
+            backdropBase,
+            posterFallback
+        );
+
+    const card =
+        document
+            .createElement(
+                'div'
+            );
+
+    card.className =
+        'movie-card';
+
+    card.dataset.collectionId =
+        String(collectionId);
+
+    card.title =
+        collectionName;
+
+    card.style.cssText =
+        'width:250px;' +
+        'flex-shrink:0;' +
+        'cursor:pointer;';
+
+    const image =
+        document
+            .createElement(
+                'img'
+            );
+
+    image.src =
+        poster;
+
+    image.alt =
+        collectionName;
+
+    image.loading =
+        'lazy';
+
+    image.decoding =
+        'async';
+
+    image.style.cssText =
+        'width:100%;' +
+        'aspect-ratio:16/9;' +
+        'object-fit:cover;';
+
+    const info =
+        document
+            .createElement(
+                'div'
+            );
+
+    info.className =
+        'movie-info';
+
+    const title =
+        document
+            .createElement(
+                'h4'
+            );
+
+    title.style.cssText =
+        'margin:10px 0;' +
+        'font-size:1.1rem;' +
+        'color:var(--text-color);';
+
+    title.textContent =
+        c.title;
+
+    const count =
+        document
+            .createElement(
+                'p'
+            );
+
+    count.style.cssText =
+        'font-size:0.8rem;' +
+        'color:var(--text-muted);';
+
+    count.textContent =
+        `${parts.length} Film`;
+
+    info.append(
+        title,
+        count
+    );
+
+    card.setAttribute('role', 'button');
+    card.setAttribute('tabindex', '0');
+    card.setAttribute('aria-label', `${collectionName}, ${parts.length} Film`);
+
+    card.append(
+        image,
+        info
+    );
+
+    const activateCollection = () => {
+        openCollection(
+            collectionId
+        );
+    };
+
+    card.addEventListener(
+        'click',
+        activateCollection
+    );
+
+    card.addEventListener(
+        'keydown',
+        (e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                activateCollection();
+            }
+        }
+    );
+
+    return card;
+}
+
+async function fetchCuratedCollectionBatch(batch, signal) {
+    return runHomeTasksWithConcurrency(
+        batch,
+        HOME_COLLECTION_CONCURRENCY,
+        async c => {
+            const collectionId =
+                normalizeTmdbId(
+                    c?.id
+                );
+
+            if (!collectionId) {
+                return null;
+            }
+
+            try {
+                const data =
+                    await getCuratedCollectionData(
+                        collectionId,
+                        signal
+                    );
+
+                if (!data) {
+                    return null;
+                }
+
+                if (signal?.aborted) {
+                    throw createHomeAbortError();
+                }
+
+                const responseCollectionId =
+                    normalizeTmdbId(
+                        data?.id
+                    );
+
+                if (
+                    responseCollectionId !==
+                    collectionId
+                ) {
+                    return null;
+                }
+
+                return {
+                    data,
+                    c,
+                    collectionId
+                };
+            } catch (error) {
+                if (
+                    error.name ===
+                    'AbortError'
+                ) {
+                    throw error;
+                }
+
+                console.warn(
+                    `Collection ${collectionId} yüklenemedi:`,
+                    error
+                );
+
+                return null;
+            }
+        }
+    );
 }
 
 async function loadCuratedCollections(
@@ -1334,384 +1951,172 @@ async function loadCuratedCollections(
         return;
     }
 
-    const collections = [
-        { id: 86311, title: "Marvel Sinematik Evreni" },
-        { id: 1241, title: "Harry Potter Serisi" },
-        { id: 10, title: "Star Wars Efsanesi" },
-        { id: 119, title: "Yüzüklerin Efendisi" },
-        { id: 404609, title: "John Wick Serisi" },
-        { id: 2344, title: "Matrix Serisi" },
-        { id: 531241, title: "Spider-Man (MCU) Serisi" },
-        { id: 119932, title: "Karanlık Şövalye Üçlemesi" },
-        { id: 748, title: "X-Men Koleksiyonu" },
-        { id: 9485, title: "Hızlı ve Öfkeli Serisi" },
-        { id: 8735, title: "Görevimiz Tehlike Serisi" },
-        { id: 131635, title: "Açlık Oyunları Serisi" },
-        { id: 196419, title: "Labirent Serisi" },
-        { id: 230, title: "Baba (Godfather) Serisi" },
-        { id: 295, title: "Karayip Korsanları Serisi" },
-        { id: 328, title: "Jurassic Park Serisi" },
-        { id: 1703, title: "Alacakaranlık Efsanesi" },
-        { id: 525, title: "Terminatör Serisi" },
-        { id: 2150, title: "Shrek Serisi" },
-        { id: 84, title: "Indiana Jones Serisi" },
-        { id: 645, title: "James Bond Serisi" },
-        { id: 10194, title: "Oyuncak Hikayesi Serisi" },
-        { id: 87096, title: "Avatar Serisi" },
-        { id: 133931, title: "Testere (Saw) Serisi" },
-        { id: 8091, title: "Yaratık (Alien) Serisi" },
-        { id: 1575, title: "Rocky Efsanesi" },
-        { id: 8650, title: "Transformers Serisi" },
-        { id: 264, title: "Geleceğe Dönüş Serisi" },
-        { id: 8945, title: "Mad Max Serisi" },
-        { id: 1570, title: "Zor Ölüm (Die Hard) Serisi" },
-        { id: 86066, title: "Çılgın Hırsız Serisi" }
-    ];
+    const renderToken =
+        ++curatedCollectionsRenderToken;
+
+    const isStillValid = () => {
+        if (renderToken !== curatedCollectionsRenderToken) {
+            return false;
+        }
+        if (routeContext?.signal?.aborted) {
+            return false;
+        }
+        if (
+            routeContext &&
+            expectedPage &&
+            !isRouteContextCurrent(
+                routeContext,
+                expectedPage
+            )
+        ) {
+            return false;
+        }
+        return true;
+    };
+
+    const backdropBase =
+        getHomeSizedImageBase('w780', BACKDROP_BASE);
+
+    const posterBase =
+        getHomeSizedImageBase('w342', IMAGE_BASE);
 
     try {
-        const results =
-            await runHomeTasksWithConcurrency(
-                collections,
-                HOME_COLLECTION_CONCURRENCY,
-                async c => {
-                    const collectionId =
-                        normalizeTmdbId(
-                            c?.id
-                        );
-
-                    if (!collectionId) {
-                        return null;
-                    }
-
-                    try {
-                        const data =
-                            await getCuratedCollectionData(
-                                collectionId,
-                                routeContext
-                                    ?.signal
-                            );
-
-                        if (!data) {
-                            return null;
-                        }
-
-                        if (
-                            routeContext
-                                ?.signal
-                                ?.aborted
-                        ) {
-                            throw createHomeAbortError();
-                        }
-
-                        const responseCollectionId =
-                            normalizeTmdbId(
-                                data?.id
-                            );
-
-                        if (
-                            responseCollectionId !==
-                            collectionId
-                        ) {
-                            return null;
-                        }
-
-                        return {
-                            data,
-                            c,
-                            collectionId
-                        };
-                    } catch (error) {
-                        if (
-                            error.name ===
-                            'AbortError'
-                        ) {
-                            throw error;
-                        }
-
-                        console.warn(
-                            `Collection ${collectionId} yüklenemedi:`,
-                            error
-                        );
-
-                        return null;
-                    }
-                }
-            );
-
-        if (
-            routeContext
-                ?.signal
-                ?.aborted
-        ) {
-            return;
-        }
-
-        if (
-            routeContext &&
-            expectedPage &&
-            !isRouteContextCurrent(
-                routeContext,
-                expectedPage
-            )
-        ) {
-            return;
-        }
-
-        const fragment =
-            document
-                .createDocumentFragment();
-
-        results.forEach(result => {
-            if (
-                !result ||
-                !result.data
-            ) {
-                return;
-            }
-
-            const {
-                data,
-                c,
-                collectionId
-            } = result;
-
-            const responseCollectionId =
-                normalizeTmdbId(
-                    data?.id
-                );
-
-            if (
-                responseCollectionId !==
-                collectionId
-            ) {
-                return;
-            }
-
-            const parts =
-                Array.isArray(
-                    data.parts
-                )
-                    ? data.parts
-                    : [];
-
-            if (
-                parts.length ===
-                0
-            ) {
-                return;
-            }
-
-            const collectionName =
-                String(
-                    data.name ||
-                    c.title ||
-                    'Koleksiyon'
-                );
-
-            const posterFallback =
-                getSafeTmdbImageUrl(
-                    data.poster_path,
-                    IMAGE_BASE,
-                    'assets/placeholder.svg'
-                );
-
-            const poster =
-                getSafeTmdbImageUrl(
-                    data.backdrop_path,
-                    BACKDROP_BASE,
-                    posterFallback
-                );
-
-            const card =
-                document
-                    .createElement(
-                        'div'
-                    );
-
-            card.className =
-                'movie-card';
-
-            card.title =
-                collectionName;
-
-            card.style.cssText =
-                'width:250px;' +
-                'flex-shrink:0;' +
-                'cursor:pointer;';
-
-            const image =
-                document
-                    .createElement(
-                        'img'
-                    );
-
-            image.src =
-                poster;
-
-            image.alt =
-                collectionName;
-
-            image.loading =
-                'lazy';
-
-            image.style.cssText =
-                'width:100%;' +
-                'aspect-ratio:16/9;' +
-                'object-fit:cover;';
-
-            const info =
-                document
-                    .createElement(
-                        'div'
-                    );
-
-            info.className =
-                'movie-info';
-
-            const title =
-                document
-                    .createElement(
-                        'h4'
-                    );
-
-            title.style.cssText =
-                'margin:10px 0;' +
-                'font-size:1.1rem;' +
-                'color:var(--text-color);';
-
-            title.textContent =
-                c.title;
-
-            const count =
-                document
-                    .createElement(
-                        'p'
-                    );
-
-            count.style.cssText =
-                'font-size:0.8rem;' +
-                'color:var(--text-muted);';
-
-            count.textContent =
-                `${parts.length} Film`;
-
-            info.append(
-                title,
-                count
-            );
-
-            card.setAttribute('role', 'button');
-            card.setAttribute('tabindex', '0');
-            card.setAttribute('aria-label', `${collectionName}, ${parts.length} Film`);
-
-            card.append(
-                image,
-                info
-            );
-
-            const activateCollection = () => {
-                openCollection(
-                    collectionId
-                );
-            };
-
-            card.addEventListener(
-                'click',
-                activateCollection
-            );
-
-            card.addEventListener(
-                'keydown',
-                (e) => {
-                    if (e.key === 'Enter' || e.key === ' ') {
-                        e.preventDefault();
-                        activateCollection();
-                    }
-                }
-            );
-
-            fragment.appendChild(
-                card
-            );
-        });
-
-        if (
-            routeContext
-                ?.signal
-                ?.aborted
-        ) {
-            return;
-        }
-
-        if (
-            routeContext &&
-            expectedPage &&
-            !isRouteContextCurrent(
-                routeContext,
-                expectedPage
-            )
-        ) {
-            return;
-        }
-
-        container.replaceChildren(
-            fragment
+        const allCached = HOME_CURATED_COLLECTIONS.every(c =>
+            Boolean(getCachedCuratedCollection(c.id))
         );
 
-        let direction = 1;
-
-        if (
-            curatedCollectionsAutoScrollInterval !==
-            null
-        ) {
-            clearInterval(
-                curatedCollectionsAutoScrollInterval
+        if (allCached) {
+            const fragment = document.createDocumentFragment();
+            HOME_CURATED_COLLECTIONS.forEach(c => {
+                const data = getCachedCuratedCollection(c.id);
+                const card = buildCuratedCollectionCard(
+                    { data, c, collectionId: c.id },
+                    backdropBase,
+                    posterBase
+                );
+                if (card) {
+                    fragment.appendChild(card);
+                }
+            });
+            if (!isStillValid()) {
+                return;
+            }
+            container.replaceChildren(fragment);
+            startHorizontalAutoScroll(
+                container,
+                timer => { curatedCollectionsAutoScrollInterval = timer; },
+                () => curatedCollectionsAutoScrollInterval
             );
-            curatedCollectionsAutoScrollInterval = null;
-        }
-
-        if (typeof prefersReducedMotion === 'function' && prefersReducedMotion()) {
+            makeScrollable(container);
             return;
         }
 
-        curatedCollectionsAutoScrollInterval =
-            setInterval(
-                () => {
-                    if (
-                        !container
-                            .classList
-                            .contains(
-                                'active'
-                            )
-                    ) {
-                        container.scrollLeft +=
-                            direction;
+        if (routeContext) {
+            const section = document.getElementById('collections-section') || container;
+            await waitForHomeSectionVisible(section, routeContext.signal, 250);
+            if (!isStillValid()) {
+                return;
+            }
+        }
 
-                        if (
-                            container.scrollLeft >=
-                            (
-                                container.scrollWidth -
-                                container.clientWidth -
-                                1
-                            )
-                        ) {
-                            direction =
-                                -1;
-                        } else if (
-                            container.scrollLeft <=
-                            0
-                        ) {
-                            direction =
-                                1;
-                        }
-                    }
-                },
-                30
+        const initialBatch =
+            HOME_CURATED_COLLECTIONS.slice(0, HOME_INITIAL_COLLECTION_COUNT);
+
+        const deferredBatch =
+            HOME_CURATED_COLLECTIONS.slice(HOME_INITIAL_COLLECTION_COUNT);
+
+        const stage1Results =
+            await fetchCuratedCollectionBatch(
+                initialBatch,
+                routeContext?.signal
             );
+
+        if (!isStillValid()) {
+            return;
+        }
+
+        const stage1Fragment =
+            document.createDocumentFragment();
+
+        stage1Results.forEach(result => {
+            const card = buildCuratedCollectionCard(
+                result,
+                backdropBase,
+                posterBase
+            );
+            if (card) {
+                stage1Fragment.appendChild(card);
+            }
+        });
+
+        container.replaceChildren(
+            stage1Fragment
+        );
+
+        startHorizontalAutoScroll(
+            container,
+            timer => { curatedCollectionsAutoScrollInterval = timer; },
+            () => curatedCollectionsAutoScrollInterval
+        );
 
         makeScrollable(
             container
         );
+
+        if (deferredBatch.length === 0) {
+            return;
+        }
+
+        const deferredAllCached = deferredBatch.every(c =>
+            Boolean(getCachedCuratedCollection(c.id))
+        );
+
+        if (routeContext && !deferredAllCached) {
+            await waitForHomeDeferredStage(
+                container,
+                routeContext.signal,
+                { idleTimeoutMs: 500, fallbackDelayMs: 150 }
+            );
+            if (!isStillValid()) {
+                return;
+            }
+        }
+
+        const stage2Results =
+            await fetchCuratedCollectionBatch(
+                deferredBatch,
+                routeContext?.signal
+            );
+
+        if (!isStillValid()) {
+            return;
+        }
+
+        const existingIds = new Set(
+            Array.from(container.querySelectorAll('[data-collection-id]'))
+                .map(el => el.dataset.collectionId)
+        );
+
+        const stage2Fragment =
+            document.createDocumentFragment();
+
+        stage2Results.forEach(result => {
+            if (!result || existingIds.has(String(result.collectionId))) {
+                return;
+            }
+            const card = buildCuratedCollectionCard(
+                result,
+                backdropBase,
+                posterBase
+            );
+            if (card) {
+                stage2Fragment.appendChild(card);
+            }
+        });
+
+        if (stage2Fragment.childNodes.length > 0) {
+            container.appendChild(stage2Fragment);
+        }
     } catch (error) {
         if (
             error.name ===
@@ -1832,17 +2237,11 @@ async function openCollection(
     );
 
     try {
-        const res =
-            await fetch(
-                `${BASE_URL}/collection/${safeCollectionId}?api_key=${API_KEY}&language=tr-TR`,
-                {
-                    signal:
-                        routeContext.signal
-                }
-            );
-
         const data =
-            await res.json();
+            await getCuratedCollectionData(
+                safeCollectionId,
+                routeContext.signal
+            );
 
         if (
             routeContext
@@ -1853,6 +2252,10 @@ async function openCollection(
                 routeGeneration
         ) {
             return;
+        }
+
+        if (!data) {
+            throw new Error('Koleksiyon verisi alınamadı');
         }
 
         const rawName =
@@ -1971,16 +2374,9 @@ async function openCollection(
             header
         );
 
-        let cardsHtml = '';
-
-        parts.forEach(item => {
-            cardsHtml +=
-                createMovieCard(
-                    item,
-                    'movie',
-                    ''
-                );
-        });
+        const cardsHtml = typeof createMovieCardsBatch === 'function'
+            ? createMovieCardsBatch(parts, 'movie', '')
+            : parts.map(item => createMovieCard(item, 'movie', '')).join('');
 
         if (cardsHtml) {
             const template =
@@ -2035,59 +2431,12 @@ async function loadSmartRecommendations(
     routeContext = null,
     expectedPage = null
 ) {
-    let rated = [];
-    let ratings = {};
-
-    try {
-        const parsedRated =
-            JSON.parse(
-                localStorage.getItem(
-                    'ratedMovies'
-                ) ||
-                '[]'
-            );
-
-        if (
-            Array.isArray(
-                parsedRated
-            )
-        ) {
-            rated =
-                parsedRated;
-        }
-    } catch (error) {
-        console.warn(
-            'Rated movies okunamadı:',
-            error
-        );
-    }
-
-    try {
-        const parsedRatings =
-            JSON.parse(
-                localStorage.getItem(
-                    'movieRatings'
-                ) ||
-                '{}'
-            );
-
-        if (
-            parsedRatings !== null &&
-            typeof parsedRatings ===
-                'object' &&
-            !Array.isArray(
-                parsedRatings
-            )
-        ) {
-            ratings =
-                parsedRatings;
-        }
-    } catch (error) {
-        console.warn(
-            'Movie ratings okunamadı:',
-            error
-        );
-    }
+    const rated = typeof safeReadStorage === 'function'
+        ? safeReadStorage('ratedMovies', [])
+        : [];
+    const ratings = typeof safeReadStorage === 'function'
+        ? safeReadStorage('movieRatings', {})
+        : {};
 
     const section =
         document.getElementById(
@@ -2185,6 +2534,24 @@ async function loadSmartRecommendations(
     );
 
     try {
+        const isHomeBackgroundCall =
+            Boolean(routeContext) &&
+            !document.getElementById('profile')?.classList.contains('active-tab');
+
+        if (isHomeBackgroundCall) {
+            await waitForHomeDeferredStage(
+                null,
+                routeContext.signal,
+                { idleTimeoutMs: 600, fallbackDelayMs: 200 }
+            );
+            if (
+                expectedPage &&
+                !isRouteContextCurrent(routeContext, expectedPage)
+            ) {
+                return;
+            }
+        }
+
         ratedWithScores.sort(
             (a, b) =>
                 b.user_rating -
@@ -2197,60 +2564,67 @@ async function loadSmartRecommendations(
                 5
             );
 
-        let recommendedMovies = [];
+        const recommendationChunks =
+            await runHomeTasksWithConcurrency(
+                topMovies,
+                3,
+                async movie => {
+                    const movieId =
+                        normalizeTmdbId(
+                            movie.id
+                        );
 
-        for (
-            const movie
-            of topMovies
-        ) {
-            const movieId =
-                normalizeTmdbId(
-                    movie.id
-                );
+                    const mediaType =
+                        normalizeMediaType(
+                            movie.media_type,
+                            'movie'
+                        );
 
-            const mediaType =
-                normalizeMediaType(
-                    movie.media_type,
-                    'movie'
-                );
-
-            if (
-                !movieId ||
-                !mediaType
-            ) {
-                continue;
-            }
-
-            const res =
-                await fetch(
-                    `${BASE_URL}/${mediaType}/${movieId}/recommendations?api_key=${API_KEY}&language=tr-TR`,
-                    {
-                        signal:
-                            routeContext
-                                ?.signal
+                    if (
+                        !movieId ||
+                        !mediaType
+                    ) {
+                        return [];
                     }
-                );
 
-            const data =
-                await res.json();
+                    const res =
+                        await fetch(
+                            `${BASE_URL}/${mediaType}/${movieId}/recommendations?api_key=${API_KEY}&language=tr-TR`,
+                            {
+                                signal:
+                                    routeContext
+                                        ?.signal
+                            }
+                        );
 
-            if (
-                Array.isArray(
-                    data?.results
-                )
-            ) {
-                recommendedMovies.push(
-                    ...data.results.map(rec => ({
+                    if (!res.ok) {
+                        return [];
+                    }
+
+                    const data =
+                        await res.json();
+
+                    if (
+                        !Array.isArray(
+                            data?.results
+                        )
+                    ) {
+                        return [];
+                    }
+
+                    return data.results.map(rec => ({
                         ...rec,
                         media_type:
                             normalizeMediaType(
                                 rec?.media_type,
                                 mediaType
                             ) || mediaType
-                    }))
-                );
-            }
-        }
+                    }));
+                }
+            );
+
+        let recommendedMovies =
+            recommendationChunks.flat();
 
         const blockedGenres = [
             99,
@@ -2574,7 +2948,7 @@ async function loadSmartRecommendations(
             );
         }
 
-        let html = '';
+        const normalizedFinalMovies = [];
 
         finalMovies.forEach(item => {
             const itemId =
@@ -2603,13 +2977,12 @@ async function loadSmartRecommendations(
             item.media_type =
                 mediaType;
 
-            html +=
-                createMovieCard(
-                    item,
-                    mediaType,
-                    'smart'
-                );
+            normalizedFinalMovies.push(item);
         });
+
+        const html = typeof createMovieCardsBatch === 'function'
+            ? createMovieCardsBatch(normalizedFinalMovies, null, 'smart')
+            : normalizedFinalMovies.map(item => createMovieCard(item, item.media_type, 'smart')).join('');
 
         if (
             routeContext &&

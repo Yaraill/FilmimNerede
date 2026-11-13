@@ -29,17 +29,14 @@ function toggleSelectVisibility(id, show) {
 function showSkeletons(containerId, count = 10) {
     const container = document.getElementById(containerId);
     if (!container) return;
-    let html = '';
-    for(let i=0; i<count; i++) {
-        html += `
-            <div class="movie-card" style="border:none; background:transparent;">
-                <div class="skeleton" style="width:100%; height:300px; border-radius:10px;"></div>
-                <div class="skeleton" style="width:80%; height:20px; margin-top:10px;"></div>
-                <div class="skeleton" style="width:50%; height:15px; margin-top:5px;"></div>
-            </div>
-        `;
-    }
-    container.innerHTML = html;
+    const skeletonCard = `
+        <div class="movie-card skeleton-card" style="border:none; background:transparent;">
+            <div class="skeleton" style="width:100%; height:300px; border-radius:10px;"></div>
+            <div class="skeleton" style="width:80%; height:20px; margin-top:10px;"></div>
+            <div class="skeleton" style="width:50%; height:15px; margin-top:5px;"></div>
+        </div>
+    `;
+    container.innerHTML = skeletonCard.repeat(Math.max(0, count));
 }
 
 
@@ -122,7 +119,131 @@ function buyTicket(movieId) {
 }
 
 
-function createMovieCard(item, mediaType = "movie", tabContext = "") {
+function getSizedTmdbImageBase(size, fallbackBase) {
+    const defaultBase =
+        typeof IMAGE_BASE === 'string' && IMAGE_BASE
+            ? IMAGE_BASE
+            : 'https://image.tmdb.org/t/p/w500';
+    const base =
+        typeof fallbackBase === 'string' && fallbackBase
+            ? fallbackBase
+            : defaultBase;
+    return base.replace(/\/t\/p\/[^/]+$/, `/t/p/${size}`);
+}
+
+let cachedWatchlistRaw = undefined;
+let cachedWatchlistKeys = new Set();
+let cachedWatchlistLegacyIds = new Set();
+
+/**
+ * Memoizes parsed watchlist entries by raw storage string so batch card renders
+ * avoid repeated JSON.parse and O(N) scans while remaining immediately fresh after mutations.
+ */
+function getWatchlistLookupSnapshot() {
+    let raw = null;
+    try {
+        if (typeof localStorage !== 'undefined') {
+            raw = localStorage.getItem('watchlist');
+        }
+    } catch (error) {
+        console.warn('Watchlist okunamadı:', error);
+        return { keys: new Set(), legacyIds: new Set() };
+    }
+
+    const normalizedRaw = raw || '[]';
+    if (normalizedRaw === cachedWatchlistRaw) {
+        return { keys: cachedWatchlistKeys, legacyIds: cachedWatchlistLegacyIds };
+    }
+
+    const keys = new Set();
+    const legacyIds = new Set();
+    try {
+        const parsed = JSON.parse(normalizedRaw);
+        if (Array.isArray(parsed)) {
+            for (let i = 0; i < parsed.length; i++) {
+                const entry = parsed[i];
+                const entryId = normalizeTmdbId(entry?.id);
+                if (!entryId) continue;
+                const entryType = typeof inferItemMediaType === 'function'
+                    ? inferItemMediaType(entry, null)
+                    : normalizeMediaType(entry?.media_type, null);
+                if (entryType) {
+                    keys.add(`${entryType}:${entryId}`);
+                } else {
+                    legacyIds.add(entryId);
+                }
+            }
+        }
+    } catch (error) {
+        console.warn('Watchlist okunamadı:', error);
+    }
+
+    cachedWatchlistRaw = normalizedRaw;
+    cachedWatchlistKeys = keys;
+    cachedWatchlistLegacyIds = legacyIds;
+    return { keys, legacyIds };
+}
+
+let cachedMovieRatingsRaw = undefined;
+let cachedMovieRatingsMap = {};
+
+/**
+ * Memoizes parsed movieRatings by raw storage string so card batches do not
+ * re-parse JSON per card while immediately reflecting any localStorage mutation.
+ */
+function getMovieRatingsSnapshot() {
+    let raw = null;
+    try {
+        if (typeof localStorage !== 'undefined') {
+            raw = localStorage.getItem('movieRatings');
+        }
+    } catch (error) {
+        console.warn('Storage okunamadı (movieRatings):', error);
+        return {};
+    }
+
+    const normalizedRaw = raw || '{}';
+    if (normalizedRaw === cachedMovieRatingsRaw) {
+        return cachedMovieRatingsMap;
+    }
+
+    let ratings = {};
+    try {
+        const parsed = JSON.parse(normalizedRaw);
+        if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+            ratings = parsed;
+        }
+    } catch (error) {
+        console.warn('Storage okunamadı (movieRatings):', error);
+    }
+
+    cachedMovieRatingsRaw = normalizedRaw;
+    cachedMovieRatingsMap = ratings;
+    return ratings;
+}
+
+function createMovieCardsBatch(items, defaultMediaType = "movie", tabContext = "") {
+    if (!Array.isArray(items) || items.length === 0) {
+        return '';
+    }
+    const renderOptions = {
+        watchlistSnapshot: getWatchlistLookupSnapshot(),
+        savedRatings: getMovieRatingsSnapshot()
+    };
+    let html = '';
+    for (let i = 0; i < items.length; i++) {
+        const item = items[i];
+        const resolvedType = defaultMediaType || (
+            typeof inferItemMediaType === 'function'
+                ? inferItemMediaType(item, 'movie')
+                : normalizeMediaType(item?.media_type, 'movie')
+        );
+        html += createMovieCard(item, resolvedType, tabContext, renderOptions);
+    }
+    return html;
+}
+
+function createMovieCard(item, mediaType = "movie", tabContext = "", renderOptions = null) {
     if (!item || typeof item !== 'object') {
         return '';
     }
@@ -163,10 +284,13 @@ function createMovieCard(item, mediaType = "movie", tabContext = "") {
             ? `${title} (${year})`
             : title;
 
+    const posterBase =
+        getSizedTmdbImageBase('w342', IMAGE_BASE);
+
     const poster =
         getSafeTmdbImageUrl(
             item.poster_path,
-            IMAGE_BASE,
+            posterBase,
             'assets/placeholder.svg'
         );
 
@@ -189,33 +313,15 @@ function createMovieCard(item, mediaType = "movie", tabContext = "") {
                 : ''
         );
 
-    let watchlist = [];
-
-    try {
-        const storedWatchlist =
-            JSON.parse(
-                localStorage.getItem('watchlist') ||
-                '[]'
-            );
-
-        if (Array.isArray(storedWatchlist)) {
-            watchlist = storedWatchlist;
-        }
-    } catch (error) {
-        console.warn(
-            'Watchlist okunamadı:',
-            error
-        );
-    }
+    const watchlistSnapshot =
+        renderOptions?.watchlistSnapshot ||
+        getWatchlistLookupSnapshot();
 
     const isSaved =
-        watchlist.some(entry => {
-            if (normalizeTmdbId(entry?.id) !== itemId) return false;
-            const entryType = typeof inferItemMediaType === 'function'
-                ? inferItemMediaType(entry, null)
-                : normalizeMediaType(entry?.media_type, null);
-            return !entryType || entryType === normalizedMediaType;
-        })
+        (
+            watchlistSnapshot.keys.has(`${normalizedMediaType}:${itemId}`) ||
+            watchlistSnapshot.legacyIds.has(itemId)
+        )
             ? 'active'
             : '';
 
@@ -241,8 +347,12 @@ function createMovieCard(item, mediaType = "movie", tabContext = "") {
         media_type:
             normalizedMediaType
     };
-    window.movieCache[itemId] = cachedItemObj;
-    window.movieCache[`${normalizedMediaType}:${itemId}`] = cachedItemObj;
+    if (typeof setCachedMedia === 'function') {
+        setCachedMedia(cachedItemObj, normalizedMediaType);
+    } else {
+        window.movieCache[itemId] = cachedItemObj;
+        window.movieCache[`${normalizedMediaType}:${itemId}`] = cachedItemObj;
+    }
 
     let dateOrProviderHtml = '';
 
@@ -316,9 +426,9 @@ function createMovieCard(item, mediaType = "movie", tabContext = "") {
             : 'Konu özeti bulunmuyor.';
 
     let userRatingBadgeHtml = '';
-    const savedRatings = typeof safeReadStorage === 'function'
-        ? safeReadStorage('movieRatings', {})
-        : (typeof localStorage !== 'undefined' ? JSON.parse(localStorage.getItem('movieRatings') || '{}') : {});
+    const savedRatings =
+        renderOptions?.savedRatings ||
+        getMovieRatingsSnapshot();
     const userRating = (savedRatings && typeof getUserRatingForMedia === 'function')
         ? getUserRatingForMedia(savedRatings, itemId, normalizedMediaType)
         : null;
@@ -428,6 +538,15 @@ async function startHoverSlideshow(imgElement, movieId, mediaType = null) {
             imgElement.src;
     }
 
+    if (hoverSlideshowTimer) {
+        clearTimeout(hoverSlideshowTimer);
+        hoverSlideshowTimer = null;
+    }
+    if (hoverSlideshowInterval) {
+        clearInterval(hoverSlideshowInterval);
+        hoverSlideshowInterval = null;
+    }
+
     imgElement.dataset.isHovered = 'true';
     movieId = safeMovieId;
 
@@ -449,13 +568,14 @@ async function startHoverSlideshow(imgElement, movieId, mediaType = null) {
                     const res = await fetch(`${BASE_URL}/${type}/${movieId}/images?api_key=${API_KEY}`);
                     if (!res.ok) return;
                     const data = await res.json();
+                    const hoverBackdropBase = getSizedTmdbImageBase('w780', BACKDROP_BASE);
                     const extraImages =
                         (data.backdrops || [])
                             .slice(0, 5)
                             .map(backdrop =>
                                 getSafeTmdbImageUrl(
                                     backdrop?.file_path,
-                                    BACKDROP_BASE,
+                                    hoverBackdropBase,
                                     null
                                 )
                             )

@@ -586,6 +586,89 @@ function handlePlatformButtonClick(pid) {
 
 
 let platformRequestGeneration = 0;
+const PLATFORM_RUNTIME_CACHE_MAX_SIZE = 300;
+const PLATFORM_RUNTIME_CONCURRENCY = 5;
+const platformMovieRuntimeCache = new Map();
+
+function getCachedPlatformMovieRuntime(movieId) {
+    const safeId = normalizeTmdbId(movieId);
+    if (!safeId) return null;
+    const key = `movie:${safeId}`;
+    if (platformMovieRuntimeCache.has(key)) {
+        const val = platformMovieRuntimeCache.get(key);
+        platformMovieRuntimeCache.delete(key);
+        platformMovieRuntimeCache.set(key, val);
+        return val;
+    }
+    const cachedMedia = typeof getCachedMedia === 'function'
+        ? getCachedMedia(safeId, 'movie')
+        : null;
+    const cachedRt = Number(cachedMedia?.runtime);
+    if (Number.isFinite(cachedRt) && cachedRt > 0) {
+        return cachedRt;
+    }
+    return null;
+}
+
+function setCachedPlatformMovieRuntime(movieId, runtimeVal) {
+    const safeId = normalizeTmdbId(movieId);
+    if (!safeId || !Number.isFinite(runtimeVal) || runtimeVal <= 0) return;
+    const key = `movie:${safeId}`;
+    if (platformMovieRuntimeCache.has(key)) {
+        platformMovieRuntimeCache.delete(key);
+    }
+    while (platformMovieRuntimeCache.size >= PLATFORM_RUNTIME_CACHE_MAX_SIZE) {
+        const oldestKey = platformMovieRuntimeCache.keys().next().value;
+        if (oldestKey === undefined) break;
+        platformMovieRuntimeCache.delete(oldestKey);
+    }
+    platformMovieRuntimeCache.set(key, runtimeVal);
+}
+
+async function fetchMovieRuntimesBounded(items, routeContext, requestGeneration) {
+    const output = new Array(items.length);
+    let nextIndex = 0;
+
+    async function worker() {
+        while (nextIndex < items.length) {
+            if (requestGeneration !== platformRequestGeneration || currentMode !== 'platform') return;
+            if (routeContext?.signal?.aborted) return;
+
+            const idx = nextIndex++;
+            const item = items[idx];
+            const cachedRuntime = getCachedPlatformMovieRuntime(item?.id);
+            if (cachedRuntime !== null) {
+                output[idx] = { item, runtime: cachedRuntime };
+                continue;
+            }
+
+            try {
+                const detailRes = await fetch(
+                    `${BASE_URL}/movie/${item.id}?api_key=${API_KEY}&language=tr-TR`,
+                    { signal: routeContext?.signal }
+                );
+                if (!detailRes.ok) {
+                    output[idx] = { item, runtime: null };
+                    continue;
+                }
+                const detailData = await detailRes.json();
+                const rtVal = Number(detailData?.runtime);
+                const validRuntime = (Number.isFinite(rtVal) && rtVal > 0) ? rtVal : null;
+                if (validRuntime !== null) {
+                    setCachedPlatformMovieRuntime(item.id, validRuntime);
+                }
+                output[idx] = { item, runtime: validRuntime };
+            } catch (e) {
+                if (e?.name === 'AbortError') throw e;
+                output[idx] = { item, runtime: null };
+            }
+        }
+    }
+
+    const workerCount = Math.min(PLATFORM_RUNTIME_CONCURRENCY, items.length);
+    await Promise.all(Array.from({ length: workerCount }, () => worker()));
+    return output;
+}
 
 async function loadPlatformMovies(providerId = 0, reset = true, isFilterChange = false, routeContext = null) {
     const requestGeneration = reset
@@ -642,13 +725,15 @@ async function loadPlatformMovies(providerId = 0, reset = true, isFilterChange =
     const mediaType = document.getElementById('mediaTypeFilter')?.value || "all";
     const yearVal = document.getElementById('yearFilter')?.value || "";
     
-    let typesToFetch = mediaType === "all" ? ["movie", "tv"] : [mediaType];
+    const runtime = document.getElementById('runtimeFilter') ? document.getElementById('runtimeFilter').value : "";
+    const typesToFetch = (mediaType === "all" ? ["movie", "tv"] : [mediaType])
+        .filter(type => !(type === "tv" && runtime));
     let allResults = [];
     let maxTotalPages = 1;
     const sortBy = document.getElementById('sortByFilter') ? document.getElementById('sortByFilter').value : 'popularity.desc';
     
     try {
-        for (let type of typesToFetch) {
+        const typePayloads = await Promise.all(typesToFetch.map(async (type) => {
             let url = `${BASE_URL}/discover/${type}?api_key=${API_KEY}&language=tr-TR&page=${currentPage}&include_adult=false&vote_count.gte=1000&without_keywords=210024,198385,195669`;
             
             // Exclude Talk shows (10767), News (10763), Reality (10764)
@@ -684,13 +769,6 @@ async function loadPlatformMovies(providerId = 0, reset = true, isFilterChange =
                 else if (sortBy === "primary_release_date.asc") apiSortBy = "first_air_date.asc";
             }
             url += `&sort_by=${apiSortBy}`;
-            
-            const runtime = document.getElementById('runtimeFilter') ? document.getElementById('runtimeFilter').value : "";
-            
-            // Skip TV Shows if a runtime filter is active
-            if (type === "tv" && runtime) {
-                continue;
-            }
 
             if (runtime) {
                 if (runtime == '90') {
@@ -708,12 +786,11 @@ async function loadPlatformMovies(providerId = 0, reset = true, isFilterChange =
             if (!res.ok) throw new Error(`HTTP ${res.status}`);
             const data = await res.json();
             
-            if (requestGeneration !== platformRequestGeneration || currentMode !== "platform") return;
-            if (routeContext && !isRouteContextCurrent(routeContext, "platform")) return;
-            
-            if (Number.isFinite(Number(data?.total_pages)) && Number(data.total_pages) > maxTotalPages) {
-                maxTotalPages = Number(data.total_pages);
-            }
+            if (requestGeneration !== platformRequestGeneration || currentMode !== "platform") return null;
+            if (routeContext && !isRouteContextCurrent(routeContext, "platform")) return null;
+
+            const totalPages = Number.isFinite(Number(data?.total_pages)) ? Number(data.total_pages) : 1;
+            let validResults = [];
 
             if (data.results && data.results.length > 0) {
                 let results = data.results;
@@ -721,22 +798,16 @@ async function loadPlatformMovies(providerId = 0, reset = true, isFilterChange =
                 // Fetch strict runtime details if filter is active
                 if (runtime && type === "movie") {
                     results = results.slice(0, 20);
-                    const detailedResults = await Promise.all(results.map(async (item) => {
-                        try {
-                            const detailRes = await fetch(`${BASE_URL}/movie/${item.id}?api_key=${API_KEY}&language=tr-TR`, { signal: routeContext?.signal });
-                            if (!detailRes.ok) return { item, runtime: null };
-                            const detailData = await detailRes.json();
-                            const rtVal = Number(detailData?.runtime);
-                            return { item, runtime: (Number.isFinite(rtVal) && rtVal > 0) ? rtVal : null };
-                        } catch(e) {
-                            return { item, runtime: null };
-                        }
-                    }));
+                    const detailedResults = await fetchMovieRuntimesBounded(
+                        results,
+                        routeContext,
+                        requestGeneration
+                    );
                     
-                    if (requestGeneration !== platformRequestGeneration || currentMode !== "platform") return;
+                    if (requestGeneration !== platformRequestGeneration || currentMode !== "platform") return null;
 
                     results = detailedResults.filter(detail => {
-                        const rt = detail.runtime;
+                        const rt = detail?.runtime;
                         if (!Number.isFinite(rt) || rt <= 0) return false;
                         if (runtime == '90') return rt <= 90;
                         if (runtime == '120') return rt > 90 && rt <= 105;
@@ -746,16 +817,29 @@ async function loadPlatformMovies(providerId = 0, reset = true, isFilterChange =
                     }).map(detail => detail.item);
                 }
 
-                let validResults = results.filter(m => !m.title?.toLowerCase().includes('making of') && !m.name?.toLowerCase().includes('making of') && !m.title?.toLowerCase().includes('marvel studios assembled') && !m.title?.toLowerCase().includes('the odyssey: the making of'));
-                
-                allResults = allResults.concat(validResults.map(item => {
-                    item.media_type = type;
-                    return item;
-                }));
+                validResults = results
+                    .filter(m => !m.title?.toLowerCase().includes('making of') && !m.name?.toLowerCase().includes('making of') && !m.title?.toLowerCase().includes('marvel studios assembled') && !m.title?.toLowerCase().includes('the odyssey: the making of'))
+                    .map(item => {
+                        item.media_type = type;
+                        return item;
+                    });
+            }
+
+            return { totalPages, validResults };
+        }));
+
+        if (requestGeneration !== platformRequestGeneration || currentMode !== "platform") return;
+        if (routeContext && !isRouteContextCurrent(routeContext, "platform")) return;
+
+        for (const payload of typePayloads) {
+            if (!payload) return;
+            if (payload.totalPages > maxTotalPages) {
+                maxTotalPages = payload.totalPages;
+            }
+            if (payload.validResults.length > 0) {
+                allResults = allResults.concat(payload.validResults);
             }
         }
-        
-        if (requestGeneration !== platformRequestGeneration || currentMode !== "platform") return;
 
         const getDateVal = (item) => {
             const parsed = Date.parse(item.release_date || item.first_air_date || '');
@@ -803,11 +887,19 @@ async function loadPlatformMovies(providerId = 0, reset = true, isFilterChange =
             );
         }
 
+        const seenProviderKeys = new Set();
         for (let i = 0; i < allResults.length; i++) {
+            const item = allResults[i];
+            const itemId = normalizeTmdbId(item?.id);
+            const itemType = normalizeMediaType(item?.media_type, 'movie');
+            if (!itemId || !itemType) continue;
+            const key = `${itemType}:${itemId}`;
+            if (seenProviderKeys.has(key)) continue;
+            seenProviderKeys.add(key);
             fetchAndInjectProviders(
-                allResults[i].id,
-                allResults[i].media_type,
-                null,
+                itemId,
+                itemType,
+                item,
                 routeContext
             );
         }
