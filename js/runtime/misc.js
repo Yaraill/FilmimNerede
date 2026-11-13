@@ -228,71 +228,8 @@ function toggleAdvancedSearch() {
 }
 
 async function executeDiscover() {
-    const discoverTypeEl = document.getElementById('discover-type');
-    if (!discoverTypeEl) {
-        if (typeof toggleAdvancedSearch === 'function') toggleAdvancedSearch();
-        if (typeof applyPlatformFilters === 'function') applyPlatformFilters();
-        return;
-    }
-    const type = discoverTypeEl.value;
-    const yearMin = document.getElementById('discover-year-min').value;
-    const yearMax = document.getElementById('discover-year-max').value;
-    const rating = document.getElementById('discover-rating').value;
-    
-    const checkboxes = document.querySelectorAll('.discover-genre-cb:checked');
-    const genreIds = Array.from(checkboxes).map(cb => cb.value).join(',');
-    
-    let query = `${BASE_URL}/discover/${type}?api_key=${API_KEY}&language=tr-TR&vote_average.gte=${rating}`;
-    if (yearMin) query += `&primary_release_date.gte=${yearMin}-01-01`;
-    if (yearMax) query += `&primary_release_date.lte=${yearMax}-12-31`;
-    if (genreIds) query += `&with_genres=${genreIds}`;
-    
-    // Check if a platform is currently selected
-    if (currentProvider > 0) {
-        query += `&with_watch_providers=${currentProvider}&watch_region=TR`;
-    }
-    
-    toggleAdvancedSearch(); // Close the panel after search
-    
-    // Setup UI for results
-    currentMode = "search";
-    currentPage = 1;
-    document.querySelectorAll('.tab-content').forEach(tab => tab.classList.remove('active-tab'));
-    document.getElementById('platform').classList.add('active-tab');
-    
-    document.getElementById('top10-section').style.display = 'none';
-    const container = document.getElementById('search-results');
-    container.innerHTML = "";
-    showSkeletons('search-results', 20);
-    
-    try {
-        const res = await fetch(query);
-        const data = await res.json();
-        
-        container.innerHTML = "";
-        
-        if (data.results.length === 0) {
-            container.innerHTML = "<div class='no-provider'>Sonuç bulunamadı. Lütfen filtreleri gevşetin.</div>";
-            return;
-        }
-        
-        let html = `<h2 style="grid-column: 1/-1; margin-bottom: 20px;">Keşif Sonuçları</h2>`;
-        data.results.forEach(item => {
-            html += createMovieCard(item, type, "");
-        });
-        container.innerHTML = html;
-        
-        data.results.forEach(item => {
-            fetchAndInjectProviders(item.id, type, item);
-        });
-    } catch (e) {
-        renderSafeError(
-            'search-results',
-            'Keşif sonuçları yüklenirken bir sorun oluştu. Lütfen tekrar deneyin.',
-            e,
-            'no-provider'
-        );
-    }
+    if (typeof toggleAdvancedSearch === 'function') toggleAdvancedSearch();
+    if (typeof applyPlatformFilters === 'function') await applyPlatformFilters();
 }
 
 function setGameIconText(
