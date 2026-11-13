@@ -30,6 +30,7 @@ const movieDetailCache = new Map();
 const movieDetailInflight = new Map();
 const movieCollectionCache = new Map();
 const movieCollectionInflight = new Map();
+let movieTrailerRequest = null;
 
 function createMovieAbortError() {
     const err = new Error('The operation was aborted.');
@@ -2615,8 +2616,12 @@ if (imdbId) {
 
     if (!isRouteContextCurrent(routeContext, "movie", movieId)) return;
 
-    modal.classList.add('active');
-    document.body.style.overflow = "hidden";
+    if (modal && !window.ModalManager) {
+        modal.style.display = 'flex';
+        modal.classList.add('active');
+        modal.removeAttribute('aria-hidden');
+        document.body.style.overflow = "hidden";
+    }
     
     // History API handled centrally
     } catch (e) {
@@ -2652,6 +2657,13 @@ async function openTrailer(
     id,
     mediaType
 ) {
+    if (movieTrailerRequest) {
+        if (movieTrailerRequest.controller) {
+            movieTrailerRequest.controller.abort();
+        }
+        movieTrailerRequest = null;
+    }
+
     const safeId =
         normalizeTmdbId(id);
 
@@ -2720,6 +2732,23 @@ async function openTrailer(
             );
     }
 
+    const requestToken = {
+        id: safeId,
+        mediaType: safeMediaType,
+        controller:
+            typeof AbortController === 'function'
+                ? new AbortController()
+                : null
+    };
+    movieTrailerRequest = requestToken;
+
+    const isTrailerRequestCurrent = () =>
+        movieTrailerRequest === requestToken &&
+        modal.classList.contains('active') &&
+        (!window.ModalManager ||
+            typeof window.ModalManager.isModalOpen !== 'function' ||
+            window.ModalManager.isModalOpen(modal));
+
     try {
         const findBestYouTubeVideo = videoList => {
             if (!Array.isArray(videoList) || videoList.length === 0) {
@@ -2750,15 +2779,38 @@ async function openTrailer(
         let trailer = findBestYouTubeVideo(cachedExtended?.videos?.results);
 
         if (!trailer) {
+            const fetchOptions = requestToken.controller
+                ? { signal: requestToken.controller.signal }
+                : undefined;
+
             const res =
                 await fetch(
-                    `${BASE_URL}/${safeMediaType}/${safeId}/videos?api_key=${API_KEY}`
+                    `${BASE_URL}/${safeMediaType}/${safeId}/videos?api_key=${API_KEY}`,
+                    fetchOptions
                 );
+
+            if (!isTrailerRequestCurrent()) {
+                return;
+            }
+
+            if (!res.ok) {
+                container.innerHTML =
+                    "<div style='color:white;text-align:center;padding-top:20%;font-size:1.2rem'>Bu yapım için fragman bulunamadı 😔</div>";
+                return;
+            }
 
             const data =
                 await res.json();
 
+            if (!isTrailerRequestCurrent()) {
+                return;
+            }
+
             trailer = findBestYouTubeVideo(data?.results);
+        }
+
+        if (!isTrailerRequestCurrent()) {
+            return;
         }
 
         if (trailer) {
@@ -2775,8 +2827,19 @@ async function openTrailer(
                 "<div style='color:white;text-align:center;padding-top:20%;font-size:1.2rem'>Bu yapım için fragman bulunamadı 😔</div>";
         }
     } catch (error) {
+        if (
+            (error && error.name === 'AbortError') ||
+            requestToken.controller?.signal?.aborted ||
+            !isTrailerRequestCurrent()
+        ) {
+            return;
+        }
         container.innerHTML =
             "<div style='color:red;text-align:center;padding-top:20%;'>Fragman yüklenirken hata oluştu!</div>";
+    } finally {
+        if (movieTrailerRequest === requestToken) {
+            movieTrailerRequest = null;
+        }
     }
 }
 
@@ -2915,6 +2978,13 @@ function closeTrailer(event, force = false) {
 
     const isBackdropClick = Boolean(event && event.target === modal);
     if (force || isBackdropClick) {
+        if (movieTrailerRequest) {
+            if (movieTrailerRequest.controller) {
+                movieTrailerRequest.controller.abort();
+            }
+            movieTrailerRequest = null;
+        }
+
         modal.classList.remove(
             'pip-mode'
         );
@@ -2988,6 +3058,24 @@ function closeDetails(event, force = false) {
             }
         } else if (window.ModalManager && window.ModalManager.isModalOpen(modal)) {
             window.ModalManager.closeModal(modal);
+            const trailerModal = document.getElementById('trailer-modal');
+            const onlyPipTrailerOpen = Boolean(
+                window.ModalManager.stack?.length === 1 &&
+                trailerModal &&
+                trailerModal.classList.contains('active') &&
+                trailerModal.classList.contains('pip-mode') &&
+                window.ModalManager.isModalOpen(trailerModal)
+            );
+            if (!window.ModalManager.hasActiveModal() || onlyPipTrailerOpen) {
+                document.body.style.overflow = "auto";
+            }
+        } else {
+            modal.style.display = 'none';
+            modal.classList.remove('active');
+            modal.setAttribute('aria-hidden', 'true');
+            if (!window.ModalManager || !window.ModalManager.hasActiveModal()) {
+                document.body.style.overflow = "auto";
+            }
         }
     }
 }

@@ -182,12 +182,18 @@ exports.handler =
 
             // OMDb HTTP 200 +
             // Response:false application-level
-            // response olarak aynen korunur.
+            // response olarak aynen korunur; ancak
+            // başarısız/kota yanıtları CDN/tarayıcıda önbelleklenmez.
+            const cacheControl =
+                data?.Response === 'True'
+                    ? 'public, max-age=3600, s-maxage=86400'
+                    : 'no-store';
+
             return jsonResponse(
                 200,
                 data,
                 {
-                    'Cache-Control': 'public, max-age=3600, s-maxage=86400'
+                    'Cache-Control': cacheControl
                 }
             );
         } catch (error) {

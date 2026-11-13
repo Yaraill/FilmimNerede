@@ -9,12 +9,13 @@
     "zod": "^4.6.6"
   },
   "scripts": {
-    "test": "npm run test:static && npm run test:browser && npm run test:xss && npm run test:home-performance && npm run test:omdb-proxy && npm run test:watch-time && npm run test:profile-backup && npm run test:url-filter-state && npm run test:accessibility && npm run test:pwa && npm run test:release-stabilization && npm run test:post-release-stability && npm run test:e2e",
+    "test": "npm run test:static && npm run test:browser && npm run test:xss && npm run test:home-performance && npm run test:omdb-proxy && npm run test:tmdb-proxy && npm run test:watch-time && npm run test:profile-backup && npm run test:url-filter-state && npm run test:accessibility && npm run test:pwa && npm run test:release-stabilization && npm run test:post-release-stability && npm run test:e2e",
     "test:static": "node tests/static-smoke.js",
     "test:browser": "node tests/browser-smoke.js",
     "test:xss": "node tests/xss-regression.js",
     "test:home-performance": "node tests/home-performance-regression.js",
     "test:omdb-proxy": "node tests/omdb-proxy-regression.js",
+    "test:tmdb-proxy": "node tests/tmdb-proxy-regression.js",
     "test:watch-time": "node tests/watch-time-regression.js",
     "test:profile-backup": "node tests/profile-backup-regression.js",
     "test:url-filter-state": "node tests/url-filter-state-regression.js",

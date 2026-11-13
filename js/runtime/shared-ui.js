@@ -547,11 +547,17 @@ async function startHoverSlideshow(imgElement, movieId, mediaType = null) {
         hoverSlideshowInterval = null;
     }
 
+    const hoverToken = String((Number(imgElement.dataset.hoverToken) || 0) + 1);
+    imgElement.dataset.hoverToken = hoverToken;
     imgElement.dataset.isHovered = 'true';
     movieId = safeMovieId;
 
+    const isHoverCurrent = () =>
+        imgElement.dataset.isHovered === 'true' &&
+        imgElement.dataset.hoverToken === hoverToken;
+
     hoverSlideshowTimer = setTimeout(async () => {
-        if (imgElement.dataset.isHovered !== 'true') return;
+        if (!isHoverCurrent()) return;
         imgElement.style.transition = "none";
 
         let images = [imgElement.src];
@@ -566,8 +572,10 @@ async function startHoverSlideshow(imgElement, movieId, mediaType = null) {
             if (!window.movieImagesCache[imageCacheKey]) {
                 try {
                     const res = await fetch(`${BASE_URL}/${type}/${movieId}/images?api_key=${API_KEY}`);
+                    if (!isHoverCurrent()) return;
                     if (!res.ok) return;
                     const data = await res.json();
+                    if (!isHoverCurrent()) return;
                     const hoverBackdropBase = getSizedTmdbImageBase('w780', BACKDROP_BASE);
                     const extraImages =
                         (data.backdrops || [])
@@ -590,7 +598,7 @@ async function startHoverSlideshow(imgElement, movieId, mediaType = null) {
             }
         }
 
-        if (imgElement.dataset.isHovered !== 'true') return;
+        if (!isHoverCurrent()) return;
 
         if (images.length > 0) {
             imgElement.style.objectFit = 'contain';
@@ -598,10 +606,23 @@ async function startHoverSlideshow(imgElement, movieId, mediaType = null) {
             let index = 0;
             imgElement.src = images[index];
             if (images.length > 1) {
-                hoverSlideshowInterval = setInterval(() => {
+                if (!isHoverCurrent()) return;
+                if (hoverSlideshowInterval) {
+                    clearInterval(hoverSlideshowInterval);
+                    hoverSlideshowInterval = null;
+                }
+                const intervalId = setInterval(() => {
+                    if (!isHoverCurrent()) {
+                        clearInterval(intervalId);
+                        if (hoverSlideshowInterval === intervalId) {
+                            hoverSlideshowInterval = null;
+                        }
+                        return;
+                    }
                     index = (index + 1) % images.length;
                     imgElement.src = images[index];
                 }, 1500);
+                hoverSlideshowInterval = intervalId;
             }
         }
     }, 600); // 600ms hover delay
@@ -613,6 +634,8 @@ function stopHoverSlideshow(imgElement) {
 
     imgElement.dataset.isHovered =
         'false';
+    imgElement.dataset.hoverToken =
+        String((Number(imgElement.dataset.hoverToken) || 0) + 1);
 
     if (hoverSlideshowTimer) {
         clearTimeout(

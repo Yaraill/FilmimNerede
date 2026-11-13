@@ -442,7 +442,7 @@ function normalizeBackupRatings(value, strict = true) {
     Object.entries(value).forEach(([rawKey, rawRating]) => {
         const rating = normalizeUserRating(rawRating);
         const trimmedKey = String(rawKey || '').trim();
-        if (/^(movie|tv):d+$/.test(trimmedKey)) {
+        if (/^(movie|tv):\d+$/.test(trimmedKey)) {
             const [mType, idPart] = trimmedKey.split(':');
             const id = normalizeTmdbId(idPart);
             if (!id || rating === null) {
@@ -450,6 +450,7 @@ function normalizeBackupRatings(value, strict = true) {
                 return;
             }
             normalized[`${mType}:${id}`] = rating;
+            delete normalized[id];
             return;
         }
         const id = normalizeTmdbId(trimmedKey);
@@ -457,7 +458,9 @@ function normalizeBackupRatings(value, strict = true) {
             if (strict) throw new Error('movieRatings geçersiz kayıt içeriyor');
             return;
         }
-        normalized[id] = rating;
+        if (normalized[`movie:${id}`] === undefined && normalized[`tv:${id}`] === undefined) {
+            normalized[id] = rating;
+        }
     });
     return normalized;
 }
@@ -517,7 +520,7 @@ function mergeBackupList(currentItems, importedItems, limit = null, byMediaType 
     [...currentItems, ...importedItems].forEach(item => {
         const id = normalizeTmdbId(item?.id);
         if (!id) return;
-        const key = byMediaType && (item?.media_type || item?.title || item?.name || item?.first_air_date)
+        const key = byMediaType
             ? `${resolveProfileItemMediaType(item, null)}:${id}`
             : String(id);
         if (seenKeys.has(key)) return;
@@ -528,10 +531,23 @@ function mergeBackupList(currentItems, importedItems, limit = null, byMediaType 
 }
 
 function mergeProfileBackupData(currentData, importedData) {
+    const currentRatings = normalizeBackupRatings(currentData.movieRatings, false);
+    const movieRatings = normalizeBackupRatings(importedData.movieRatings, false);
+    Object.keys(currentRatings).forEach(key => {
+        const { id } = parseMediaKey(key);
+        delete movieRatings[key];
+        delete movieRatings[id];
+        if (/^\d+$/.test(key)) {
+            delete movieRatings[`movie:${id}`];
+            delete movieRatings[`tv:${id}`];
+        }
+    });
+    Object.assign(movieRatings, currentRatings);
+
     return {
         watchlist: mergeBackupList(currentData.watchlist, importedData.watchlist),
         ratedMovies: mergeBackupList(currentData.ratedMovies, importedData.ratedMovies),
-        movieRatings: { ...importedData.movieRatings, ...currentData.movieRatings },
+        movieRatings,
         favoriteActors: mergeBackupList(
             currentData.favoriteActors,
             importedData.favoriteActors

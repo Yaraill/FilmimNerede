@@ -1411,7 +1411,7 @@ async function loadUpcomingMovies(routeContext = null) {
     container.style.display = "";
     container.innerHTML = "<div class='loading'>Gelecek filmler çekiliyor...</div>";
     try {
-        const today = new Date().toISOString().split('T')[0];
+        const today = new Date().toLocaleDateString('sv-SE');
         const response = await fetch(`${BASE_URL}/discover/movie?api_key=${API_KEY}&language=tr-TR&region=TR&with_release_type=2|3&release_date.gte=${today}&sort_by=release_date.asc&popularity.gte=15&page=1`, { signal: routeContext?.signal });
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
         const data = await response.json();

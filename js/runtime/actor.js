@@ -116,10 +116,20 @@ async function renderActor(
         if (!isRouteContextCurrent(routeContext, "actor", actorId)) return;
 
         const personRes = await fetch(`${BASE_URL}/person/${currentActorId}?api_key=${API_KEY}&language=tr-TR`, { signal: routeContext?.signal });
+        if (!personRes.ok) {
+            const err = new Error(`Person HTTP ${personRes.status}`);
+            err.status = personRes.status;
+            throw err;
+        }
         const personData = await personRes.json();
         
         if (requestGeneration !== actorRequestGeneration) return;
         if (!isRouteContextCurrent(routeContext, "actor", actorId)) return;
+        if (!personData || typeof personData.name !== 'string' || !personData.name.trim()) {
+            const err = new Error('Oyuncu bulunamadı');
+            err.status = 404;
+            throw err;
+        }
         
         if (!actorName) {
             const searchInput = document.getElementById('searchInput');
@@ -146,6 +156,11 @@ async function renderActor(
             );
         
         const creditsRes = await fetch(`${BASE_URL}/person/${currentActorId}/combined_credits?api_key=${API_KEY}&language=tr-TR`, { signal: routeContext?.signal });
+        if (!creditsRes.ok) {
+            const err = new Error(`Credits HTTP ${creditsRes.status}`);
+            err.status = creditsRes.status;
+            throw err;
+        }
         let data = await creditsRes.json();
         
         if (requestGeneration !== actorRequestGeneration) return;
@@ -894,8 +909,32 @@ async function renderActor(
     } catch (e) {
         if (e.name === 'AbortError') return;
         if (requestGeneration !== actorRequestGeneration) return;
+        if (!isRouteContextCurrent(routeContext, 'actor', actorId)) return;
         if (!reset) throw e;
-        if (reset) document.getElementById('search-results').innerHTML = "<div class='loading'>Hata oluştu.</div>";
+        const container = document.getElementById('search-results');
+        if (container) {
+            container.style.minHeight = '';
+            const loadMoreBtn = document.getElementById('loadMoreBtn');
+            if (loadMoreBtn) loadMoreBtn.style.display = 'none';
+            const errorMessage = e?.status === 404
+                ? 'Oyuncu veya yönetmen bulunamadı.'
+                : 'Oyuncu bilgileri yüklenirken bir sorun oluştu. Lütfen tekrar deneyin.';
+            renderSafeError(container, errorMessage, e);
+            const errorBox = container.firstElementChild;
+            if (errorBox) {
+                const actionWrap = document.createElement('div');
+                actionWrap.style.marginTop = '16px';
+                const homeLink = document.createElement('a');
+                homeLink.href = '#home';
+                homeLink.className = 'action-btn btn-trailer';
+                homeLink.style.display = 'inline-flex';
+                homeLink.style.padding = '10px 20px';
+                homeLink.style.textDecoration = 'none';
+                homeLink.textContent = 'Ana Sayfaya Dön';
+                actionWrap.appendChild(homeLink);
+                errorBox.appendChild(actionWrap);
+            }
+        }
     } finally {
         const spinner = document.getElementById('infinite-spinner');
         if (spinner) spinner.style.display = 'none';

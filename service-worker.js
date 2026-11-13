@@ -1,21 +1,21 @@
-const CACHE_NAME = 'filmimnerede-v98';
+const CACHE_NAME = 'filmimnerede-v100';
 const ASSETS_TO_CACHE = [
   '/',
   '/index.html',
   '/style.css?v=55',
   '/js/runtime/config.js?v=1',
-  '/js/runtime/security.js?v=1',
+  '/js/runtime/security.js?v=3',
   '/js/runtime/state.js?v=1',
   '/js/runtime/router.js?v=5',
-  '/js/runtime/shared-ui.js?v=7',
+  '/js/runtime/shared-ui.js?v=8',
   '/js/runtime/providers.js?v=3',
   '/js/runtime/platform.js?v=8',
   '/js/runtime/search.js?v=3',
-  '/js/runtime/movie.js?v=8',
-  '/js/runtime/actor.js?v=8',
-  '/js/runtime/home.js?v=8',
-  '/js/runtime/profile.js?v=6',
-  '/js/runtime/misc.js?v=9',
+  '/js/runtime/movie.js?v=9',
+  '/js/runtime/actor.js?v=9',
+  '/js/runtime/home.js?v=9',
+  '/js/runtime/profile.js?v=7',
+  '/js/runtime/misc.js?v=10',
   '/app.js?v=74',
   '/assets/icons/icon-192.png',
   '/assets/icons/icon-512.png',
@@ -42,25 +42,27 @@ self.addEventListener('fetch', event => {
 
   const requestUrl = new URL(event.request.url);
 
-  // Server-side OMDb proxy response'ları
+  // Server-side Netlify response'ları
   // application offline cache'ine alınmaz.
-  if (requestUrl.pathname === '/.netlify/functions/omdb') {
+  if (requestUrl.pathname.startsWith('/.netlify/')) {
     return;
   }
 
   event.respondWith(
     fetch(event.request)
       .then(response => {
-        if (response && response.ok && response.type === 'basic') {
+        if (response && response.status === 200 && response.type === 'basic') {
           const clonedResponse = response.clone();
-          caches.open(CACHE_NAME).then(cache => {
-            cache.put(event.request, clonedResponse);
-          });
+          event.waitUntil(
+            caches.open(CACHE_NAME)
+              .then(cache => cache.put(event.request, clonedResponse))
+              .catch(() => {})
+          );
         }
         return response;
       })
       .catch(() => {
-        return caches.match(event.request).then(cached => {
+        return caches.match(event.request.mode === 'navigate' ? '/index.html' : event.request).then(cached => {
           if (cached) return cached;
           return new Response('Çevrimdışı: İçerik önbellekte bulunamadı.', {
             status: 503,

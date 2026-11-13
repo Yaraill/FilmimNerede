@@ -407,7 +407,7 @@ async function runTest() {
         assert(
             swSource.includes(
                 '/.netlify/functions/omdb'
-            ),
+            ) || swSource.includes("startsWith('/.netlify/')"),
             'Service worker does not bypass OMDb Function cache'
         );
 
@@ -531,6 +531,14 @@ async function runTest() {
             'Valid OMDb proxy request should return 200'
         );
 
+        assert(
+            response.headers?.[
+                'Cache-Control'
+            ] ===
+                'public, max-age=3600, s-maxage=86400',
+            'OMDb Response:True should use long Cache-Control header'
+        );
+
         const upstreamUrl =
             new URL(
                 capturedUrl
@@ -621,6 +629,64 @@ async function runTest() {
                 'Movie not found!',
             'OMDb Response:false payload semantics changed'
         );
+
+        assert(
+            response.headers?.[
+                'Cache-Control'
+            ] === 'no-store',
+            'OMDb Response:false should return Cache-Control: no-store'
+        );
+
+        // Quota / key errors with Response:False must also return no-store
+        for (const errorMessage of [
+            'Request limit reached!',
+            'Invalid API key!'
+        ]) {
+            global.fetch =
+                async () =>
+                    createUpstreamResponse({
+                        Response:
+                            'False',
+                        Error:
+                            errorMessage
+                    });
+
+            response =
+                await handler({
+                    httpMethod:
+                        'GET',
+                    queryStringParameters: {
+                        i:
+                            'tt1234567'
+                    }
+                });
+
+            assert(
+                response.statusCode ===
+                    200,
+                `OMDb Response:false (${errorMessage}) should preserve HTTP 200`
+            );
+
+            assert(
+                response.headers?.[
+                    'Cache-Control'
+                ] === 'no-store',
+                `OMDb Response:false (${errorMessage}) must return Cache-Control: no-store`
+            );
+
+            const errorBody =
+                parseBody(
+                    response
+                );
+
+            assert(
+                errorBody.Response ===
+                    'False' &&
+                errorBody.Error ===
+                    errorMessage,
+                `OMDb Response:false (${errorMessage}) payload changed`
+            );
+        }
 
         // -------------------------------------------------
         // Upstream HTTP failure

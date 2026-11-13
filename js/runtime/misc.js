@@ -274,7 +274,15 @@ async function startNewGame() {
     const nextBtn = document.getElementById('game-next-btn');
     if(nextBtn) nextBtn.style.display = 'none';
     document.getElementById('game-container').style.display = 'none';
-    document.getElementById('game-loading').style.display = 'block';
+    const loadingEl = document.getElementById('game-loading');
+    if (loadingEl) {
+        if (loadingEl.dataset.defaultHtml === undefined) {
+            loadingEl.dataset.defaultHtml = loadingEl.innerHTML;
+        } else {
+            loadingEl.innerHTML = loadingEl.dataset.defaultHtml;
+        }
+        loadingEl.style.display = 'block';
+    }
     document.getElementById('game-result').innerHTML = '';
     document.getElementById('clue-1').style.display = 'none';
     document.getElementById('clue-2').style.display = 'none';
@@ -311,7 +319,35 @@ async function startNewGame() {
         window.movieCache[currentGameMovie.id] = currentGameMovie;
         playedGameMovies.push(currentGameMovie.id);
         
-        let allOptions = data.results.filter(m => m.id !== currentGameMovie.id).sort(() => 0.5 - Math.random()).slice(0, 3);
+        const normalizeGameTitle = title => String(title || '').trim().toLocaleLowerCase('tr-TR');
+        const usedTitles = new Set([normalizeGameTitle(currentGameMovie.title)]);
+        const distractorCandidates = data.results
+            .filter(m => m && m.id !== currentGameMovie.id && String(m.title || '').trim() !== '')
+            .sort(() => 0.5 - Math.random());
+        const allOptions = [];
+        const usedIds = new Set([normalizeTmdbId(currentGameMovie.id)]);
+        for (const candidate of distractorCandidates) {
+            const id = normalizeTmdbId(candidate.id);
+            const normalizedTitle = normalizeGameTitle(candidate.title);
+            if (!id || usedIds.has(id) || usedTitles.has(normalizedTitle)) {
+                continue;
+            }
+            usedTitles.add(normalizedTitle);
+            usedIds.add(id);
+            allOptions.push(candidate);
+            if (allOptions.length === 3) {
+                break;
+            }
+        }
+        if (allOptions.length < 3) {
+            for (const candidate of distractorCandidates) {
+                const id = normalizeTmdbId(candidate.id);
+                if (!id || usedIds.has(id)) continue;
+                usedIds.add(id);
+                allOptions.push(candidate);
+                if (allOptions.length === 3) break;
+            }
+        }
         allOptions.push(currentGameMovie);
         currentGameOptions = allOptions.sort(() => 0.5 - Math.random());
 
@@ -350,19 +386,27 @@ async function startNewGame() {
         );
         
         // Oyuncu ipucunu çek
-        const castRes = await fetch(`${BASE_URL}/movie/${currentGameMovie.id}/credits?api_key=${API_KEY}&language=tr-TR`);
-        const castData = await castRes.json();
-        if (
-            Array.isArray(castData.cast) &&
-            castData.cast.length > 0
-        ) {
+        let castName = '';
+        try {
+            const castRes = await fetch(`${BASE_URL}/movie/${currentGameMovie.id}/credits?api_key=${API_KEY}&language=tr-TR`);
+            if (castRes.ok) {
+                const castData = await castRes.json();
+                if (
+                    Array.isArray(castData?.cast) &&
+                    castData.cast.length > 0
+                ) {
+                    castName = String(castData.cast[0]?.name || '').trim() || 'Bilinmiyor';
+                }
+            }
+        } catch (clueErr) {
+            console.warn('Afiş oyunu oyuncu ipucu alınamadı:', clueErr);
+        }
+
+        if (castName) {
             setGameIconText(
                 'clue-2',
                 'fas fa-user',
-                `Oyuncu: ${
-                    castData.cast[0]?.name ||
-                    'Bilinmiyor'
-                }`
+                `Oyuncu: ${castName}`
             );
         } else {
             setGameIconText(

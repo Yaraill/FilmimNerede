@@ -516,6 +516,119 @@ async function runTest() {
             'Replace must not delete unrelated IMDb cache entries'
         );
 
+        // Composite rating keys ("movie:550" and "tv:550") must survive export -> strict import round trip
+        fs.readdirSync(downloadDir).forEach(name => {
+            fs.unlinkSync(path.join(downloadDir, name));
+        });
+        await page.evaluate(() => {
+            localStorage.setItem('watchlist', JSON.stringify([]));
+            localStorage.setItem('ratedMovies', JSON.stringify([]));
+            localStorage.setItem(
+                'movieRatings',
+                JSON.stringify({ 'movie:550': 8, 'tv:550': 6 })
+            );
+            localStorage.setItem('favoriteActors', JSON.stringify([]));
+            localStorage.setItem('recentlyViewed', JSON.stringify([]));
+        });
+
+        await page.click('#profile-export-btn');
+        const compositeDownloadedPath = await waitForDownloadedJson(downloadDir);
+        const compositeExported = JSON.parse(
+            fs.readFileSync(compositeDownloadedPath, 'utf8')
+        );
+        assert(
+            compositeExported.data.movieRatings['movie:550'] === 8 &&
+                compositeExported.data.movieRatings['tv:550'] === 6,
+            'Composite rating keys should survive export with both entries distinct'
+        );
+
+        const strictValidated = await page.evaluate(payload => {
+            return window.validateProfileBackupPayload(payload);
+        }, compositeExported);
+        assert(
+            strictValidated.movieRatings['movie:550'] === 8 &&
+                strictValidated.movieRatings['tv:550'] === 6,
+            'Strict validation of composite rating keys should not throw and should preserve both entries'
+        );
+
+        const compositeRoundTripPath = path.join(tempDir, 'composite-ratings.json');
+        fs.writeFileSync(compositeRoundTripPath, JSON.stringify(compositeExported));
+        await page.evaluate(() => {
+            localStorage.setItem('movieRatings', JSON.stringify({}));
+            document.getElementById('profile-backup-status').textContent = '';
+            document.getElementById('profile-backup-status').dataset.state = '';
+        });
+        await page.select('#profile-import-mode', 'replace');
+        page.once('dialog', async dialog => {
+            await dialog.accept();
+        });
+        input = await page.$('#profile-import-file');
+        await input.uploadFile(compositeRoundTripPath);
+        await page.waitForFunction(
+            () => document.getElementById('profile-backup-status')?.dataset.state === 'success'
+        );
+
+        const importedCompositeRatings = await page.evaluate(() =>
+            JSON.parse(localStorage.getItem('movieRatings'))
+        );
+        assert(
+            importedCompositeRatings['movie:550'] === 8 &&
+                importedCompositeRatings['tv:550'] === 6,
+            'Composite rating keys should survive export -> import round trip with both entries distinct'
+        );
+
+        const edgeChecks = await page.evaluate(() => {
+            const legacySafe = window.normalizeBackupRatings(
+                { 'movie:550': 8, 550: 3 },
+                true
+            );
+            const mergedList = window.mergeBackupList(
+                [{ id: 5 }],
+                [{ id: 5, title: 'Movie 5', media_type: 'movie' }]
+            );
+            return { legacySafe, mergedList };
+        });
+        assert(
+            edgeChecks.legacySafe['movie:550'] === 8 &&
+                edgeChecks.legacySafe['550'] === undefined,
+            'Legacy bare numeric key must not overwrite or coexist with composite key'
+        );
+        assert(
+            edgeChecks.mergedList.length === 1,
+            'mergeBackupList should deduplicate bare id item against composite movie:id item'
+        );
+
+        const mergedRatings = await page.evaluate(() => {
+            const emptyData = {
+                watchlist: [], ratedMovies: [], favoriteActors: [], recentlyViewed: []
+            };
+            return window.mergeProfileBackupData(
+                { ...emptyData, movieRatings: { '123': 5 } },
+                { ...emptyData, movieRatings: { 'movie:123': 9 } }
+            ).movieRatings;
+        });
+        assert(
+            mergedRatings['123'] === 5 &&
+                mergedRatings['movie:123'] === undefined &&
+                !Object.values(mergedRatings).includes(9),
+            'Current legacy rating must win over an imported typed rating for the same id'
+        );
+
+        const distinctTypeRatings = await page.evaluate(() => {
+            const emptyData = {
+                watchlist: [], ratedMovies: [], favoriteActors: [], recentlyViewed: []
+            };
+            return window.mergeProfileBackupData(
+                { ...emptyData, movieRatings: { 'movie:123': 5 } },
+                { ...emptyData, movieRatings: { 'tv:123': 7 } }
+            ).movieRatings;
+        });
+        assert(
+            distinctTypeRatings['movie:123'] === 5 &&
+                distinctTypeRatings['tv:123'] === 7,
+            'Current movie rating must preserve an imported TV rating with the same id'
+        );
+
         assert(pageErrors.length === 0, `Unexpected page errors: ${pageErrors.join(', ')}`);
         console.log('Profile backup regression test passed.');
     } finally {
