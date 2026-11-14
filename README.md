@@ -67,3 +67,10 @@ Proje tamamen istemci tarafında çalıştığı için çalıştırmak son derec
 ## 🔑 API Anahtarları Hakkında
 *Not: Proje içerisindeki TMDB API anahtarı demo amaçlı yer almaktadır. Kendi kullanımınız için [TMDB](https://www.themoviedb.org/) üzerinden bir API anahtarı alıp `app.js` içerisindeki `API_KEY` değişkenine tanımlamanız önerilir.*
 
+### Netlify ortam değişkenleri
+
+Netlify proje ayarlarında sunucu fonksiyonları için şu ortam değişkenlerini tanımlayın:
+
+- `OMDB_API_KEY`: IMDb puanlarını getiren OMDb fonksiyonunun API anahtarı.
+- `TMDB_API_KEY`: TMDB API proxy fonksiyonunun sunucuda kullandığı API anahtarı. İstemciden gelen `api_key` kaldırılır ve bu anahtar upstream isteğine eklenir. Tanımlı değilse API proxy 500 döndürür; görsel proxy anahtar gerektirmez.
+

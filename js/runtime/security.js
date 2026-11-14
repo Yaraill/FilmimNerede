@@ -109,6 +109,7 @@ function buildTmdbProxyUrl(target, rawUrl) {
     if (target === 'api') {
         const parsed = parseDirectTmdbApiUrl(rawUrl);
         if (!parsed) return null;
+        parsed.searchParams.delete('api_key');
         return `${TMDB_PROXY_ENDPOINT}?target=api&path=${encodeURIComponent(
             `${parsed.pathname}${parsed.search}`
         )}`;

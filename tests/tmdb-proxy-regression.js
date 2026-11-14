@@ -1,6 +1,7 @@
 const fs = require('fs');
 const http = require('http');
 const path = require('path');
+const vm = require('vm');
 const puppeteer = require('puppeteer');
 
 const tmdbFunction = require('../netlify/functions/tmdb');
@@ -151,6 +152,24 @@ function createMockTmdbApiPayload(upstreamPath) {
 async function runHandlerUnitTests() {
     console.log('1) Running netlify/functions/tmdb.js unit & security tests...');
 
+    const securityContext = vm.createContext({ URL });
+    vm.runInContext(
+        fs.readFileSync(path.join(ROOT_DIR, 'js/runtime/security.js'), 'utf8'),
+        securityContext
+    );
+    for (const [query, expectedPath] of [
+        ['api_key=CLIENT&language=tr-TR', '/3/movie/1?language=tr-TR'],
+        ['page=2&api_key=CLIENT&language=tr-TR&api_key=OTHER&page=3', '/3/movie/1?page=2&language=tr-TR&page=3'],
+        ['api_key=CLIENT', '/3/movie/1']
+    ]) {
+        const proxyUrl = new URL(
+            securityContext.buildTmdbProxyUrl('api', `https://api.themoviedb.org/3/movie/1?${query}`),
+            'https://example.com'
+        );
+        assert(proxyUrl.searchParams.get('path') === expectedPath, 'Proxy yolu anahtarı kaldırmalı, diğer parametrelerin sırasını korumalı');
+        assert(!proxyUrl.href.includes('api_key') && !proxyUrl.href.includes('CLIENT'), 'İstemci anahtarı proxy URL içinde bulunmamalı');
+    }
+
     // Sinkhole ve IPv4 doğrulama
     assert(tmdbFunction.isSinkholeIp('127.0.0.1'), '127.0.0.1 sinkhole olarak işaretlenmeli');
     assert(tmdbFunction.isSinkholeIp('::1'), '::1 sinkhole olarak işaretlenmeli');
@@ -267,6 +286,50 @@ async function runHandlerUnitTests() {
     const probeJson = JSON.parse(probeRes.body);
     assert(probeJson.ok === true && probeJson.service === 'tmdb-proxy', 'Probe JSON beklenen yapıda değil');
 
+    // Eksik veya boş sunucu anahtarı API'yi durdurmalı; görseller anahtarsız çalışmalı.
+    const configuredApiKey = process.env.TMDB_API_KEY;
+    const originalConsoleError = console.error;
+    const configurationErrors = [];
+    try {
+        console.error = (...args) => configurationErrors.push(args);
+        for (const missingKey of [undefined, '   ']) {
+            if (missingKey === undefined) delete process.env.TMDB_API_KEY;
+            else process.env.TMDB_API_KEY = missingKey;
+            const missingKeyRes = await tmdbFunction.handler({
+                httpMethod: 'GET',
+                queryStringParameters: { target: 'api', path: '/3/movie/1?api_key=CLIENT' }
+            }, {
+                lookupImpl: async () => { throw new Error('Anahtarsız upstream çağrılmamalı'); }
+            });
+            assert(missingKeyRes.statusCode === 500, 'Eksik TMDB_API_KEY için API 500 dönmeli');
+            assert(JSON.parse(missingKeyRes.body).error === 'TMDB servisi yapılandırılmamış.', 'Yapılandırma hatası güvenli Türkçe mesaj içermeli');
+        }
+        assert(configurationErrors.length === 2 && configurationErrors.every(
+            args => args.length === 1 && args[0] === 'TMDB_API_KEY tanımlı değil.'
+        ), 'Eksik anahtar için yalnızca sabit yapılandırma hatası günlüğe yazılmalı');
+
+        delete process.env.TMDB_API_KEY;
+        const imageWithoutKeyRes = await tmdbFunction.handler({
+            httpMethod: 'GET',
+            queryStringParameters: { target: 'image', path: '/t/p/w500/poster.png' }
+        }, {
+            lookupImpl: async () => [{ address: '79.127.134.129', family: 4 }],
+            fetchImpl: async requestedUrl => {
+                assert(requestedUrl === 'https://image.tmdb.org/t/p/w500/poster.png', 'Görsel upstream URL değişmemeli');
+                return {
+                    status: 200,
+                    headers: { get: () => 'image/png' },
+                    arrayBuffer: async () => VALID_1X1_PNG
+                };
+            }
+        });
+        assert(imageWithoutKeyRes.statusCode === 200 && imageWithoutKeyRes.isBase64Encoded, 'Görsel proxy TMDB_API_KEY olmadan çalışmalı');
+        assert(Buffer.from(imageWithoutKeyRes.body, 'base64').equals(VALID_1X1_PNG), 'Anahtarsız görsel baytları korunmalı');
+    } finally {
+        process.env.TMDB_API_KEY = configuredApiKey;
+        console.error = originalConsoleError;
+    }
+
     const badReqRes = await tmdbFunction.handler({
         httpMethod: 'GET',
         queryStringParameters: { target: 'image', path: '/t/p/w999/a.jpg' }
@@ -280,7 +343,7 @@ async function runHandlerUnitTests() {
             httpMethod: 'GET',
             queryStringParameters: {
                 target: 'api',
-                path: '/3/genre/movie/list?language=tr-TR'
+                path: '/3/genre/movie/list?api_key=CLIENT&language=tr-TR&api_key=OTHER'
             }
         },
         {
@@ -297,8 +360,8 @@ async function runHandlerUnitTests() {
     );
     assert(jsonRes.statusCode === 200, `API passthrough 200 dönmeli, gelen: ${jsonRes.statusCode}`);
     assert(
-        directFetchUrl === 'https://api.themoviedb.org/3/genre/movie/list?language=tr-TR',
-        `Beklenmeyen upstream API URL: ${directFetchUrl}`
+        directFetchUrl === 'https://api.themoviedb.org/3/genre/movie/list?language=tr-TR&api_key=SERVER_TEST_KEY',
+        'Normal upstream URL yalnızca kırpılmış sunucu anahtarını ve diğer parametreleri içermeli'
     );
     assert(JSON.parse(jsonRes.body).genres?.[0]?.id === 28, 'API JSON gövdesi korunmalı');
 
@@ -361,7 +424,7 @@ async function runHandlerUnitTests() {
     const sinkholeRes = await tmdbFunction.handler(
         {
             httpMethod: 'GET',
-            queryStringParameters: { target: 'api', path: '/3/movie/popular' }
+            queryStringParameters: { target: 'api', path: '/3/movie/popular?api_key=CLIENT&language=tr-TR&api_key=OTHER' }
         },
         {
             lookupImpl: async () => [{ address: '127.0.0.1', family: 4 }],
@@ -377,7 +440,7 @@ async function runHandlerUnitTests() {
                 directIpCalls += 1;
                 assert(ip === '3.160.57.74', `Beklenen DoH IP 3.160.57.74, gelen: ${ip}`);
                 assert(host === 'api.themoviedb.org', `Beklenen Host header api.themoviedb.org, gelen: ${host}`);
-                assert(upstreamPath === '/3/movie/popular', `Beklenen path /3/movie/popular, gelen: ${upstreamPath}`);
+                assert(upstreamPath === '/3/movie/popular?language=tr-TR&api_key=SERVER_TEST_KEY', 'DoH upstream yolu istemci anahtarlarını kaldırıp sunucu anahtarını içermeli');
                 assert(acceptHeader === 'application/json', `Beklenen Accept application/json, gelen: ${acceptHeader}`);
                 return {
                     statusCode: 200,
@@ -689,6 +752,7 @@ async function runBrowserIntegrationTests() {
 
             assert(probeCalls.length === 1, `Probe tam olarak 1 kez çağrılmalıydı, gelen: ${probeCalls.length}`);
             assert(apiCalls.length > 0, 'API çağrıları /.netlify/functions/tmdb üzerinden yapılmalıydı');
+            assert(apiCalls.every(r => !new URL(r.query.path, 'https://api.themoviedb.org').searchParams.has('api_key')), 'Tarayıcı proxy isteklerinde api_key bulunmamalı');
             assert(imageCalls.length > 0, 'Görsel çağrıları /.netlify/functions/tmdb üzerinden yapılmalıydı');
 
             await context.close();
@@ -703,12 +767,17 @@ async function runBrowserIntegrationTests() {
 }
 
 (async () => {
+    const originalApiKey = process.env.TMDB_API_KEY;
     try {
+        process.env.TMDB_API_KEY = '  SERVER_TEST_KEY  ';
         await runHandlerUnitTests();
         await runBrowserIntegrationTests();
         console.log('ALL TMDB PROXY REGRESSION TESTS PASSED.');
     } catch (error) {
         console.error('TMDB PROXY REGRESSION TEST FAILED:', error);
         process.exitCode = 1;
+    } finally {
+        if (originalApiKey === undefined) delete process.env.TMDB_API_KEY;
+        else process.env.TMDB_API_KEY = originalApiKey;
     }
 })();

@@ -399,6 +399,21 @@ async function handler(event = {}, deps = {}) {
         return jsonResponse(400, { error: validation.error });
     }
 
+    if (validation.target === 'api') {
+        const rawApiKey = process.env.TMDB_API_KEY;
+        const apiKey = typeof rawApiKey === 'string' ? rawApiKey.trim() : '';
+        if (!apiKey) {
+            console.error('TMDB_API_KEY tanımlı değil.');
+            return jsonResponse(500, { error: 'TMDB servisi yapılandırılmamış.' });
+        }
+
+        const upstreamUrl = new URL(validation.upstreamUrl);
+        upstreamUrl.searchParams.delete('api_key');
+        upstreamUrl.searchParams.set('api_key', apiKey);
+        validation.upstreamPath = `${upstreamUrl.pathname}${upstreamUrl.search}`;
+        validation.upstreamUrl = upstreamUrl.href;
+    }
+
     try {
         const upstream = await fetchUpstreamWithFallback(validation, deps);
 
@@ -443,7 +458,7 @@ async function handler(event = {}, deps = {}) {
             return jsonResponse(504, { error: 'TMDB isteği zaman aşımına uğradı.' });
         }
 
-        console.error('TMDB proxy upstream error:', error);
+        console.error('TMDB proxy upstream error.');
         return jsonResponse(502, { error: 'TMDB isteği başarısız oldu.' });
     }
 }
