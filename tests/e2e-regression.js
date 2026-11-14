@@ -2,6 +2,7 @@ const http = require('http');
 const fs = require('fs');
 const path = require('path');
 const puppeteer = require('puppeteer');
+const { toTmdbApiUrl } = require('./helpers/tmdb-proxy-shim');
 
 const ROOT_DIR = path.resolve(__dirname, '..');
 
@@ -81,7 +82,7 @@ async function runE2E() {
         let tvTraversalDetected = false;
 
         page.on('request', request => {
-            const url = request.url();
+            const url = toTmdbApiUrl(request.url());
             networkRequests.push(url);
             
             if (url.includes('api.themoviedb.org')) {

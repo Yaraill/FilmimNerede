@@ -6,6 +6,7 @@ const path =
 
 const vm =
     require('vm');
+const { toTmdbApiUrl } = require('./helpers/tmdb-proxy-shim');
 
 const ROOT_DIR =
     path.resolve(
@@ -85,8 +86,6 @@ async function runTest() {
         clearTimeout,
         BASE_URL:
             'https://api.themoviedb.org/3',
-        API_KEY:
-            'test-tmdb-key',
         localStorage:
             createLocalStorage(),
         document: {},
@@ -182,7 +181,7 @@ async function runTest() {
                     reject
                 ) => {
                     const parsed =
-                        new URL(url);
+                        new URL(toTmdbApiUrl(url));
 
                     const match =
                         parsed.pathname.match(

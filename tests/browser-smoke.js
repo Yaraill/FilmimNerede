@@ -2,6 +2,7 @@ const http = require('http');
 const fs = require('fs');
 const path = require('path');
 const puppeteer = require('puppeteer');
+const { toTmdbApiUrl } = require('./helpers/tmdb-proxy-shim');
 
 const ROOT_DIR = path.resolve(__dirname, '..');
 
@@ -76,7 +77,7 @@ async function runTest() {
         await page.setBypassServiceWorker(true);
         await page.setRequestInterception(true);
         page.on('request', request => {
-            const url = request.url();
+            const url = toTmdbApiUrl(request.url());
             console.log('Intercepted:', url);
             page.evaluate((u) => { window.networkRequests = window.networkRequests || []; window.networkRequests.push(u); }, url).catch(()=>{});
             if (request.method() === 'OPTIONS') {

@@ -3,6 +3,7 @@ const http = require('http');
 const path = require('path');
 const vm = require('vm');
 const puppeteer = require('puppeteer');
+const { toTmdbApiUrl } = require('./helpers/tmdb-proxy-shim');
 
 const tmdbFunction = require('../netlify/functions/tmdb');
 
@@ -158,16 +159,18 @@ async function runHandlerUnitTests() {
         securityContext
     );
     for (const [query, expectedPath] of [
-        ['api_key=CLIENT&language=tr-TR', '/3/movie/1?language=tr-TR'],
-        ['page=2&api_key=CLIENT&language=tr-TR&api_key=OTHER&page=3', '/3/movie/1?page=2&language=tr-TR&page=3'],
-        ['api_key=CLIENT', '/3/movie/1']
+        ['?language=tr-TR', '/3/movie/1?language=tr-TR'],
+        ['?page=2&language=tr-TR&page=3', '/3/movie/1?page=2&language=tr-TR&page=3'],
+        ['?query=D%C3%B6v%C3%BC%C5%9F%20Kul%C3%BCb%C3%BC', '/3/movie/1?query=D%C3%B6v%C3%BC%C5%9F%20Kul%C3%BCb%C3%BC'],
+        ['', '/3/movie/1']
     ]) {
         const proxyUrl = new URL(
-            securityContext.buildTmdbProxyUrl('api', `https://api.themoviedb.org/3/movie/1?${query}`),
+            securityContext.buildTmdbProxyUrl('api', `https://api.themoviedb.org/3/movie/1${query}`),
             'https://example.com'
         );
-        assert(proxyUrl.searchParams.get('path') === expectedPath, 'Proxy yolu anahtarı kaldırmalı, diğer parametrelerin sırasını korumalı');
-        assert(!proxyUrl.href.includes('api_key') && !proxyUrl.href.includes('CLIENT'), 'İstemci anahtarı proxy URL içinde bulunmamalı');
+        assert(proxyUrl.pathname === '/.netlify/functions/tmdb' && proxyUrl.searchParams.get('target') === 'api', 'API URL hedefi TMDB proxy olmalı');
+        assert(proxyUrl.searchParams.get('path') === expectedPath, 'Proxy yolu sorgu parametrelerinin sırasını ve kodlamasını korumalı');
+        assert(!proxyUrl.href.includes('api_key'), 'İstemci anahtarı proxy URL içinde bulunmamalı');
     }
 
     // Sinkhole ve IPv4 doğrulama
@@ -578,9 +581,21 @@ async function createIsolatedPage(browser) {
 }
 
 async function runBrowserIntegrationTests() {
-    console.log('2) Running Puppeteer TMDB Smart Fallback integration tests...');
+    console.log('2) TMDB API proxy ve görsel fallback entegrasyon testleri çalıştırılıyor...');
     const { server, port, trackedProxyRequests } = await createTestServer();
     let browser;
+
+    const assertApiProxyRequests = requests => {
+        assert(requests.length > 0, 'Tarayıcı en az bir TMDB API isteği göndermeli');
+        assert(requests.every(rawUrl => {
+            const url = new URL(rawUrl);
+            return url.origin === `http://127.0.0.1:${port}` &&
+                url.pathname === '/.netlify/functions/tmdb' &&
+                url.searchParams.get('target') === 'api' &&
+                !url.searchParams.has('api_key') &&
+                !new URL(toTmdbApiUrl(rawUrl)).searchParams.has('api_key');
+        }), 'Tüm TMDB API istekleri anahtarsız ve aynı origin proxy üzerinden yapılmalı; doğrudan API isteği olmamalı');
+    };
 
     try {
         browser = await puppeteer.launch({
@@ -589,34 +604,25 @@ async function runBrowserIntegrationTests() {
             args: ['--no-sandbox', '--disable-setuid-sandbox']
         });
 
-        // (a) Doğrudan TMDB erişilebilirken fallback proxy sıfır ek yük oluşturmalı
+        // (a) API her zaman proxy üzerinden, sağlıklı görseller doğrudan yüklenmeli.
         {
             trackedProxyRequests.length = 0;
+            const apiRequests = [];
+            const directImageRequests = [];
             const { context, page } = await createIsolatedPage(browser);
             await page.setRequestInterception(true);
             page.on('request', req => {
-                const reqUrl = req.url();
+                const rawUrl = req.url();
+                const reqUrl = toTmdbApiUrl(rawUrl);
                 if (reqUrl.startsWith('https://api.themoviedb.org/')) {
-                    if (req.method() === 'OPTIONS') {
-                        req.respond({
-                            status: 204,
-                            headers: {
-                                'Access-Control-Allow-Origin': '*',
-                                'Access-Control-Allow-Methods': 'GET, OPTIONS'
-                            }
-                        });
-                        return;
-                    }
-                    const parsed = new URL(reqUrl);
-                    req.respond({
-                        status: 200,
-                        headers: { 'Access-Control-Allow-Origin': '*' },
-                        contentType: 'application/json',
-                        body: JSON.stringify(createMockTmdbApiPayload(`${parsed.pathname}${parsed.search}`))
-                    });
+                    apiRequests.push(rawUrl);
+                    // Proxy isteklerini aynı mock verisini sunan yerel sunucu yanıtlar.
+                    if (rawUrl === reqUrl) req.abort();
+                    else req.continue();
                     return;
                 }
                 if (reqUrl.startsWith('https://image.tmdb.org/')) {
+                    directImageRequests.push(rawUrl);
                     req.respond({
                         status: 200,
                         headers: { 'Access-Control-Allow-Origin': '*' },
@@ -636,16 +642,19 @@ async function runBrowserIntegrationTests() {
             await page.waitForSelector('.movie-card', { timeout: 10000 });
 
             const state = await page.evaluate(() => window.getTmdbFallbackState());
-            assert(!state.apiActive && !state.imageActive, 'Normal ağda TMDB fallback kapalı kalmalı');
+            assert(!state.imageActive, 'Normal ağda görsel fallback kapalı kalmalı');
+            assertApiProxyRequests(apiRequests);
+            assert(directImageRequests.length > 0, 'Sağlıklı TMDB görselleri doğrudan yüklenmeli');
+            assert(trackedProxyRequests.some(r => r.query?.target === 'api'), 'API proxy istekleri yerel mock sunucusuna ulaşmalı');
             assert(
-                trackedProxyRequests.length === 0,
-                `Normal ağda /.netlify/functions/tmdb çağrısı 0 olmalıydı, gelen: ${trackedProxyRequests.length}`
+                !trackedProxyRequests.some(r => r.query?.target === 'image' || r.query?.probe === '1'),
+                'Normal ağda görsel proxy veya probe isteği olmamalı'
             );
 
             // (c) Kullanıcı/UI kaynaklı AbortError fallback tetiklememeli
             const abortName = await page.evaluate(async () => {
                 const controller = new AbortController();
-                const req = fetch('https://api.themoviedb.org/3/movie/550?api_key=test', {
+                const req = fetch(window.buildTmdbProxyUrl('api', 'https://api.themoviedb.org/3/movie/550'), {
                     signal: controller.signal
                 });
                 controller.abort();
@@ -658,24 +667,30 @@ async function runBrowserIntegrationTests() {
             });
             assert(abortName === 'AbortError', `AbortController testi AbortError üretmeli, gelen: ${abortName}`);
             const stateAfterAbort = await page.evaluate(() => window.getTmdbFallbackState());
-            assert(!stateAfterAbort.apiActive && !stateAfterAbort.imageActive, 'AbortError proxy modunu açmamalı');
-            assert(trackedProxyRequests.length === 0, 'AbortError probe isteği atmamalı');
+            assert(!stateAfterAbort.imageActive, 'AbortError görsel fallback modunu açmamalı');
+            assert(!trackedProxyRequests.some(r => r.query?.probe === '1'), 'AbortError probe isteği atmamalı');
+            assertApiProxyRequests(apiRequests);
 
             await context.close();
-            console.log('✓ Scenario (a) zero-overhead direct path & Scenario (c) AbortError isolation passed.');
+            console.log('✓ API proxy, doğrudan görseller ve AbortError yalıtımı kontrolleri geçti.');
         }
 
-        // (b) GoodbyeDPI sinkhole simülasyonu (connectionrefused) -> probe once -> api & image fallback aktif
+        // (b) Görsel bağlantısı reddedilince tek probe ve görsel proxy fallback çalışmalı.
         {
             trackedProxyRequests.length = 0;
+            const apiRequests = [];
             const { context, page } = await createIsolatedPage(browser);
             await page.setRequestInterception(true);
             page.on('request', req => {
-                const reqUrl = req.url();
-                if (
-                    reqUrl.startsWith('https://api.themoviedb.org/') ||
-                    reqUrl.startsWith('https://image.tmdb.org/')
-                ) {
+                const rawUrl = req.url();
+                const reqUrl = toTmdbApiUrl(rawUrl);
+                if (reqUrl.startsWith('https://api.themoviedb.org/')) {
+                    apiRequests.push(rawUrl);
+                    if (rawUrl === reqUrl) req.abort();
+                    else req.continue();
+                    return;
+                }
+                if (reqUrl.startsWith('https://image.tmdb.org/')) {
                     req.abort('connectionrefused');
                     return;
                 }
@@ -700,7 +715,6 @@ async function runBrowserIntegrationTests() {
                         );
                     });
                     return (
-                        state?.apiActive === true &&
                         state?.imageActive === true &&
                         cards.length > 0 &&
                         poster &&
@@ -751,12 +765,13 @@ async function runBrowserIntegrationTests() {
             const imageCalls = trackedProxyRequests.filter(r => r.query?.target === 'image');
 
             assert(probeCalls.length === 1, `Probe tam olarak 1 kez çağrılmalıydı, gelen: ${probeCalls.length}`);
+            assertApiProxyRequests(apiRequests);
             assert(apiCalls.length > 0, 'API çağrıları /.netlify/functions/tmdb üzerinden yapılmalıydı');
             assert(apiCalls.every(r => !new URL(r.query.path, 'https://api.themoviedb.org').searchParams.has('api_key')), 'Tarayıcı proxy isteklerinde api_key bulunmamalı');
             assert(imageCalls.length > 0, 'Görsel çağrıları /.netlify/functions/tmdb üzerinden yapılmalıydı');
 
             await context.close();
-            console.log('✓ Scenario (b) sinkhole detection, single probe, API & image proxy fallback passed.');
+            console.log('✓ API proxy, tek probe ve görsel proxy fallback kontrolleri geçti.');
         }
     } finally {
         if (browser) {

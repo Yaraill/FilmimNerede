@@ -241,10 +241,10 @@ async function loadGenres() {
         ] =
             await Promise.all([
                 fetch(
-                    `${BASE_URL}/genre/movie/list?api_key=${API_KEY}&language=tr-TR`
+                    `${BASE_URL}/genre/movie/list?language=tr-TR`
                 ),
                 fetch(
-                    `${BASE_URL}/genre/tv/list?api_key=${API_KEY}&language=tr-TR`
+                    `${BASE_URL}/genre/tv/list?language=tr-TR`
                 )
             ]);
 

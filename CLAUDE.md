@@ -4,12 +4,12 @@ Turkish movie/TV guide PWA: where to watch in Turkey (TMDB TR providers), detail
 
 ## Stack
 - Vanilla JS (ES6+, classic `<script>` globals, no modules/bundler/framework), HTML5, CSS3
-- TMDB API (direct, key in `js/runtime/config.js`) + Netlify Functions proxies: `omdb.js`, `tmdb.js`
+- All TMDB API calls go through `netlify/functions/tmdb.js`; the key exists only in the Netlify env var `TMDB_API_KEY` and must never appear in client code. OMDb uses `omdb.js`.
 - Hosting: Netlify (`publish = "."`), PWA via `service-worker.js`
 - Dev only: Node 22, puppeteer + jsdom for tests. No lint, no type-check, no build step.
 
 ## Commands
-- Run: serve the root statically (e.g. `npx netlify dev` for functions too)
+- Run: local API access requires `npx netlify dev` with `.env` (copy `.env.example` and fill in the keys).
 - Test all: `npm test` (same as CI, `.github/workflows/ci.yml`)
 - Fast check: `npm run test:static`; then the relevant `npm run test:<area>`
 - Tests start their own local server; no manual server needed.
@@ -43,6 +43,7 @@ Turkish movie/TV guide PWA: where to watch in Turkey (TMDB TR providers), detail
 - Reply in Turkish.
 
 ## Don't
+- Never put API keys in client code or commit `.env`.
 - Don't deploy to Netlify unless explicitly asked.
 - Don't add frameworks, bundlers or npm runtime deps.
 - Don't edit `node_modules/` or commit `FilmimNerede_Hatalar.txt` / `PROJE_ANALIZ_RAPORU.md` without asking.

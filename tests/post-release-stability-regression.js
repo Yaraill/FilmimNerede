@@ -1,5 +1,6 @@
 'use strict';
 const puppeteer = require('puppeteer');
+const { toTmdbApiUrl } = require('./helpers/tmdb-proxy-shim');
 const http = require('http');
 const fs = require('fs');
 const path = require('path');
@@ -38,7 +39,7 @@ const server = http.createServer((req, res) => {
 });
 
 function mockApi(request) {
-    const reqUrl = request.url();
+    const reqUrl = toTmdbApiUrl(request.url());
     const headers = { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Methods': 'GET, POST, OPTIONS', 'Access-Control-Allow-Headers': '*' };
 
     if (!reqUrl.includes('api.themoviedb.org')) return null;
@@ -135,7 +136,7 @@ async function runTest() {
                 request.respond({ status: 200, headers: { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Methods': 'GET, POST, OPTIONS', 'Access-Control-Allow-Headers': '*' } });
                 return;
             }
-            const reqUrl = request.url();
+            const reqUrl = toTmdbApiUrl(request.url());
             // Block external images/fonts/CORS calls
             if (reqUrl.includes('image.tmdb.org') || reqUrl.includes('fonts.googleapis.com') ||
                 reqUrl.includes('placehold.co') || reqUrl.includes('flagcdn.com')) {

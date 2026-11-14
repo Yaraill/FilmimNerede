@@ -644,7 +644,7 @@ async function fetchMovieRuntimesBounded(items, routeContext, requestGeneration)
 
             try {
                 const detailRes = await fetch(
-                    `${BASE_URL}/movie/${item.id}?api_key=${API_KEY}&language=tr-TR`,
+                    `${BASE_URL}/movie/${item.id}?language=tr-TR`,
                     { signal: routeContext?.signal }
                 );
                 if (!detailRes.ok) {
@@ -734,7 +734,7 @@ async function loadPlatformMovies(providerId = 0, reset = true, isFilterChange =
     
     try {
         const typePayloads = await Promise.all(typesToFetch.map(async (type) => {
-            let url = `${BASE_URL}/discover/${type}?api_key=${API_KEY}&language=tr-TR&page=${currentPage}&include_adult=false&vote_count.gte=1000&without_keywords=210024,198385,195669`;
+            let url = `${BASE_URL}/discover/${type}?language=tr-TR&page=${currentPage}&include_adult=false&vote_count.gte=1000&without_keywords=210024,198385,195669`;
             
             // Exclude Talk shows (10767), News (10763), Reality (10764)
             url += `&without_genres=10767,10763,10764,99`;

@@ -98,6 +98,18 @@ try {
     assert(cacheNameMatch && cacheNameMatch[1], `Service worker CACHE_NAME must match filmimnerede-v<integer>`);
     console.log(`[PASS] SW CACHE_NAME format is correct: filmimnerede-v${cacheNameMatch[1]}`);
 
+    // 7. Keep TMDB credentials out of every browser runtime script.
+    const runtimeScripts = fs.readdirSync(path.join(ROOT_DIR, 'js/runtime'))
+        .filter(name => name.endsWith('.js'))
+        .map(name => `js/runtime/${name}`);
+    for (const script of [...runtimeScripts, 'app.js']) {
+        const source = fs.readFileSync(path.join(ROOT_DIR, script), 'utf8');
+        assert(!/\bapi_key=/i.test(source), `${script} istemci URL veya şablon dizelerinde api_key= bulunmamalı`);
+        assert(!/\bAPI_KEY\b/.test(source), `${script} istemci kodunda API_KEY tanımlayıcısı bulunmamalı`);
+        assert(!/(['"`])[a-f\d]{32}\1/i.test(source), `${script} içinde 32 haneli onaltılık anahtar bulunmamalı`);
+    }
+    console.log('[PASS] İstemci kodunda TMDB anahtarı bulunmuyor');
+
     console.log('All static smoke tests PASSED!');
     process.exit(0);
 

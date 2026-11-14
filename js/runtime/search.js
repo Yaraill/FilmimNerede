@@ -222,7 +222,7 @@ async function applySearchResultFilters(
                                 } else {
                                     const response =
                                         await fetch(
-                                            `${BASE_URL}/${mediaType}/${safeId}/watch/providers?api_key=${API_KEY}`,
+                                            `${BASE_URL}/${mediaType}/${safeId}/watch/providers`,
                                             {
                                                 signal:
                                                     routeContext
@@ -380,7 +380,7 @@ async function applySearchResultFilters(
                             try {
                                 const response =
                                     await fetch(
-                                        `${BASE_URL}/movie/${safeId}?api_key=${API_KEY}&language=tr-TR`,
+                                        `${BASE_URL}/movie/${safeId}?language=tr-TR`,
                                         {
                                             signal:
                                                 routeContext?.signal
@@ -657,7 +657,7 @@ async function searchMovie(reset = true, isFilterChange = false, routeContext = 
 
         while (scanAttempts < 3) {
             scanAttempts++;
-            const res = await fetch(`${BASE_URL}/search/multi?api_key=${API_KEY}&language=tr-TR&query=${encodeURIComponent(requestQuery)}&page=${pageToFetch}&include_adult=false`, { signal: routeContext?.signal });
+            const res = await fetch(`${BASE_URL}/search/multi?language=tr-TR&query=${encodeURIComponent(requestQuery)}&page=${pageToFetch}&include_adult=false`, { signal: routeContext?.signal });
             if (!res.ok) throw new Error(`HTTP ${res.status}`);
             const data = await res.json();
 
@@ -853,7 +853,7 @@ async function handleSearchInput(event) {
         const controller = new AbortController();
         autocompleteAbortController = controller;
         try {
-            const res = await fetch(`${BASE_URL}/search/multi?api_key=${API_KEY}&language=tr-TR&query=${encodeURIComponent(query)}&include_adult=false`, { signal: controller.signal });
+            const res = await fetch(`${BASE_URL}/search/multi?language=tr-TR&query=${encodeURIComponent(query)}&include_adult=false`, { signal: controller.signal });
             const data = await res.json();
 
             if (requestGeneration !== autocompleteRequestGeneration) return;

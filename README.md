@@ -50,7 +50,7 @@ Uygulama, herhangi bir ağır framework (React, Vue vb.) kullanılmadan, perform
 
 ## 💻 Kurulum ve Çalıştırma
 
-Proje tamamen istemci tarafında çalıştığı için çalıştırmak son derece basittir:
+Arayüz statik dosyalardan oluşur; API verileri için Netlify Functions gerekir:
 
 1. Bu depoyu bilgisayarınıza klonlayın:
    ```bash
@@ -60,17 +60,17 @@ Proje tamamen istemci tarafında çalıştığı için çalıştırmak son derec
    ```bash
    cd FilmimNerede
    ```
-3. `index.html` dosyasını tarayıcınızda çift tıklayarak açabilir veya yerel bir sunucu (Live Server vb.) yardımıyla çalıştırabilirsiniz.
+3. Aşağıdaki API anahtarı ayarlarını tamamlayın. Yerel geliştirme için `.env.example` dosyasını `.env` olarak kopyalayın, anahtarları doldurun ve `npx netlify dev` çalıştırın. Düz bir statik sunucu TMDB verilerini yükleyemez.
 
 ---
 
 ## 🔑 API Anahtarları Hakkında
-*Not: Proje içerisindeki TMDB API anahtarı demo amaçlı yer almaktadır. Kendi kullanımınız için [TMDB](https://www.themoviedb.org/) üzerinden bir API anahtarı alıp `app.js` içerisindeki `API_KEY` değişkenine tanımlamanız önerilir.*
+Tarayıcı hiçbir API anahtarı tutmaz. Tüm TMDB API çağrıları `/.netlify/functions/tmdb` üzerinden geçer; proxy, sunucudaki `TMDB_API_KEY` değerini isteğe ekler. OMDb çağrıları da aynı şekilde `/.netlify/functions/omdb` üzerinden yapılır ve sunucudaki `OMDB_API_KEY` kullanılır. Anahtarları istemci koduna yazmayın ve `.env` dosyasını repoya eklemeyin.
 
 ### Netlify ortam değişkenleri
 
 Netlify proje ayarlarında sunucu fonksiyonları için şu ortam değişkenlerini tanımlayın:
 
 - `OMDB_API_KEY`: IMDb puanlarını getiren OMDb fonksiyonunun API anahtarı.
-- `TMDB_API_KEY`: TMDB API proxy fonksiyonunun sunucuda kullandığı API anahtarı. İstemciden gelen `api_key` kaldırılır ve bu anahtar upstream isteğine eklenir. Tanımlı değilse API proxy 500 döndürür; görsel proxy anahtar gerektirmez.
+- `TMDB_API_KEY`: TMDB API proxy fonksiyonunun API anahtarı. Tanımlı değilse API proxy 500 döndürür; görsel proxy anahtar gerektirmez.
 

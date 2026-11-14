@@ -39,16 +39,13 @@ const TMDB_PROXY_SESSION_KEY = 'filmimnerede_tmdb_proxy_until';
 const TMDB_PROXY_SESSION_TTL_MS = 10 * 60 * 1000;
 const TMDB_PROXY_PROBE_TIMEOUT_MS = 3500;
 const TMDB_PROXY_NEGATIVE_PROBE_TTL_MS = 30000;
-const TMDB_PROXY_DIRECT_FAILURE_WINDOW_MS = 60000;
 
 const tmdbProxyState = {
-    apiActive: false,
     activeUntil: 0,
     imageActive: false,
     probeResult: null,
     probeResultAt: 0,
     probePromise: null,
-    lastDirectFailureAt: null,
     listenersInstalled: false
 };
 
@@ -109,9 +106,12 @@ function buildTmdbProxyUrl(target, rawUrl) {
     if (target === 'api') {
         const parsed = parseDirectTmdbApiUrl(rawUrl);
         if (!parsed) return null;
-        parsed.searchParams.delete('api_key');
+        const query = parsed.search.slice(1)
+            .split('&')
+            .filter(segment => segment.split('=', 1)[0] !== 'api_key')
+            .join('&');
         return `${TMDB_PROXY_ENDPOINT}?target=api&path=${encodeURIComponent(
-            `${parsed.pathname}${parsed.search}`
+            `${parsed.pathname}${query ? `?${query}` : ''}`
         )}`;
     }
 
@@ -422,19 +422,6 @@ function isTmdbFallbackBrowserEnv() {
     );
 }
 
-function isRecoverableTmdbNetworkError(error, signal) {
-    if (signal && signal.aborted) {
-        return false;
-    }
-    if (error && error.name === 'AbortError') {
-        return false;
-    }
-    if (typeof navigator !== 'undefined' && navigator.onLine === false) {
-        return false;
-    }
-    return true;
-}
-
 function restoreTmdbProxySession() {
     if (typeof navigator !== 'undefined' && navigator.onLine === false) {
         return false;
@@ -447,7 +434,6 @@ function restoreTmdbProxySession() {
         const rawUntil = sessionStorage.getItem(TMDB_PROXY_SESSION_KEY);
         const until = Number(rawUntil);
         if (Number.isFinite(until) && until > Date.now()) {
-            tmdbProxyState.apiActive = true;
             tmdbProxyState.activeUntil = until;
             tmdbProxyState.imageActive = true;
             tmdbProxyState.probeResult = true;
@@ -492,7 +478,6 @@ function rewriteFailedTmdbImages() {
 }
 
 function activateTmdbProxy() {
-    tmdbProxyState.apiActive = true;
     tmdbProxyState.activeUntil = Date.now() + TMDB_PROXY_SESSION_TTL_MS;
     tmdbProxyState.imageActive = true;
     tmdbProxyState.probeResult = true;
@@ -512,13 +497,11 @@ function activateTmdbProxy() {
 }
 
 function resetTmdbProxyState() {
-    tmdbProxyState.apiActive = false;
     tmdbProxyState.activeUntil = 0;
     tmdbProxyState.imageActive = false;
     tmdbProxyState.probeResult = null;
     tmdbProxyState.probeResultAt = 0;
     tmdbProxyState.probePromise = null;
-    tmdbProxyState.lastDirectFailureAt = null;
 
     try {
         if (typeof sessionStorage !== 'undefined' && typeof sessionStorage.removeItem === 'function') {
@@ -528,11 +511,10 @@ function resetTmdbProxyState() {
 }
 
 function getTmdbFallbackState() {
-    if (tmdbProxyState.apiActive && Date.now() >= tmdbProxyState.activeUntil) {
+    if (tmdbProxyState.imageActive && Date.now() >= tmdbProxyState.activeUntil) {
         resetTmdbProxyState();
     }
     return {
-        apiActive: tmdbProxyState.apiActive,
         imageActive: tmdbProxyState.imageActive,
         probeResult: tmdbProxyState.probeResult
     };
@@ -617,16 +599,14 @@ function installTmdbSmartFallback() {
             const rawUrl =
                 typeof input === 'string'
                     ? input
-                    : (input && typeof input.url === 'string' ? input.url : '');
+                    : (typeof URL !== 'undefined' && input instanceof URL
+                        ? input.href
+                        : (input && typeof input.url === 'string' ? input.url : ''));
 
             const parsedTmdbUrl = parseDirectTmdbApiUrl(rawUrl);
             if (!parsedTmdbUrl) {
                 return nativeFetch(input, init);
             }
-
-            const signal =
-                (init && init.signal) ||
-                (input && typeof input === 'object' ? input.signal : undefined);
 
             const buildProxyInit = () => {
                 if (!input || typeof input === 'string') {
@@ -640,61 +620,7 @@ function installTmdbSmartFallback() {
             };
 
             const proxyUrl = buildTmdbProxyUrl('api', parsedTmdbUrl.href);
-            const fetchWithProxyFallback = async () => {
-                let proxyResponse;
-                try {
-                    const response = await nativeFetch(proxyUrl, buildProxyInit());
-                    if (response.status < 500 || response.status >= 600) {
-                        return response;
-                    }
-                    proxyResponse = response;
-                } catch (error) {
-                    if ((signal && signal.aborted) || (error && error.name === 'AbortError')) {
-                        throw error;
-                    }
-                }
-                try {
-                    return await nativeFetch(input, init);
-                } catch (error) {
-                    if ((signal && signal.aborted) || (error && error.name === 'AbortError')) {
-                        throw error;
-                    }
-                    if (proxyResponse) return proxyResponse;
-                    throw error;
-                }
-            };
-
-            if (getTmdbFallbackState().apiActive && proxyUrl) {
-                return fetchWithProxyFallback();
-            }
-
-            try {
-                return await nativeFetch(input, init);
-            } catch (error) {
-                if (!isRecoverableTmdbNetworkError(error, signal)) {
-                    throw error;
-                }
-
-                const proxyAvailable = await probeTmdbProxy(nativeFetch);
-                if (signal && signal.aborted) {
-                    throw error;
-                }
-
-                const failedAt = Date.now();
-                const hasRecentDirectFailure =
-                    tmdbProxyState.lastDirectFailureAt !== null &&
-                    failedAt - tmdbProxyState.lastDirectFailureAt < TMDB_PROXY_DIRECT_FAILURE_WINDOW_MS;
-                tmdbProxyState.lastDirectFailureAt = failedAt;
-
-                if (!proxyAvailable || !proxyUrl) {
-                    throw error;
-                }
-
-                if (hasRecentDirectFailure) {
-                    activateTmdbProxy();
-                }
-                return fetchWithProxyFallback();
-            }
+            return nativeFetch(proxyUrl, buildProxyInit());
         };
 
         tmdbSmartFetch.__tmdbSmartFallbackInstalled = true;
@@ -706,7 +632,7 @@ function installTmdbSmartFallback() {
 
         document.addEventListener(
             'error',
-            event => {
+            async event => {
                 const target = event && event.target;
                 if (!target || target.tagName !== 'IMG') {
                     return;
@@ -716,7 +642,13 @@ function installTmdbSmartFallback() {
                 const proxiedUrl = buildTmdbProxyUrl('image', currentSrc);
                 if (proxiedUrl) {
                     if (!getTmdbFallbackState().imageActive) {
-                        return;
+                        if (
+                            (typeof navigator !== 'undefined' && navigator.onLine === false) ||
+                            !(await probeTmdbProxy())
+                        ) {
+                            return;
+                        }
+                        activateTmdbProxy();
                     }
                     if (target.dataset && target.dataset.tmdbProxyRetried === 'done') {
                         return;

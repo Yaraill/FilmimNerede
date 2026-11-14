@@ -571,7 +571,7 @@ async function startHoverSlideshow(imgElement, movieId, mediaType = null) {
             const imageCacheKey = `${type}:${movieId}`;
             if (!window.movieImagesCache[imageCacheKey]) {
                 try {
-                    const res = await fetch(`${BASE_URL}/${type}/${movieId}/images?api_key=${API_KEY}`);
+                    const res = await fetch(`${BASE_URL}/${type}/${movieId}/images`);
                     if (!isHoverCurrent()) return;
                     if (!res.ok) return;
                     const data = await res.json();

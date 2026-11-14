@@ -2,6 +2,7 @@ const http = require('http');
 const fs = require('fs');
 const path = require('path');
 const puppeteer = require('puppeteer');
+const { toTmdbApiUrl } = require('./helpers/tmdb-proxy-shim');
 
 const ROOT_DIR = path.resolve(__dirname, '..');
 
@@ -126,7 +127,7 @@ async function runAccessibilityTests() {
         await page.setRequestInterception(true);
 
         page.on('request', req => {
-            const url = req.url();
+            const url = toTmdbApiUrl(req.url());
             if (req.method() === 'OPTIONS') {
                 req.respond({
                     status: 200,

@@ -9,6 +9,7 @@ const path =
 
 const puppeteer =
     require('puppeteer');
+const { toTmdbApiUrl } = require('./helpers/tmdb-proxy-shim');
 
 const ROOT_DIR =
     path.resolve(
@@ -193,7 +194,7 @@ async function runTest() {
             'request',
             request => {
                 const url =
-                    request.url();
+                    toTmdbApiUrl(request.url());
 
                 const respondJson =
                     body =>

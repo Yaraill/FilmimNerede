@@ -669,7 +669,7 @@ async function fetchTrendingActorPage(page, signal) {
     try {
         const response =
             await fetch(
-                `${BASE_URL}/person/popular?api_key=${API_KEY}&language=tr-TR&page=${page}`,
+                `${BASE_URL}/person/popular?language=tr-TR&page=${page}`,
                 {
                     signal
                 }
@@ -964,7 +964,7 @@ async function fetchCuratedCollectionData(
     try {
         const response =
             await fetch(
-                `${BASE_URL}/collection/${collectionId}?api_key=${API_KEY}&language=tr-TR`,
+                `${BASE_URL}/collection/${collectionId}?language=tr-TR`,
                 {
                     signal
                 }
@@ -1095,7 +1095,7 @@ async function loadTop10Trending(
     try {
         const res =
             await fetch(
-                `${BASE_URL}/trending/all/week?api_key=${API_KEY}&language=tr-TR`,
+                `${BASE_URL}/trending/all/week?language=tr-TR`,
                 {
                     signal:
                         routeContext
@@ -1369,7 +1369,7 @@ async function loadNowPlaying(routeContext = null, expectedPage = null) {
     container.style.display = "";
     showSkeletons('now-playing-grid', 10);
     try {
-        const res = await fetch(`${BASE_URL}/movie/now_playing?api_key=${API_KEY}&language=tr-TR&region=TR&page=1`, { signal: routeContext?.signal });
+        const res = await fetch(`${BASE_URL}/movie/now_playing?language=tr-TR&region=TR&page=1`, { signal: routeContext?.signal });
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const data = await res.json();
         
@@ -1412,7 +1412,7 @@ async function loadUpcomingMovies(routeContext = null) {
     container.innerHTML = "<div class='loading'>Gelecek filmler çekiliyor...</div>";
     try {
         const today = new Date().toLocaleDateString('sv-SE');
-        const response = await fetch(`${BASE_URL}/discover/movie?api_key=${API_KEY}&language=tr-TR&region=TR&with_release_type=2|3&release_date.gte=${today}&sort_by=release_date.asc&popularity.gte=15&page=1`, { signal: routeContext?.signal });
+        const response = await fetch(`${BASE_URL}/discover/movie?language=tr-TR&region=TR&with_release_type=2|3&release_date.gte=${today}&sort_by=release_date.asc&popularity.gte=15&page=1`, { signal: routeContext?.signal });
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
         const data = await response.json();
         
@@ -2589,7 +2589,7 @@ async function loadSmartRecommendations(
 
                     const res =
                         await fetch(
-                            `${BASE_URL}/${mediaType}/${movieId}/recommendations?api_key=${API_KEY}&language=tr-TR`,
+                            `${BASE_URL}/${mediaType}/${movieId}/recommendations?language=tr-TR`,
                             {
                                 signal:
                                     routeContext
@@ -2842,7 +2842,7 @@ async function loadSmartRecommendations(
         ) {
             const res =
                 await fetch(
-                    `${BASE_URL}/discover/movie?api_key=${API_KEY}&language=tr-TR&sort_by=vote_average.desc&vote_count.gte=1000&without_genres=99`,
+                    `${BASE_URL}/discover/movie?language=tr-TR&sort_by=vote_average.desc&vote_count.gte=1000&without_genres=99`,
                     {
                         signal:
                             routeContext

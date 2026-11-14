@@ -17,3 +17,8 @@ Thumbs.db
 
 # Dependencies
 node_modules/
+
+# Local environment
+.env
+.env.*
+!.env.example

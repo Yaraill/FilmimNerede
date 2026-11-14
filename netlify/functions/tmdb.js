@@ -380,12 +380,16 @@ async function fetchUpstreamWithFallback(targetSpec, options = {}) {
 }
 
 async function handler(event = {}, deps = {}) {
+    const queryParams = event.queryStringParameters || {};
+    const errorHeaders =
+        typeof queryParams.target === 'string' && queryParams.target.trim().toLowerCase() === 'image'
+            ? {}
+            : { 'Cache-Control': 'no-store' };
     const method = String(event.httpMethod || '').toUpperCase();
     if (method !== 'GET') {
-        return jsonResponse(405, { error: 'Method Not Allowed' }, { Allow: 'GET' });
+        return jsonResponse(405, { error: 'Method Not Allowed' }, { Allow: 'GET', ...errorHeaders });
     }
 
-    const queryParams = event.queryStringParameters || {};
     if (queryParams.probe === '1') {
         return jsonResponse(
             200,
@@ -396,7 +400,7 @@ async function handler(event = {}, deps = {}) {
 
     const validation = validateTmdbTargetAndPath(queryParams.target, queryParams.path);
     if (!validation.valid) {
-        return jsonResponse(400, { error: validation.error });
+        return jsonResponse(400, { error: validation.error }, errorHeaders);
     }
 
     if (validation.target === 'api') {
@@ -404,7 +408,7 @@ async function handler(event = {}, deps = {}) {
         const apiKey = typeof rawApiKey === 'string' ? rawApiKey.trim() : '';
         if (!apiKey) {
             console.error('TMDB_API_KEY tanımlı değil.');
-            return jsonResponse(500, { error: 'TMDB servisi yapılandırılmamış.' });
+            return jsonResponse(500, { error: 'TMDB servisi yapılandırılmamış.' }, errorHeaders);
         }
 
         const upstreamUrl = new URL(validation.upstreamUrl);
@@ -442,10 +446,12 @@ async function handler(event = {}, deps = {}) {
         }
 
         const responseHeaders = {
-            'Content-Type': 'application/json; charset=utf-8'
+            'Content-Type': 'application/json; charset=utf-8',
+            'Cache-Control': 'no-store'
         };
         if (upstream.statusCode >= 200 && upstream.statusCode < 300) {
             responseHeaders['Cache-Control'] = 'public, max-age=120, s-maxage=300';
+            responseHeaders['Netlify-CDN-Cache-Control'] = 'public, s-maxage=600, durable';
         }
 
         return {
@@ -455,11 +461,11 @@ async function handler(event = {}, deps = {}) {
         };
     } catch (error) {
         if (error?.name === 'AbortError') {
-            return jsonResponse(504, { error: 'TMDB isteği zaman aşımına uğradı.' });
+            return jsonResponse(504, { error: 'TMDB isteği zaman aşımına uğradı.' }, errorHeaders);
         }
 
         console.error('TMDB proxy upstream error.');
-        return jsonResponse(502, { error: 'TMDB isteği başarısız oldu.' });
+        return jsonResponse(502, { error: 'TMDB isteği başarısız oldu.' }, errorHeaders);
     }
 }
 

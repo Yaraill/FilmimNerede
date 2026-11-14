@@ -115,7 +115,7 @@ async function renderActor(
     try {
         if (!isRouteContextCurrent(routeContext, "actor", actorId)) return;
 
-        const personRes = await fetch(`${BASE_URL}/person/${currentActorId}?api_key=${API_KEY}&language=tr-TR`, { signal: routeContext?.signal });
+        const personRes = await fetch(`${BASE_URL}/person/${currentActorId}?language=tr-TR`, { signal: routeContext?.signal });
         if (!personRes.ok) {
             const err = new Error(`Person HTTP ${personRes.status}`);
             err.status = personRes.status;
@@ -155,7 +155,7 @@ async function renderActor(
                 ) || 0
             );
         
-        const creditsRes = await fetch(`${BASE_URL}/person/${currentActorId}/combined_credits?api_key=${API_KEY}&language=tr-TR`, { signal: routeContext?.signal });
+        const creditsRes = await fetch(`${BASE_URL}/person/${currentActorId}/combined_credits?language=tr-TR`, { signal: routeContext?.signal });
         if (!creditsRes.ok) {
             const err = new Error(`Credits HTTP ${creditsRes.status}`);
             err.status = creditsRes.status;
@@ -297,7 +297,7 @@ async function renderActor(
                                 } else {
                                     const res =
                                         await fetch(
-                                            `${BASE_URL}/movie/${movieId}?api_key=${API_KEY}&language=tr-TR`,
+                                            `${BASE_URL}/movie/${movieId}?language=tr-TR`,
                                             {
                                                 signal:
                                                     routeContext
@@ -419,7 +419,7 @@ async function renderActor(
                             data = actorProviderFilterCache.get(cacheKey);
                         } else {
                             const res = await fetch(
-                                `${BASE_URL}/${mediaType}/${m.id}/watch/providers?api_key=${API_KEY}`,
+                                `${BASE_URL}/${mediaType}/${m.id}/watch/providers`,
                                 { signal: routeContext?.signal }
                             );
                             data = await res.json();
@@ -1045,10 +1045,10 @@ function showActorTooltip(
                     ] =
                         await Promise.all([
                             fetch(
-                                `${BASE_URL}/person/${safeActorId}?api_key=${API_KEY}&language=tr-TR`
+                                `${BASE_URL}/person/${safeActorId}?language=tr-TR`
                             ),
                             fetch(
-                                `${BASE_URL}/person/${safeActorId}/combined_credits?api_key=${API_KEY}&language=tr-TR`
+                                `${BASE_URL}/person/${safeActorId}/combined_credits?language=tr-TR`
                             )
                         ]);
 
@@ -1583,7 +1583,7 @@ async function handleActorAutocomplete(
                 try {
                     const res =
                         await fetch(
-                            `${BASE_URL}/search/person?api_key=${API_KEY}&query=${encodeURIComponent(query)}&language=tr-TR`
+                            `${BASE_URL}/search/person?query=${encodeURIComponent(query)}&language=tr-TR`
                         );
 
                     const data =
@@ -2056,8 +2056,8 @@ async function findCommonMovies() {
 
         if (!id1) {
             const res1 = await fetch(
-                `${BASE_URL}/search/person?api_key=${API_KEY}` +
-                `&query=${encodeURIComponent(actor1)}` +
+                `${BASE_URL}/search/person?` +
+                `query=${encodeURIComponent(actor1)}` +
                 `&language=tr-TR`
             );
 
@@ -2083,8 +2083,8 @@ async function findCommonMovies() {
 
         if (!id2) {
             const res2 = await fetch(
-                `${BASE_URL}/search/person?api_key=${API_KEY}` +
-                `&query=${encodeURIComponent(actor2)}` +
+                `${BASE_URL}/search/person?` +
+                `query=${encodeURIComponent(actor2)}` +
                 `&language=tr-TR`
             );
 
@@ -2125,8 +2125,8 @@ async function findCommonMovies() {
         }
 
         const res3 = await fetch(
-            `${BASE_URL}/discover/movie?api_key=${API_KEY}` +
-            `&with_people=${id1},${id2}` +
+            `${BASE_URL}/discover/movie?` +
+            `with_people=${id1},${id2}` +
             `&sort_by=popularity.desc` +
             `&language=tr-TR`
         );

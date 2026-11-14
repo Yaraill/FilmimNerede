@@ -1461,7 +1461,7 @@ async function calculateExactWatchTime(
 
             const request =
                 fetch(
-                    `${BASE_URL}/${mediaType}/${itemId}?api_key=${API_KEY}&language=tr-TR`,
+                    `${BASE_URL}/${mediaType}/${itemId}?language=tr-TR`,
                     {
                         signal
                     }

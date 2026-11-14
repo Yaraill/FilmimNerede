@@ -171,7 +171,7 @@ async function fetchExtendedMediaDetail(mediaType, id, signal) {
 
     return runWithSharedInflight(movieDetailInflight, key, signal, async sharedSignal => {
         const res = await fetch(
-            `${BASE_URL}/${safeType}/${safeId}?api_key=${API_KEY}&language=tr-TR&append_to_response=${MOVIE_DETAIL_APPEND_PARAM}`,
+            `${BASE_URL}/${safeType}/${safeId}?language=tr-TR&append_to_response=${MOVIE_DETAIL_APPEND_PARAM}`,
             sharedSignal ? { signal: sharedSignal } : undefined
         );
         const data = await res.json();
@@ -214,7 +214,7 @@ async function fetchCollectionDetail(collectionId, signal) {
 
     return runWithSharedInflight(movieCollectionInflight, key, signal, async sharedSignal => {
         const colRes = await fetch(
-            `${BASE_URL}/collection/${safeCollectionId}?api_key=${API_KEY}&language=tr-TR`,
+            `${BASE_URL}/collection/${safeCollectionId}?language=tr-TR`,
             sharedSignal ? { signal: sharedSignal } : undefined
         );
         const colData = await colRes.json();
@@ -436,7 +436,7 @@ async function renderMovie(
     // Quick API validation only for legacy unverified items that might have wrong media_type
     if (!verifiedFromPrimaryFetch && !requestedMediaType) {
         try {
-            let verifyRes = await fetch(`${BASE_URL}/${item.media_type}/${item.id}?api_key=${API_KEY}&language=tr-TR`, { signal: routeContext?.signal });
+            let verifyRes = await fetch(`${BASE_URL}/${item.media_type}/${item.id}?language=tr-TR`, { signal: routeContext?.signal });
             let verifyData = await verifyRes.json();
             if (verifyData.status_code === 34) {
                 item.media_type = item.media_type === "movie" ? "tv" : "movie";
@@ -790,7 +790,7 @@ async function renderMovie(
     }
 
     // Modal Provider Fetch (WITH DEEP LINKS)
-    fetch(`${BASE_URL}/${item.media_type}/${item.id}/watch/providers?api_key=${API_KEY}`, { signal: routeContext?.signal })
+    fetch(`${BASE_URL}/${item.media_type}/${item.id}/watch/providers`, { signal: routeContext?.signal })
         .then(res => res.json())
         .then(data => {
             if (!isRouteContextCurrent(routeContext, "movie", movieId)) return;
@@ -2785,7 +2785,7 @@ async function openTrailer(
 
             const res =
                 await fetch(
-                    `${BASE_URL}/${safeMediaType}/${safeId}/videos?api_key=${API_KEY}`,
+                    `${BASE_URL}/${safeMediaType}/${safeId}/videos`,
                     fetchOptions
                 );
 
@@ -3152,7 +3152,7 @@ async function loadSeasonEpisodes(
     try {
         const res =
             await fetch(
-                `${BASE_URL}/tv/${safeTvId}/season/${safeSeasonNumber}?api_key=${API_KEY}&language=tr-TR`,
+                `${BASE_URL}/tv/${safeTvId}/season/${safeSeasonNumber}?language=tr-TR`,
                 {
                     signal:
                         routeContext

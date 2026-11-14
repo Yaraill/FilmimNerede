@@ -545,7 +545,7 @@ async function fetchAndInjectProviders(
 
         if (data === null) {
             const containers = getContainers();
-            const requestUrl = `${BASE_URL}/${safeMediaType}/${safeItemId}/watch/providers?api_key=${API_KEY}`;
+            const requestUrl = `${BASE_URL}/${safeMediaType}/${safeItemId}/watch/providers`;
             data = await enqueueProviderFetch(
                 cacheKey,
                 requestUrl,

@@ -2,6 +2,7 @@ const http = require('http');
 const fs = require('fs');
 const path = require('path');
 const puppeteer = require('puppeteer');
+const { toTmdbApiUrl } = require('./helpers/tmdb-proxy-shim');
 
 const ROOT_DIR = path.resolve(__dirname, '..');
 const MIME_TYPES = {
@@ -281,7 +282,7 @@ async function runTest() {
         await page.setBypassServiceWorker(true);
         await page.setRequestInterception(true);
         page.on('request', request => {
-            const rawUrl = request.url();
+            const rawUrl = toTmdbApiUrl(request.url());
 
             if (!rawUrl.includes('api.themoviedb.org')) {
                 if (rawUrl.startsWith(`http://127.0.0.1:${port}`)) {

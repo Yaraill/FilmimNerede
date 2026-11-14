@@ -67,7 +67,7 @@ async function fetchRandomMovie(isNext = false) {
         const genreQuery = genre ? `&with_genres=${genre}` : '';
         
         try {
-            const initialRes = await fetch(`${BASE_URL}/discover/movie?api_key=${API_KEY}&language=tr-TR&page=1&vote_count.gte=500&sort_by=popularity.desc${genreQuery}`);
+            const initialRes = await fetch(`${BASE_URL}/discover/movie?language=tr-TR&page=1&vote_count.gte=500&sort_by=popularity.desc${genreQuery}`);
             const initialData = await initialRes.json();
             if (initialData.total_pages) {
                 maxPage = Math.min(50, initialData.total_pages);
@@ -75,7 +75,7 @@ async function fetchRandomMovie(isNext = false) {
         } catch(e) {}
         
         const randomPage = Math.floor(Math.random() * maxPage) + 1; 
-        const res = await fetch(`${BASE_URL}/discover/movie?api_key=${API_KEY}&language=tr-TR&page=${randomPage}&vote_count.gte=500&sort_by=popularity.desc${genreQuery}`);
+        const res = await fetch(`${BASE_URL}/discover/movie?language=tr-TR&page=${randomPage}&vote_count.gte=500&sort_by=popularity.desc${genreQuery}`);
         const data = await res.json();
         let validMovies = data.results.filter(m => !['hi','ja','ko','zh','th','cn','te','ta'].includes(m.original_language) && !m.title.toLowerCase().includes('making of'));
         if(validMovies.length === 0) validMovies = data.results;
@@ -299,7 +299,7 @@ async function startNewGame() {
     try {
         // Rastgele 1-10 arası popüler film sayfası
         const randomPage = Math.floor(Math.random() * 20) + 1;
-        const res = await fetch(`${BASE_URL}/discover/movie?api_key=${API_KEY}&language=tr-TR&page=${randomPage}&vote_count.gte=500&with_original_language=en|tr&sort_by=popularity.desc`);
+        const res = await fetch(`${BASE_URL}/discover/movie?language=tr-TR&page=${randomPage}&vote_count.gte=500&with_original_language=en|tr&sort_by=popularity.desc`);
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const data = await res.json();
         if (!Array.isArray(data?.results) || data.results.length === 0) {
@@ -388,7 +388,7 @@ async function startNewGame() {
         // Oyuncu ipucunu çek
         let castName = '';
         try {
-            const castRes = await fetch(`${BASE_URL}/movie/${currentGameMovie.id}/credits?api_key=${API_KEY}&language=tr-TR`);
+            const castRes = await fetch(`${BASE_URL}/movie/${currentGameMovie.id}/credits?language=tr-TR`);
             if (castRes.ok) {
                 const castData = await castRes.json();
                 if (
