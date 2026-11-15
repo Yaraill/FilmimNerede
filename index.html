@@ -6,12 +6,30 @@
     <meta name="description" content="FilmimNerede ile Türkiye'de vizyona girecek filmleri, popüler dizileri takip edin. Hangi platformda yayınlandıklarını öğrenin, fragman izleyin ve kendi izleme listenizi oluşturun.">
     <meta name="keywords" content="film izle, dizi izle, vizyondaki filmler, netflix türkiye, blu tv dizileri, filmimnerede, fragman izle">
     <title>FilmimNerede - Türkiye Film & Dizi Rehberi</title>
+    <link rel="preconnect" href="https://image.tmdb.org" crossorigin>
+    <link rel="preconnect" href="https://cdnjs.cloudflare.com" crossorigin>
+    <style id="critical-cls-css">
+        .movie-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 2rem; }
+        #now-playing-grid, #upcoming-movies { min-height: 480px; }
+        #trending-actors-list, .actor-story-container { min-height: 128px; align-items: flex-start; }
+        #curated-collections-list { min-height: 224px; align-items: stretch; }
+        .skeleton { background: linear-gradient(90deg, rgba(255,255,255,0.1) 25%, rgba(255,255,255,0.2) 50%, rgba(255,255,255,0.1) 75%); background-size: 200% 100%; animation: skeleton-loading 1.5s infinite; border-radius: 10px; }
+        .light-theme .skeleton { background: linear-gradient(90deg, rgba(0,0,0,0.1) 25%, rgba(0,0,0,0.2) 50%, rgba(0,0,0,0.1) 75%); background-size: 200% 100%; }
+        .movie-card.skeleton-card { border: none; background: transparent; box-shadow: none; pointer-events: none; }
+        .skeleton-poster { width: 100%; aspect-ratio: 2 / 3; border-radius: 10px; }
+        .skeleton-info { padding: 0.75rem 0.25rem 0.25rem; display: flex; flex-direction: column; gap: 0.5rem; }
+        .skeleton-line-lg { width: 80%; height: 20px; border-radius: 6px; }
+        .skeleton-line-sm { width: 50%; height: 15px; border-radius: 6px; }
+        .skeleton-line-btn { width: 100%; height: 34px; margin-top: 0.35rem; border-radius: 8px; }
+        @keyframes skeleton-loading { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
+    </style>
     <!-- Google Fonts: Modern ve okunaklı bir font (Inter) -->
     <!-- Kendi CSS dosyamız -->
-    <link rel="stylesheet" href="style.css?v=55">
+    <link rel="stylesheet" href="style.css?v=56">
     <!-- Font Awesome (İkonlar için) -->
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/color-thief/2.3.0/color-thief.umd.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" media="print" onload="this.media='all'">
+    <noscript><link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css"></noscript>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/color-thief/2.3.0/color-thief.umd.js" defer></script>
     <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🎬</text></svg>">
     <link rel="manifest" href="manifest.json">
     <meta name="theme-color" content="#3b82f6">
@@ -159,8 +177,55 @@
                 </div>
             </div>
             
-            <div id="now-playing-grid" class="movie-grid" style="display:none;">
-                <!-- Javascript ile vizyondakiler buraya gelecek -->
+            <div id="now-playing-grid" class="movie-grid">
+                <div class="movie-card skeleton-card" aria-hidden="true">
+                    <div class="skeleton skeleton-poster"></div>
+                    <div class="skeleton-info">
+                        <div class="skeleton skeleton-line-lg"></div>
+                        <div class="skeleton skeleton-line-sm"></div>
+                        <div class="skeleton skeleton-line-btn"></div>
+                    </div>
+                </div>
+                <div class="movie-card skeleton-card" aria-hidden="true">
+                    <div class="skeleton skeleton-poster"></div>
+                    <div class="skeleton-info">
+                        <div class="skeleton skeleton-line-lg"></div>
+                        <div class="skeleton skeleton-line-sm"></div>
+                        <div class="skeleton skeleton-line-btn"></div>
+                    </div>
+                </div>
+                <div class="movie-card skeleton-card" aria-hidden="true">
+                    <div class="skeleton skeleton-poster"></div>
+                    <div class="skeleton-info">
+                        <div class="skeleton skeleton-line-lg"></div>
+                        <div class="skeleton skeleton-line-sm"></div>
+                        <div class="skeleton skeleton-line-btn"></div>
+                    </div>
+                </div>
+                <div class="movie-card skeleton-card" aria-hidden="true">
+                    <div class="skeleton skeleton-poster"></div>
+                    <div class="skeleton-info">
+                        <div class="skeleton skeleton-line-lg"></div>
+                        <div class="skeleton skeleton-line-sm"></div>
+                        <div class="skeleton skeleton-line-btn"></div>
+                    </div>
+                </div>
+                <div class="movie-card skeleton-card" aria-hidden="true">
+                    <div class="skeleton skeleton-poster"></div>
+                    <div class="skeleton-info">
+                        <div class="skeleton skeleton-line-lg"></div>
+                        <div class="skeleton skeleton-line-sm"></div>
+                        <div class="skeleton skeleton-line-btn"></div>
+                    </div>
+                </div>
+                <div class="movie-card skeleton-card" aria-hidden="true">
+                    <div class="skeleton skeleton-poster"></div>
+                    <div class="skeleton-info">
+                        <div class="skeleton skeleton-line-lg"></div>
+                        <div class="skeleton skeleton-line-sm"></div>
+                        <div class="skeleton skeleton-line-btn"></div>
+                    </div>
+                </div>
             </div>
             
             
@@ -174,8 +239,54 @@
             </div>
             
             <div id="upcoming-movies" class="movie-grid">
-                <!-- Javascript ile filmler buraya otomatik dolacak -->
-                <div class="loading">Filmler yükleniyor... (Lütfen app.js içine API Key giriniz)</div>
+                <div class="movie-card skeleton-card" aria-hidden="true">
+                    <div class="skeleton skeleton-poster"></div>
+                    <div class="skeleton-info">
+                        <div class="skeleton skeleton-line-lg"></div>
+                        <div class="skeleton skeleton-line-sm"></div>
+                        <div class="skeleton skeleton-line-btn"></div>
+                    </div>
+                </div>
+                <div class="movie-card skeleton-card" aria-hidden="true">
+                    <div class="skeleton skeleton-poster"></div>
+                    <div class="skeleton-info">
+                        <div class="skeleton skeleton-line-lg"></div>
+                        <div class="skeleton skeleton-line-sm"></div>
+                        <div class="skeleton skeleton-line-btn"></div>
+                    </div>
+                </div>
+                <div class="movie-card skeleton-card" aria-hidden="true">
+                    <div class="skeleton skeleton-poster"></div>
+                    <div class="skeleton-info">
+                        <div class="skeleton skeleton-line-lg"></div>
+                        <div class="skeleton skeleton-line-sm"></div>
+                        <div class="skeleton skeleton-line-btn"></div>
+                    </div>
+                </div>
+                <div class="movie-card skeleton-card" aria-hidden="true">
+                    <div class="skeleton skeleton-poster"></div>
+                    <div class="skeleton-info">
+                        <div class="skeleton skeleton-line-lg"></div>
+                        <div class="skeleton skeleton-line-sm"></div>
+                        <div class="skeleton skeleton-line-btn"></div>
+                    </div>
+                </div>
+                <div class="movie-card skeleton-card" aria-hidden="true">
+                    <div class="skeleton skeleton-poster"></div>
+                    <div class="skeleton-info">
+                        <div class="skeleton skeleton-line-lg"></div>
+                        <div class="skeleton skeleton-line-sm"></div>
+                        <div class="skeleton skeleton-line-btn"></div>
+                    </div>
+                </div>
+                <div class="movie-card skeleton-card" aria-hidden="true">
+                    <div class="skeleton skeleton-poster"></div>
+                    <div class="skeleton-info">
+                        <div class="skeleton skeleton-line-lg"></div>
+                        <div class="skeleton skeleton-line-sm"></div>
+                        <div class="skeleton skeleton-line-btn"></div>
+                    </div>
+                </div>
             </div>
         </section>
 
@@ -714,16 +825,16 @@
     <script src="js/runtime/security.js?v=5"></script>
     <script src="js/runtime/state.js?v=1"></script>
     <script src="js/runtime/router.js?v=5"></script>
-    <script src="js/runtime/shared-ui.js?v=9"></script>
+    <script src="js/runtime/shared-ui.js?v=10"></script>
     <script src="js/runtime/providers.js?v=4"></script>
     <script src="js/runtime/platform.js?v=9"></script>
     <script src="js/runtime/search.js?v=4"></script>
     <script src="js/runtime/movie.js?v=10"></script>
     <script src="js/runtime/actor.js?v=10"></script>
-    <script src="js/runtime/home.js?v=10"></script>
-    <script src="js/runtime/profile.js?v=8"></script>
+    <script src="js/runtime/home.js?v=11"></script>
+    <script src="js/runtime/profile.js?v=9"></script>
     <script src="js/runtime/misc.js?v=11"></script>
-    <script src="app.js?v=75"></script>
+    <script src="app.js?v=76"></script>
     <script>
         if ('serviceWorker' in navigator) {
             window.addEventListener('load', () => {

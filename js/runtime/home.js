@@ -14,6 +14,58 @@ const HOME_TRENDING_ACTORS_TTL_MS =
 const HOME_COLLECTION_TTL_MS =
     10 * 60 * 1000;
 
+const HOME_TOP10_TTL_MS =
+    5 * 60 * 1000;
+
+let top10TrendingCache = null;
+
+function getCachedTop10Trending() {
+    if (
+        !top10TrendingCache ||
+        !Array.isArray(top10TrendingCache.results) ||
+        top10TrendingCache.results.length === 0
+    ) {
+        return null;
+    }
+    if (Date.now() - top10TrendingCache.cachedAt > HOME_TOP10_TTL_MS) {
+        top10TrendingCache = null;
+        return null;
+    }
+    return top10TrendingCache;
+}
+
+function setCachedTop10Trending(data) {
+    const results = Array.isArray(data?.results) ? data.results : [];
+    if (results.length === 0) {
+        return;
+    }
+    top10TrendingCache = {
+        results,
+        cachedAt: Date.now()
+    };
+}
+
+function preloadHomeLcpImage(posterUrl) {
+    if (!posterUrl || typeof document === 'undefined' || !document.head) {
+        return;
+    }
+    const existing = document.getElementById('home-lcp-preload-link');
+    if (existing) {
+        if (existing.getAttribute('href') === posterUrl) {
+            return;
+        }
+        existing.setAttribute('href', posterUrl);
+        return;
+    }
+    const link = document.createElement('link');
+    link.id = 'home-lcp-preload-link';
+    link.rel = 'preload';
+    link.as = 'image';
+    link.href = posterUrl;
+    link.setAttribute('fetchpriority', 'high');
+    document.head.appendChild(link);
+}
+
 const HOME_CURATED_COLLECTIONS = [
     { id: 86311, title: "Marvel Sinematik Evreni" },
     { id: 1241, title: "Harry Potter Serisi" },
@@ -1093,22 +1145,59 @@ async function loadTop10Trending(
     expectedPage = null
 ) {
     try {
-        const res =
-            await fetch(
-                `${BASE_URL}/trending/all/week?language=tr-TR`,
+        if (
+            routeContext?.signal &&
+            typeof waitForHomeDeferredStage === 'function' &&
+            (expectedPage === 'home' || expectedPage === 'now-playing')
+        ) {
+            await waitForHomeDeferredStage(
+                null,
+                routeContext.signal,
                 {
-                    signal:
-                        routeContext
-                            ?.signal
+                    idleTimeoutMs: 250,
+                    fallbackDelayMs: 60
                 }
             );
-
-        if (!res.ok) {
-            throw new Error(`Top 10 HTTP ${res.status}`);
+            if (
+                !isRouteContextCurrent(
+                    routeContext,
+                    expectedPage
+                )
+            ) {
+                return;
+            }
         }
 
-        const data =
-            await res.json();
+        let data =
+            getCachedTop10Trending();
+
+        if (!data) {
+            const res =
+                await fetch(
+                    `${BASE_URL}/trending/all/week?language=tr-TR`,
+                    {
+                        signal:
+                            routeContext
+                                ?.signal
+                    }
+                );
+
+            if (!res.ok) {
+                throw new Error(`Top 10 HTTP ${res.status}`);
+            }
+
+            data =
+                await res.json();
+
+            if (
+                Array.isArray(data?.results) &&
+                data.results.length > 0
+            ) {
+                setCachedTop10Trending(
+                    data
+                );
+            }
+        }
 
         if (
             routeContext &&
@@ -1382,6 +1471,20 @@ async function loadNowPlaying(routeContext = null, expectedPage = null) {
         ? data.results
         : [];
 
+        const firstPosterPath = results[0]?.poster_path;
+        if (firstPosterPath && typeof getSafeTmdbImageUrl === 'function') {
+            const lcpBase =
+                typeof getSizedTmdbImageBase === 'function'
+                    ? getSizedTmdbImageBase('w342', IMAGE_BASE)
+                    : (typeof getHomeSizedImageBase === 'function'
+                        ? getHomeSizedImageBase('w342', IMAGE_BASE)
+                        : IMAGE_BASE);
+            const lcpPosterUrl = getSafeTmdbImageUrl(firstPosterPath, lcpBase);
+            if (lcpPosterUrl) {
+                preloadHomeLcpImage(lcpPosterUrl);
+            }
+        }
+
         const html = typeof createMovieCardsBatch === 'function'
             ? createMovieCardsBatch(results, 'movie', 'now-playing')
             : results.map(movie => createMovieCard(movie, 'movie', 'now-playing')).join('');
@@ -1409,7 +1512,7 @@ async function loadUpcomingMovies(routeContext = null) {
     if (!container || container.querySelector('.movie-card:not(.skeleton-card)')) return;
     
     container.style.display = "";
-    container.innerHTML = "<div class='loading'>Gelecek filmler çekiliyor...</div>";
+    showSkeletons('upcoming-movies', 10);
     try {
         const today = new Date().toLocaleDateString('sv-SE');
         const response = await fetch(`${BASE_URL}/discover/movie?language=tr-TR&region=TR&with_release_type=2|3&release_date.gte=${today}&sort_by=release_date.asc&popularity.gte=15&page=1`, { signal: routeContext?.signal });
@@ -1437,7 +1540,7 @@ container.innerHTML =
     }
 }
 
-function buildTrendingActorCard(actor, actorImageBase) {
+function buildTrendingActorCard(actor, actorImageBase, index = -1) {
     const actorId =
         normalizeTmdbId(
             actor?.id
@@ -1494,7 +1597,9 @@ function buildTrendingActorCard(actor, actorImageBase) {
         'story-img';
 
     image.loading =
-        'lazy';
+        index >= 0 && index < 4
+            ? 'eager'
+            : 'lazy';
 
     image.decoding =
         'async';
@@ -1583,8 +1688,8 @@ function renderTrendingActorsIntoContainer(container, actors, { appendOnly = fal
         document
             .createDocumentFragment();
 
-    actors.forEach(actor => {
-        const card = buildTrendingActorCard(actor, actorImageBase);
+    actors.forEach((actor, index) => {
+        const card = buildTrendingActorCard(actor, actorImageBase, index);
         if (card) {
             fragment.appendChild(card);
         }
@@ -1606,6 +1711,13 @@ async function loadTrendingActors(
 
     if (!container) {
         return;
+    }
+
+    if (
+        container.children.length === 0 &&
+        typeof showActorSkeletons === 'function'
+    ) {
+        showActorSkeletons(container, 10);
     }
 
     const renderToken =
@@ -1698,7 +1810,7 @@ async function loadTrendingActors(
     }
 }
 
-function buildCuratedCollectionCard(result, backdropBase, posterBase) {
+function buildCuratedCollectionCard(result, backdropBase, posterBase, index = -1) {
     if (!result || !result.data) {
         return null;
     }
@@ -1788,8 +1900,13 @@ function buildCuratedCollectionCard(result, backdropBase, posterBase) {
     image.alt =
         collectionName;
 
+    image.width = 320;
+    image.height = 180;
+
     image.loading =
-        'lazy';
+        index >= 0 && index < 2
+            ? 'eager'
+            : 'lazy';
 
     image.decoding =
         'async';
@@ -1981,18 +2098,31 @@ async function loadCuratedCollections(
         getHomeSizedImageBase('w342', IMAGE_BASE);
 
     try {
+        if (!isStillValid()) {
+            return;
+        }
+
         const allCached = HOME_CURATED_COLLECTIONS.every(c =>
             Boolean(getCachedCuratedCollection(c.id))
         );
 
+        if (
+            !allCached &&
+            container.children.length === 0 &&
+            typeof showCollectionSkeletons === 'function'
+        ) {
+            showCollectionSkeletons(container, 6);
+        }
+
         if (allCached) {
             const fragment = document.createDocumentFragment();
-            HOME_CURATED_COLLECTIONS.forEach(c => {
+            HOME_CURATED_COLLECTIONS.forEach((c, index) => {
                 const data = getCachedCuratedCollection(c.id);
                 const card = buildCuratedCollectionCard(
                     { data, c, collectionId: c.id },
                     backdropBase,
-                    posterBase
+                    posterBase,
+                    index
                 );
                 if (card) {
                     fragment.appendChild(card);
@@ -2038,11 +2168,12 @@ async function loadCuratedCollections(
         const stage1Fragment =
             document.createDocumentFragment();
 
-        stage1Results.forEach(result => {
+        stage1Results.forEach((result, index) => {
             const card = buildCuratedCollectionCard(
                 result,
                 backdropBase,
-                posterBase
+                posterBase,
+                index
             );
             if (card) {
                 stage1Fragment.appendChild(card);

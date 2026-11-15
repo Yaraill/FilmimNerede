@@ -462,8 +462,6 @@ function renderSection(tabId, routeContext = null) {
         loadTop10Trending(routeContext, routePage);
         loadTrendingActors(routeContext, routePage);
         loadCuratedCollections(routeContext, routePage);
-        renderRecentlyViewed(routeContext);
-        loadSmartRecommendations(routeContext, routePage);
     } else if (tabId === 'vizyon') {
         loadUpcomingMovies(routeContext);
     } else if (tabId === 'platform') {

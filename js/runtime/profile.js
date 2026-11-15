@@ -1255,9 +1255,8 @@ ratedMovies.forEach(m => {
         fetchAndInjectProviders(item.id, type, item, routeContext);
     });
 
-    const smartRecsPanel = document.getElementById('profile-smart-recs');
-    if (smartRecsPanel && smartRecsPanel.classList.contains('active-tab') && typeof loadSmartRecommendations === 'function') {
-        loadSmartRecommendations();
+    if (typeof loadSmartRecommendations === 'function') {
+        loadSmartRecommendations(routeContext, 'profile');
     }
 }
 

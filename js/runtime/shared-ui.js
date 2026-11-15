@@ -26,14 +26,52 @@ function toggleSelectVisibility(id, show) {
 }
 
 
+function resolveSkeletonContainer(containerOrId) {
+    if (!containerOrId) return null;
+    if (typeof containerOrId === 'string') {
+        return document.getElementById(containerOrId);
+    }
+    return containerOrId;
+}
+
 function showSkeletons(containerId, count = 10) {
-    const container = document.getElementById(containerId);
+    const container = resolveSkeletonContainer(containerId);
     if (!container) return;
     const skeletonCard = `
-        <div class="movie-card skeleton-card" style="border:none; background:transparent;">
-            <div class="skeleton" style="width:100%; height:300px; border-radius:10px;"></div>
-            <div class="skeleton" style="width:80%; height:20px; margin-top:10px;"></div>
-            <div class="skeleton" style="width:50%; height:15px; margin-top:5px;"></div>
+        <div class="movie-card skeleton-card" aria-hidden="true">
+            <div class="skeleton skeleton-poster"></div>
+            <div class="skeleton-info">
+                <div class="skeleton skeleton-line-lg"></div>
+                <div class="skeleton skeleton-line-sm"></div>
+                <div class="skeleton skeleton-line-btn"></div>
+            </div>
+        </div>
+    `;
+    container.innerHTML = skeletonCard.repeat(Math.max(0, count));
+}
+
+function showActorSkeletons(containerOrId, count = 10) {
+    const container = resolveSkeletonContainer(containerOrId);
+    if (!container || container.children.length > 0) return;
+    const skeletonItem = `
+        <div class="story-skeleton" aria-hidden="true">
+            <div class="skeleton story-skeleton-avatar"></div>
+            <div class="skeleton story-skeleton-label"></div>
+        </div>
+    `;
+    container.innerHTML = skeletonItem.repeat(Math.max(0, count));
+}
+
+function showCollectionSkeletons(containerOrId, count = 6) {
+    const container = resolveSkeletonContainer(containerOrId);
+    if (!container || container.children.length > 0) return;
+    const skeletonCard = `
+        <div class="collection-skeleton" aria-hidden="true">
+            <div class="skeleton collection-skeleton-media"></div>
+            <div class="collection-skeleton-body">
+                <div class="skeleton collection-skeleton-title"></div>
+                <div class="skeleton collection-skeleton-subtitle"></div>
+            </div>
         </div>
     `;
     container.innerHTML = skeletonCard.repeat(Math.max(0, count));
@@ -222,6 +260,18 @@ function getMovieRatingsSnapshot() {
     return ratings;
 }
 
+function getMoviePosterLoadAttrs(tabContext, cardOptions) {
+    const cardIndex = Number.isInteger(cardOptions?.cardIndex) ? cardOptions.cardIndex : -1;
+    const isPrioritizedTab = tabContext === 'now-playing' || tabContext === 'upcoming';
+    if (isPrioritizedTab && cardIndex >= 0 && cardIndex < 4) {
+        if (tabContext === 'now-playing' && cardIndex === 0) {
+            return 'loading="eager" fetchpriority="high"';
+        }
+        return 'loading="eager"';
+    }
+    return 'loading="lazy"';
+}
+
 function createMovieCardsBatch(items, defaultMediaType = "movie", tabContext = "") {
     if (!Array.isArray(items) || items.length === 0) {
         return '';
@@ -238,7 +288,10 @@ function createMovieCardsBatch(items, defaultMediaType = "movie", tabContext = "
                 ? inferItemMediaType(item, 'movie')
                 : normalizeMediaType(item?.media_type, 'movie')
         );
-        html += createMovieCard(item, resolvedType, tabContext, renderOptions);
+        html += createMovieCard(item, resolvedType, tabContext, {
+            ...renderOptions,
+            cardIndex: i
+        });
     }
     return html;
 }
@@ -465,7 +518,9 @@ function createMovieCard(item, mediaType = "movie", tabContext = "", renderOptio
                 src="${escapeHtml(poster)}"
                 alt="${escapeHtml(title)}"
                 class="movie-poster"
-                loading="lazy"
+                width="342"
+                height="513"
+                ${getMoviePosterLoadAttrs(tabContext, arguments[3])}
                 decoding="async"
                 style="cursor:pointer"
                 onclick="openDetails(${itemId}, '${normalizedMediaType}')"
