@@ -1,4 +1,4 @@
-const CACHE_NAME = 'filmimnerede-v103';
+const CACHE_NAME = 'filmimnerede-v104';
 const ASSETS_TO_CACHE = [
   '/',
   '/index.html',
@@ -13,7 +13,7 @@ const ASSETS_TO_CACHE = [
   '/js/runtime/search.js?v=4',
   '/js/runtime/movie.js?v=10',
   '/js/runtime/actor.js?v=10',
-  '/js/runtime/home.js?v=11',
+  '/js/runtime/home.js?v=12',
   '/js/runtime/profile.js?v=9',
   '/js/runtime/misc.js?v=11',
   '/app.js?v=76',
