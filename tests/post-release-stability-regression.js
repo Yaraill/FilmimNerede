@@ -144,7 +144,7 @@ async function runTest() {
                 return;
             }
             // YouTube iframe - respond with empty page to avoid load
-            if (reqUrl.includes('youtube.com') || reqUrl.includes('ytimg.com')) {
+            if (reqUrl.includes('youtube.com') || reqUrl.includes('youtube-nocookie.com') || reqUrl.includes('ytimg.com')) {
                 request.respond({ status: 200, contentType: 'text/html', body: '<html><body>YT mock</body></html>' });
                 return;
             }
@@ -1097,7 +1097,7 @@ async function runTest() {
 
         if (
             providerFilteredState.hash !==
-            '#search?q=test'
+            '#search?q=test&provider=337'
         ) {
             throw new Error(
                 'Provider filtering left search route: ' +
