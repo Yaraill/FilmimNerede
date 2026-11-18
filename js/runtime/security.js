@@ -7,6 +7,10 @@ function escapeHtml(value) {
         .replace(/'/g, '&#39;');
 }
 
+function escapeAttr(value) {
+    return escapeHtml(value);
+}
+
 function renderSafeError(
     target,
     userMessage = 'Hata oluştu.',

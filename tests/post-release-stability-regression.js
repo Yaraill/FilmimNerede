@@ -932,10 +932,16 @@ async function runTest() {
                                 'sortByFilter'
                             )?.value,
 
-                    yearText:
-                        visibleValue(
-                            'yearFilter'
-                        ),
+                    yearFromText:
+                        document
+                            .getElementById(
+                                'yearFromInput'
+                            )?.value ?? '',
+                    yearToText:
+                        document
+                            .getElementById(
+                                'yearToInput'
+                            )?.value ?? '',
                     ratingText:
                         visibleValue(
                             'ratingFilter'
@@ -1003,8 +1009,10 @@ async function runTest() {
         }
 
         if (
-            resetUiState.yearText !==
-                'Tüm Yıllar' ||
+            resetUiState.yearFromText !==
+                '' ||
+            resetUiState.yearToText !==
+                '' ||
             resetUiState.ratingText !==
                 'Tüm Puanlar' ||
             resetUiState.providerText !==

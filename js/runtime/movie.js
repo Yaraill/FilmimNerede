@@ -296,6 +296,7 @@ async function renderMovie(
         document.getElementById(
             'details-modal'
         );
+    modal?.querySelector('.btn-calendar-modal')?.remove();
     const detailsTitle = document.getElementById('details-title');
     if (detailsTitle) {
         detailsTitle.textContent = 'Yapım detayları yükleniyor...';
@@ -982,6 +983,22 @@ async function renderMovie(
         .then(async fullData => {
             if (!fullData || typeof fullData !== 'object') return;
             if (!isRouteContextCurrent(routeContext, "movie", movieId)) return;
+            modal?.querySelectorAll('.btn-calendar-modal').forEach(el => el.remove());
+            if (item.media_type === 'movie' &&
+                typeof fullData.release_date === 'string' &&
+                fullData.release_date >= new Date().toLocaleDateString('sv-SE')) {
+                const title = fullData.title || item.title || 'Film';
+                const calendarUrl = buildGoogleCalendarUrl(title, fullData.release_date, fullData.overview || item.overview || '');
+                if (calendarUrl) {
+                    provContainer?.insertAdjacentHTML('beforebegin', `
+                        <a class="action-btn btn-calendar-modal" href="${escapeAttr(calendarUrl)}"
+                            target="_blank" rel="noopener noreferrer"
+                            aria-label="${escapeAttr(title)} için Google Takvime ekle">
+                            <i class="fas fa-calendar-plus" aria-hidden="true"></i> Takvime Ekle
+                        </a>
+                    `);
+                }
+            }
             if (fullData.overview) {
                 document.getElementById('details-overview').innerText = fullData.overview;
                 item.overview = fullData.overview;

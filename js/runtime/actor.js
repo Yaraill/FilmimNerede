@@ -48,10 +48,6 @@ async function renderActor(
     hideActorTooltip();
     
     if (reset) {
-        if (!isFilterChange) {
-                // Filter clearing moved to top
-            }
-        
         const detailsModal = document.getElementById('details-modal');
         if (detailsModal) detailsModal.style.display = 'none';
 
@@ -65,9 +61,6 @@ async function renderActor(
         document.getElementById('platform').classList.add('active-tab');
         const platformLink = document.querySelector('a[onclick*="platform"]');
         if (platformLink) platformLink.classList.add('active');
-        
-        document.querySelectorAll('.provider-filter-btn').forEach(btn => btn.classList.remove('active'));
-        currentProvider = 0;
         
         toggleSelectVisibility('providerFilter', true);
         
@@ -97,19 +90,18 @@ async function renderActor(
         if (vizyon) vizyon.style.display = 'none';
         
         const platformFilters = document.querySelector('.platform-filters');
-        if (platformFilters) platformFilters.style.display = 'none';
-        
-        // moved below clearAllFilters
+        if (platformFilters) platformFilters.style.display = 'flex';
     }
     
     if (reset && !isFilterChange) {
         const scrollBehavior = (typeof prefersReducedMotion === 'function' && prefersReducedMotion()) ? 'auto' : 'smooth';
         window.scrollTo({ top: 0, behavior: scrollBehavior });
-        clearAllFilters();
+        resetPlatformFilterControls();
     }
     
     if (reset) {
         updateCustomOptionVisibility('sortByFilter', 'order.asc', jobType !== 'Director');
+        syncMyPlatformsUi();
     }
 
     try {
@@ -141,19 +133,10 @@ async function renderActor(
             jobType = 'Director';
         }
         
-    const rawFilterProvId =
-        document.getElementById(
-            'providerFilter'
-        )?.value || '0';
-
-    const filterProvId =
-        rawFilterProvId === '0'
-            ? 0
-            : (
-                normalizeTmdbId(
-                    rawFilterProvId
-                ) || 0
-            );
+        const filterProvId = normalizeTmdbId(document.getElementById('providerFilter')?.value) || 0;
+        const filterProviderIds = filterProvId
+            ? [filterProvId]
+            : isMyPlatformsModeActive() ? getSubscribedProviderIds() : [];
         
         const creditsRes = await fetch(`${BASE_URL}/person/${currentActorId}/combined_credits?language=tr-TR`, { signal: routeContext?.signal });
         if (!creditsRes.ok) {
@@ -231,17 +214,15 @@ async function renderActor(
         }
         
         const yearFilterStr = document.getElementById('yearFilter')?.value || "";
-        if (yearFilterStr !== "") {
-            const selectedYear = parseInt(yearFilterStr, 10);
-            const isDecade = yearFilterStr.length === 4 && yearFilterStr.endsWith('0');
+        const parsedYearFilter = typeof parseYearFilterValue === 'function'
+            ? parseYearFilterValue(yearFilterStr)
+            : null;
+        if (parsedYearFilter) {
             movies = movies.filter(m => {
                 const yStr = m.release_date ? m.release_date.split('-')[0] : (m.first_air_date ? m.first_air_date.split('-')[0] : "");
                 const y = parseInt(yStr, 10);
                 if (isNaN(y)) return false;
-                if (isDecade && !isNaN(selectedYear)) {
-                    return y >= selectedYear && y <= selectedYear + 9;
-                }
-                return yStr === yearFilterStr;
+                return y >= parsedYearFilter.startYear && y <= parsedYearFilter.endYear;
             });
         }
         
@@ -408,7 +389,7 @@ async function renderActor(
             movies.sort((a, b) => b.popularity - a.popularity);
         }
         
-        if (filterProvId > 0) {
+        if (filterProviderIds.length > 0) {
             const regionStr = 'TR';
             const validMovies = [];
             const maxToCheck = Math.min(movies.length, Math.max(60, currentPage * 40));
@@ -431,8 +412,10 @@ async function renderActor(
                                 actorProviderFilterCache.set(cacheKey, data);
                             }
                         }
-                        const tr = data.results && data.results[regionStr] ? data.results[regionStr] : null;
-                        if (tr && tr.flatrate && tr.flatrate.some(p => p.provider_id === filterProvId)) return m;
+                        const flatRate = data?.results?.[regionStr]?.flatrate;
+                        if (Array.isArray(flatRate) && flatRate.some(provider =>
+                            filterProviderIds.includes(normalizeTmdbId(provider?.provider_id))
+                        )) return m;
                     } catch (e) { if (e.name === 'AbortError') throw e; return null; }
                     return null;
                 }));

@@ -650,6 +650,22 @@ body.light-theme .card-user-rating {
 .btn-trailer:hover {
     background-color: var(--primary-hover);
 }
+.btn-calendar-card,
+.btn-calendar-modal {
+    padding: 8px 10px;
+    border: 1px solid var(--primary-color);
+    background: var(--card-bg);
+    color: var(--text-color);
+    text-decoration: none;
+    text-align: center;
+}
+.btn-calendar-card:hover,
+.btn-calendar-modal:hover {
+    background: var(--bg-color);
+}
+.btn-calendar-modal {
+    margin-top: 10px;
+}
 .btn-save {
     background-color: rgba(255, 255, 255, 0.1);
     color: white;
@@ -1345,10 +1361,10 @@ body.light-theme .card-user-rating {
     border-radius: 15px;
 }
 .provider-logos-filter {
-    display: flex;
-    gap: 15px;
+    display: grid;
+    grid-template-columns: repeat(5, auto);
+    gap: clamp(6px, 1.2vw, 12px);
     justify-content: center;
-    flex-wrap: wrap;
 }
 .provider-filter-btn {
     background: transparent;
@@ -1360,8 +1376,8 @@ body.light-theme .card-user-rating {
     overflow: hidden;
 }
 .provider-filter-btn img {
-    width: 60px;
-    height: 60px;
+    width: clamp(36px, 6vw, 60px);
+    height: clamp(36px, 6vw, 60px);
     border-radius: 10px;
     display: block;
     transition: transform 0.3s ease;
@@ -1373,6 +1389,81 @@ body.light-theme .card-user-rating {
     border-color: var(--primary-color);
     background: rgba(229, 9, 20, 0.1);
     transform: scale(1.05);
+}
+
+.provider-filter-btn.my-platform-subscribed {
+    box-shadow: inset 0 -3px var(--accent-color);
+}
+
+.my-platforms-bar,
+.my-platforms-picker {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 8px;
+    margin-top: 12px;
+}
+
+.my-platforms-toggle-btn,
+.my-platforms-edit-btn,
+.my-platform-chip {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    min-height: 40px;
+    padding: 6px 10px;
+    border: 1px solid var(--glass-border);
+    border-radius: 8px;
+    background: var(--card-bg);
+    color: var(--text-color);
+    font: inherit;
+    font-size: 0.85rem;
+    cursor: pointer;
+}
+
+.my-platforms-toggle-btn:hover,
+.my-platforms-edit-btn:hover,
+.my-platform-chip:hover {
+    border-color: var(--primary-color);
+}
+
+.my-platforms-toggle-btn[aria-pressed="true"],
+.my-platform-chip[aria-pressed="true"] {
+    border-color: var(--accent-color);
+    box-shadow: inset 0 0 0 1px var(--accent-color);
+}
+
+.my-platforms-count-badge {
+    min-width: 1.4rem;
+    padding: 2px 4px;
+    border-radius: 1rem;
+    background: var(--bg-color);
+    text-align: center;
+    font-variant-numeric: tabular-nums;
+}
+
+.my-platforms-picker {
+    padding: 12px;
+    border: 1px solid var(--glass-border);
+    border-radius: 12px;
+    background: var(--glass-bg);
+}
+
+.my-platforms-picker[hidden] {
+    display: none;
+}
+
+.my-platforms-picker p {
+    flex-basis: 100%;
+    margin: 0 0 4px;
+    color: var(--text-muted);
+    font-size: 0.85rem;
+    text-align: center;
+}
+
+.my-platform-chip img {
+    border-radius: 5px;
 }
 
 .recommendations-list {
@@ -2662,6 +2753,78 @@ body.light-theme .custom-option:hover {
 }
 select.custom-select-hidden {
     display: none !important;
+}
+.year-direct-filter {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    width: 100%;
+    padding: 8px 10px;
+    border-radius: 8px;
+    border: 1px solid var(--glass-border);
+    background: var(--card-bg);
+}
+.custom-year-input {
+    width: 96px;
+    min-width: 0;
+    flex: 1 1 76px;
+    padding: 8px 10px;
+    border-radius: 6px;
+    border: 1px solid var(--glass-border);
+    background: var(--bg-color);
+    color: var(--text-color);
+    font: inherit;
+    font-size: 0.88rem;
+    text-align: center;
+}
+.custom-year-input:focus {
+    outline: 2px solid var(--primary-color);
+    outline-offset: 1px;
+}
+.custom-year-sep {
+    color: var(--text-muted);
+    font-weight: 600;
+}
+.custom-year-apply-btn,
+.custom-year-clear-btn {
+    padding: 8px 12px;
+    border-radius: 6px;
+    font: inherit;
+    font-size: 0.84rem;
+    font-weight: 600;
+    cursor: pointer;
+    white-space: nowrap;
+}
+.custom-year-apply-btn {
+    border: 1px solid var(--primary-color);
+    background: var(--primary-color);
+    color: #fff;
+}
+.custom-year-apply-btn:hover {
+    background: var(--primary-hover);
+}
+.custom-year-clear-btn {
+    padding: 8px 10px;
+    border: 1px solid var(--glass-border);
+    background: transparent;
+    color: var(--text-color);
+    line-height: 1;
+}
+.custom-year-clear-btn[hidden],
+.custom-year-error[hidden] {
+    display: none;
+}
+.custom-year-error {
+    flex-basis: 100%;
+    text-align: center;
+    color: #f87171;
+    font-size: 0.78rem;
+    line-height: 1.3;
+}
+body.light-theme .custom-year-error {
+    color: #dc2626;
 }
 
 

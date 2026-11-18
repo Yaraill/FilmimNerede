@@ -79,20 +79,11 @@ async function applySearchResultFilters(
     }
 
     if (state.year) {
-        const selectedYear =
-            Number.parseInt(
-                state.year,
-                10
-            );
+        const parsedYear = typeof parseYearFilterValue === 'function'
+            ? parseYearFilterValue(state.year)
+            : null;
 
-        if (
-            Number.isSafeInteger(
-                selectedYear
-            )
-        ) {
-            const isDecade =
-                state.year.endsWith('0');
-
+        if (parsedYear) {
             filtered =
                 filtered.filter(item => {
                     const dateValue =
@@ -119,18 +110,11 @@ async function applySearchResultFilters(
                         return false;
                     }
 
-                    if (isDecade) {
-                        return (
-                            itemYear >=
-                                selectedYear &&
-                            itemYear <=
-                                selectedYear + 9
-                        );
-                    }
-
                     return (
-                        itemYear ===
-                        selectedYear
+                        itemYear >=
+                            parsedYear.startYear &&
+                        itemYear <=
+                            parsedYear.endYear
                     );
                 });
         }
@@ -162,7 +146,11 @@ async function applySearchResultFilters(
                 state.provider
             );
 
-    if (providerId) {
+    const filterProviderIds = providerId
+        ? [providerId]
+        : state.provider === '0' && isMyPlatformsModeActive() ? getSubscribedProviderIds() : [];
+
+    if (filterProviderIds.length > 0) {
         const region = 'TR';
 
         const providerFiltered = [];
@@ -260,11 +248,10 @@ async function applySearchResultFilters(
                                 const matches =
                                     flatRate.some(
                                         provider =>
-                                            normalizeTmdbId(
+                                            filterProviderIds.includes(normalizeTmdbId(
                                                 provider
                                                     ?.provider_id
-                                            ) ===
-                                            providerId
+                                            ))
                                     );
 
                                 return matches
@@ -539,8 +526,6 @@ async function searchMovie(reset = true, isFilterChange = false, routeContext = 
 
         if (requestedQuery) {
             try { sessionStorage.removeItem('search_filter_state'); } catch (e) {}
-            clearAllFilters();
-
             restorePlatformFilterState(
                 sanitizePlatformFilterState('')
             );
@@ -609,6 +594,7 @@ async function searchMovie(reset = true, isFilterChange = false, routeContext = 
             platformSelection.style.display =
                 'block';
         }
+        syncMyPlatformsUi();
 
         toggleSelectVisibility(
             'providerFilter',

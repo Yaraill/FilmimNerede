@@ -172,6 +172,11 @@ function parseRoute() {
         };
     }
 
+    if (path === "upcoming") {
+        history.replaceState(history.state, "", "#vizyon");
+        return { page: "vizyon" };
+    }
+
     return {
         page: path
     };
@@ -536,11 +541,8 @@ function handleRoute({ searchFilterChange = false } = {}) {
                     saveSearchFilterStateToSession(queryStr, state);
                 } else if (!searchFilterChange && !restoreSearchFilterStateFromSession(queryStr)) {
                     restorePlatformFilterState(sanitizePlatformFilterState(''));
-                    document.querySelectorAll('.provider-filter-btn.active').forEach(button => {
-                        button.classList.remove('active');
-                    });
-                    currentProvider = 0;
                 }
+                syncMyPlatformsUi();
 
                 if (
                     window.isHistoryRestoration &&

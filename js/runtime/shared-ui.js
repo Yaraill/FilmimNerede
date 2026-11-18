@@ -296,6 +296,29 @@ function createMovieCardsBatch(items, defaultMediaType = "movie", tabContext = "
     return html;
 }
 
+function buildGoogleCalendarUrl(title, releaseDate, overview = '') {
+    if (typeof releaseDate !== 'string' || !/^(?!0000)\d{4}-\d{2}-\d{2}$/.test(releaseDate)) {
+        return null;
+    }
+
+    const date = new Date(`${releaseDate}T00:00:00Z`);
+    if (!Number.isFinite(date.getTime()) || date.toISOString().slice(0, 10) !== releaseDate) {
+        return null;
+    }
+
+    date.setUTCDate(date.getUTCDate() + 1);
+    if (date.getUTCFullYear() > 9999) return null;
+    const endDate = date.toISOString().slice(0, 10);
+    const params = new URLSearchParams({
+        action: 'TEMPLATE',
+        text: title,
+        dates: `${releaseDate.replaceAll('-', '')}/${endDate.replaceAll('-', '')}`,
+        details: overview
+    });
+    const url = getSafeHttpUrl(`https://calendar.google.com/calendar/render?${params}`);
+    return url === '#' ? null : url;
+}
+
 function createMovieCard(item, mediaType = "movie", tabContext = "", renderOptions = null) {
     if (!item || typeof item !== 'object') {
         return '';
@@ -478,6 +501,17 @@ function createMovieCard(item, mediaType = "movie", tabContext = "", renderOptio
             ? item.overview
             : 'Konu özeti bulunmuyor.';
 
+    const calendarUrl = tabContext === 'upcoming' && normalizedMediaType === 'movie' && item.release_date
+        ? buildGoogleCalendarUrl(title, item.release_date, overview)
+        : null;
+    const calendarHtml = calendarUrl ? `
+        <a class="action-btn btn-calendar-card" href="${escapeAttr(calendarUrl)}"
+            target="_blank" rel="noopener noreferrer" onclick="event.stopPropagation();"
+            aria-label="${escapeAttr(title)} için Google Takvime ekle">
+            <i class="fas fa-calendar-plus" aria-hidden="true"></i> Takvime Ekle
+        </a>
+    ` : '';
+
     let userRatingBadgeHtml = '';
     const savedRatings =
         renderOptions?.savedRatings ||
@@ -565,6 +599,7 @@ function createMovieCard(item, mediaType = "movie", tabContext = "", renderOptio
                             Fragman
                         </button>
 
+                        ${calendarHtml}
                         ${buyTicketHtml}
                     </div>
                 </div>

@@ -25,7 +25,7 @@
     </style>
     <!-- Google Fonts: Modern ve okunaklı bir font (Inter) -->
     <!-- Kendi CSS dosyamız -->
-    <link rel="stylesheet" href="style.css?v=57">
+    <link rel="stylesheet" href="style.css?v=60">
     <!-- Font Awesome (İkonlar için) -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" integrity="sha512-9usAa10IRO0HhonpyAIVpjrylPvoDwiPUiKdWk5t3PyolY1cOd4DSE0Ga+ri4AuTroPR5aQvXU9xC6qOPnzFeg==" crossorigin="anonymous" media="print" onload="this.media='all'">
     <noscript><link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" integrity="sha512-9usAa10IRO0HhonpyAIVpjrylPvoDwiPUiKdWk5t3PyolY1cOd4DSE0Ga+ri4AuTroPR5aQvXU9xC6qOPnzFeg==" crossorigin="anonymous"></noscript>
@@ -325,6 +325,65 @@
                             </button>
                             <button type="button" class="provider-filter-btn" id="btn-prov-1899" onclick="handlePlatformButtonClick(1899)" title="HBO Max" aria-label="HBO Max">
                                 <img src="https://upload.wikimedia.org/wikipedia/commons/1/17/HBO_Max_Logo.svg" style="background:#000; object-fit:contain; padding:5px;" alt="HBO Max">
+                            </button>
+                            <button type="button" class="provider-filter-btn" id="btn-prov-11" onclick="handlePlatformButtonClick(11)" title="MUBI" aria-label="MUBI">
+                                <img src="https://image.tmdb.org/t/p/w154/k7iSlvgWzZuO4zU5PcBjhABMuia.png" alt="" loading="lazy">
+                            </button>
+                            <button type="button" class="provider-filter-btn" id="btn-prov-1826" onclick="handlePlatformButtonClick(1826)" title="TOD TV" aria-label="TOD TV">
+                                <img src="https://image.tmdb.org/t/p/w154/d67wyFHwK84A0vC7PslzaMqYGif.png" alt="" loading="lazy">
+                            </button>
+                            <button type="button" class="provider-filter-btn" id="btn-prov-1904" onclick="handlePlatformButtonClick(1904)" title="TV+" aria-label="TV+">
+                                <img src="https://image.tmdb.org/t/p/w154/ck9ropbn6okqSdtgxGkkvMMgtSe.png" alt="" loading="lazy">
+                            </button>
+                            <button type="button" class="provider-filter-btn" id="btn-prov-2235" onclick="handlePlatformButtonClick(2235)" title="tabii" aria-label="tabii">
+                                <img src="https://image.tmdb.org/t/p/w154/8OIs6ZVYbS3auTiW6cWsXE5LTX.png" alt="" loading="lazy">
+                            </button>
+                            <button type="button" class="provider-filter-btn" id="btn-prov-1791" onclick="handlePlatformButtonClick(1791)" title="Exxen" aria-label="Exxen">
+                                <img src="https://image.tmdb.org/t/p/w154/4CzzpXkWljs4o3IugWKtS9fWeu.png" alt="" loading="lazy">
+                            </button>
+                            <button type="button" class="provider-filter-btn" id="btn-prov-342" onclick="handlePlatformButtonClick(342)" title="puhutv" aria-label="puhutv">
+                                <img src="https://image.tmdb.org/t/p/w154/x6YrA73boPbd9XugZFRSzr0ZZ9o.png" alt="" loading="lazy">
+                            </button>
+                        </div>
+                        <div class="my-platforms-bar">
+                            <button type="button" id="my-platforms-toggle-btn" class="my-platforms-toggle-btn" onclick="toggleMyPlatformsFilter()" aria-pressed="false">
+                                Sadece Aboneliklerim <span id="my-platforms-count-badge" class="my-platforms-count-badge">0</span>
+                            </button>
+                            <button type="button" id="my-platforms-edit-btn" class="my-platforms-edit-btn" onclick="toggleMyPlatformsPicker()" aria-expanded="false" aria-controls="my-platforms-picker">
+                                Aboneliklerimi Seç
+                            </button>
+                        </div>
+                        <div id="my-platforms-picker" class="my-platforms-picker" hidden>
+                            <p>Abone olduğunuz platformları seçin.</p>
+                            <button type="button" class="my-platform-chip" data-provider-id="8" onclick="toggleSubscribedProvider(8)" aria-pressed="false">
+                                <img src="https://image.tmdb.org/t/p/w92/pbpMk2JmcoNnQwx5JGpXngfoWtp.jpg" alt="" width="24" height="24" loading="lazy"> Netflix
+                            </button>
+                            <button type="button" class="my-platform-chip" data-provider-id="119" onclick="toggleSubscribedProvider(119)" aria-pressed="false">
+                                <img src="https://image.tmdb.org/t/p/w92/pvske1MyAoymrs5bguRfVqYiM9a.jpg" alt="" width="24" height="24" loading="lazy"> Amazon Prime
+                            </button>
+                            <button type="button" class="my-platform-chip" data-provider-id="337" onclick="toggleSubscribedProvider(337)" aria-pressed="false">
+                                <img src="https://image.tmdb.org/t/p/w92/97yvRBw1GzX7fXprcF80er19ot.jpg" alt="" width="24" height="24" loading="lazy"> Disney+
+                            </button>
+                            <button type="button" class="my-platform-chip" data-provider-id="1899" onclick="toggleSubscribedProvider(1899)" aria-pressed="false">
+                                <img src="https://image.tmdb.org/t/p/w92/jbe4gVSfRlbPTdESXhEKpornsfu.jpg" alt="" width="24" height="24" loading="lazy"> HBO Max
+                            </button>
+                            <button type="button" class="my-platform-chip" data-provider-id="11" onclick="toggleSubscribedProvider(11)" aria-pressed="false">
+                                <img src="https://image.tmdb.org/t/p/w92/k7iSlvgWzZuO4zU5PcBjhABMuia.png" alt="" width="24" height="24" loading="lazy"> MUBI
+                            </button>
+                            <button type="button" class="my-platform-chip" data-provider-id="1826" onclick="toggleSubscribedProvider(1826)" aria-pressed="false">
+                                <img src="https://image.tmdb.org/t/p/w92/d67wyFHwK84A0vC7PslzaMqYGif.png" alt="" width="24" height="24" loading="lazy"> TOD TV
+                            </button>
+                            <button type="button" class="my-platform-chip" data-provider-id="1904" onclick="toggleSubscribedProvider(1904)" aria-pressed="false">
+                                <img src="https://image.tmdb.org/t/p/w92/ck9ropbn6okqSdtgxGkkvMMgtSe.png" alt="" width="24" height="24" loading="lazy"> TV+
+                            </button>
+                            <button type="button" class="my-platform-chip" data-provider-id="2235" onclick="toggleSubscribedProvider(2235)" aria-pressed="false">
+                                <img src="https://image.tmdb.org/t/p/w92/8OIs6ZVYbS3auTiW6cWsXE5LTX.png" alt="" width="24" height="24" loading="lazy"> tabii
+                            </button>
+                            <button type="button" class="my-platform-chip" data-provider-id="1791" onclick="toggleSubscribedProvider(1791)" aria-pressed="false">
+                                <img src="https://image.tmdb.org/t/p/w92/4CzzpXkWljs4o3IugWKtS9fWeu.png" alt="" width="24" height="24" loading="lazy"> Exxen
+                            </button>
+                            <button type="button" class="my-platform-chip" data-provider-id="342" onclick="toggleSubscribedProvider(342)" aria-pressed="false">
+                                <img src="https://image.tmdb.org/t/p/w92/x6YrA73boPbd9XugZFRSzr0ZZ9o.png" alt="" width="24" height="24" loading="lazy"> puhutv
                             </button>
                         </div>
                     </div>
@@ -766,18 +825,16 @@
                         </div>
 
                         <!-- Premium Secondary Filters (Year, Rating, Sort) -->
-                        <div style="display: flex; gap: 15px; flex-wrap: wrap; justify-content: center; width: 100%;">
-                            <select id="yearFilter" class="premium-dropdown" onchange="applyPlatformFilters()" aria-label="Yıl Filtresi">
-                                <option value="">Tüm Yıllar</option>
-                                <option value="2026">2026</option>
-                                <option value="2025">2025</option>
-                                <option value="2024">2024</option>
-                                <option value="2023">2023</option>
-                                <option value="2022">2022</option>
-                                <option value="2020">2020'ler</option>
-                                <option value="2010">2010'lar</option>
-                                <option value="2000">2000'ler</option>
-                            </select>
+                        <div style="display: flex; gap: 15px; flex-wrap: wrap; justify-content: center; width: 100%; align-items: center;">
+                            <input type="hidden" id="yearFilter" value="">
+                            <div class="year-direct-filter" role="group" aria-label="Yıl veya Yıl Aralığı Filtresi">
+                                <input type="text" id="yearFromInput" class="custom-year-input" inputmode="numeric" maxlength="4" placeholder="Yıl (ör. 1994)" aria-label="Başlangıç veya tek yıl">
+                                <span class="custom-year-sep" aria-hidden="true">-</span>
+                                <input type="text" id="yearToInput" class="custom-year-input" inputmode="numeric" maxlength="4" placeholder="Bitiş" aria-label="Bitiş yılı (isteğe bağlı)">
+                                <button type="button" id="yearRangeApplyBtn" class="custom-year-apply-btn" onclick="applyCustomYearFilterFromInputs()">Uygula</button>
+                                <button type="button" id="yearRangeClearBtn" class="custom-year-clear-btn" onclick="applyCustomYearFilter('', '')" aria-label="Yıl filtresini temizle" hidden>&times;</button>
+                                <div id="yearFilterError" class="custom-year-error" role="alert" hidden></div>
+                            </div>
                             
                             <select id="ratingFilter" class="premium-dropdown" onchange="applyPlatformFilters()" aria-label="Puan Filtresi">
                                 <option value="0">Tüm Puanlar</option>
@@ -792,6 +849,12 @@
                                 <option value="119">Amazon Prime</option>
                                 <option value="337">Disney+</option>
                                 <option value="1899">HBO Max</option>
+                                <option value="11">MUBI</option>
+                                <option value="1826">TOD TV</option>
+                                <option value="1904">TV+</option>
+                                <option value="2235">tabii</option>
+                                <option value="1791">Exxen</option>
+                                <option value="342">puhutv</option>
                             </select>
                             
                             
@@ -822,19 +885,19 @@
 
     <!-- Kendi JS dosyamız -->
     <script src="js/runtime/config.js?v=2"></script>
-    <script src="js/runtime/security.js?v=5"></script>
+    <script src="js/runtime/security.js?v=6"></script>
     <script src="js/runtime/state.js?v=1"></script>
-    <script src="js/runtime/router.js?v=6"></script>
-    <script src="js/runtime/shared-ui.js?v=10"></script>
-    <script src="js/runtime/providers.js?v=4"></script>
-    <script src="js/runtime/platform.js?v=10"></script>
-    <script src="js/runtime/search.js?v=5"></script>
-    <script src="js/runtime/movie.js?v=10"></script>
-    <script src="js/runtime/actor.js?v=11"></script>
+    <script src="js/runtime/router.js?v=7"></script>
+    <script src="js/runtime/shared-ui.js?v=13"></script>
+    <script src="js/runtime/providers.js?v=6"></script>
+    <script src="js/runtime/platform.js?v=13"></script>
+    <script src="js/runtime/search.js?v=7"></script>
+    <script src="js/runtime/movie.js?v=11"></script>
+    <script src="js/runtime/actor.js?v=13"></script>
     <script src="js/runtime/home.js?v=12"></script>
     <script src="js/runtime/profile.js?v=10"></script>
     <script src="js/runtime/misc.js?v=12"></script>
-    <script src="app.js?v=76"></script>
+    <script src="app.js?v=77"></script>
     <script>
         if ('serviceWorker' in navigator) {
             window.addEventListener('load', () => {

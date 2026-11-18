@@ -500,7 +500,16 @@ async function fetchAndInjectProviders(
         };
 
     const renderProviderLogos = (containers, providersList, badgeText = null) => {
-        const visibleProviders = providersList.slice(0, 3);
+        const visibleProviders = [];
+        const seenProviders = new Set();
+        providersList.forEach(provider => {
+            const pid = normalizeTmdbId(provider?.provider_id);
+            const key = pid ? `id:${pid}` : `name:${String(provider?.provider_name || '')}`;
+            if (!seenProviders.has(key)) {
+                seenProviders.add(key);
+                visibleProviders.push(provider);
+            }
+        });
         containers.forEach(container => {
             const fragment = document.createDocumentFragment();
             visibleProviders.forEach(provider => {
@@ -623,33 +632,38 @@ async function fetchAndInjectProviders(
             }
         });
 
-        const matchesFilter = list =>
-            filterProvId === 0 ||
-            list.some(
-                provider =>
-                    normalizeTmdbId(provider?.provider_id) === filterProvId
-            );
-
-        if (flatRate.length > 0 && matchesFilter(flatRate)) {
-            renderProviderLogos(els, flatRate, null);
-            return;
-        }
-
-        if (freeProviders.length > 0 && matchesFilter(freeProviders)) {
-            renderProviderLogos(els, freeProviders, 'Ücretsiz');
-            return;
-        }
-
-        if (rentBuyProviders.length > 0 && matchesFilter(rentBuyProviders)) {
-            renderProviderLogos(els, rentBuyProviders, 'Kiralık / Satın Al');
+        const subscribedIds = filterProvId === 0 && isMyPlatformsModeActive()
+            ? getSubscribedProviderIds()
+            : [];
+        const matchesSubscription = provider =>
+            subscribedIds.includes(normalizeTmdbId(provider?.provider_id));
+        const categories = [
+            [flatRate, null],
+            [freeProviders, 'Ücretsiz'],
+            [rentBuyProviders, 'Kiralık / Satın Al']
+        ];
+        for (const [providers, badge] of categories) {
+            if (providers.length === 0) continue;
+            if (subscribedIds.length > 0) {
+                const subscribed = providers.filter(matchesSubscription);
+                if (subscribed.length === 0) continue;
+                renderProviderLogos(els, [...subscribed, ...providers.filter(p => !matchesSubscription(p))], badge);
+            } else {
+                if (filterProvId > 0 && !providers.some(p => normalizeTmdbId(p?.provider_id) === filterProvId)) {
+                    continue;
+                }
+                renderProviderLogos(els, providers, badge);
+            }
             return;
         }
 
         renderStaticMessage(
             els,
-            filterProvId > 0
-                ? 'Seçili platformda yayını yok'
-                : "Türkiye'de dijital yayını bulunamadı"
+            subscribedIds.length > 0
+                ? 'Seçili aboneliklerde yayını yok'
+                : filterProvId > 0
+                    ? 'Seçili platformda yayını yok'
+                    : "Türkiye'de dijital yayını bulunamadı"
         );
     } catch (err) {
         if (

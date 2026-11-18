@@ -30,6 +30,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // V5 Theme check
     const isLightTheme = localStorage.getItem('theme') === 'light';
     syncThemeState(isLightTheme);
+    syncMyPlatformsUi();
     
     // Load default tab
     loadGenres();
@@ -445,7 +446,7 @@ function renderSection(tabId, routeContext = null) {
     const routePage = tabId;
     if (tabId === 'home') tabId = 'now-playing';
 
-    clearAllFilters();
+    if (tabId !== 'platform') resetPlatformFilterControls();
     toggleSelectVisibility('providerFilter', false);
     
     document.querySelectorAll('.tab-content').forEach(tab => tab.classList.remove('active-tab'));
