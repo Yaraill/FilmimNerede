@@ -1,3 +1,4 @@
+// İstek sınırı tek bir fonksiyon örneğinde geçerli olan en iyi çaba korumasıdır.
 const OMDB_BASE_URL =
     'https://www.omdbapi.com/';
 
@@ -6,6 +7,67 @@ const OMDB_TIMEOUT_MS =
 
 const IMDB_ID_PATTERN =
     /^tt\d{7,10}$/;
+
+const MAX_RATE_LIMIT_CLIENTS = 5000;
+const DEFAULT_RATE_LIMIT = {
+    limit: 30,
+    windowMs: 60_000,
+    now: Date.now
+};
+const clientWindows = new Map();
+let rateLimit = DEFAULT_RATE_LIMIT;
+
+exports._resetRateLimit = function resetRateLimit(options) {
+    clientWindows.clear();
+    rateLimit = { ...DEFAULT_RATE_LIMIT, ...options };
+};
+
+function getClientKey(headers) {
+    const normalizedHeaders = Object.fromEntries(
+        Object.entries(headers ?? {}).map(([name, value]) => [
+            name.toLowerCase(),
+            value
+        ])
+    );
+
+    return normalizedHeaders['x-nf-client-connection-ip']?.trim() ||
+        normalizedHeaders['x-forwarded-for']?.split(',', 1)[0].trim() ||
+        'unknown';
+}
+
+function recordRequest(clientKey) {
+    const now = rateLimit.now();
+    let window = clientWindows.get(clientKey);
+
+    if (window && window.expiresAt <= now) {
+        clientWindows.delete(clientKey);
+        window = undefined;
+    }
+
+    if (!window) {
+        if (clientWindows.size >= MAX_RATE_LIMIT_CLIENTS) {
+            for (const [key, entry] of clientWindows) {
+                if (entry.expiresAt <= now) {
+                    clientWindows.delete(key);
+                }
+            }
+            if (clientWindows.size >= MAX_RATE_LIMIT_CLIENTS) {
+                // Map sırası pencerenin açılış sırasını korur.
+                clientWindows.delete(clientWindows.keys().next().value);
+            }
+        }
+
+        window = { count: 0, expiresAt: now + rateLimit.windowMs };
+        clientWindows.set(clientKey, window);
+    }
+
+    if (window.count >= rateLimit.limit) {
+        return Math.ceil((window.expiresAt - now) / 1000);
+    }
+
+    window.count += 1;
+    return 0;
+}
 
 function jsonResponse(
     statusCode,
@@ -46,6 +108,15 @@ exports.handler =
                 {
                     Allow: 'GET'
                 }
+            );
+        }
+
+        const retryAfter = recordRequest(getClientKey(event.headers));
+        if (retryAfter > 0) {
+            return jsonResponse(
+                429,
+                { error: 'Çok fazla istek. Lütfen biraz sonra tekrar deneyin.' },
+                { 'Retry-After': String(retryAfter), 'Cache-Control': 'no-store' }
             );
         }
 

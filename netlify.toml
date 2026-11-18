@@ -8,3 +8,17 @@
     X-Content-Type-Options = "nosniff"
     Referrer-Policy = "strict-origin-when-cross-origin"
     X-Frame-Options = "SAMEORIGIN"
+    Permissions-Policy = "camera=(), microphone=(), geolocation=(), payment=(), usb=()"
+    Content-Security-Policy-Report-Only = """\
+      default-src 'self'; \
+      script-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com; \
+      style-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com; \
+      font-src 'self' https://cdnjs.cloudflare.com data:; \
+      img-src 'self' data: blob: https://image.tmdb.org https://upload.wikimedia.org; \
+      connect-src 'self' https://api.themoviedb.org https://image.tmdb.org https://www.youtube-nocookie.com; \
+      frame-src https://www.youtube-nocookie.com https://www.youtube.com; \
+      worker-src 'self'; \
+      manifest-src 'self'; \
+      object-src 'none'; \
+      base-uri 'self'; \
+      frame-ancestors 'self'"""

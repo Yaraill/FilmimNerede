@@ -5,7 +5,8 @@ const path =
     require('path');
 
 const {
-    handler
+    handler,
+    _resetRateLimit
 } =
     require(
         '../netlify/functions/omdb'
@@ -414,6 +415,7 @@ async function runTest() {
         // -------------------------------------------------
         // Unsupported method
         // -------------------------------------------------
+        _resetRateLimit();
         process.env.OMDB_API_KEY =
             'server-test-secret';
 
@@ -436,6 +438,7 @@ async function runTest() {
         // -------------------------------------------------
         // Invalid IMDb ID
         // -------------------------------------------------
+        _resetRateLimit();
         response =
             await handler({
                 httpMethod:
@@ -455,6 +458,7 @@ async function runTest() {
         // -------------------------------------------------
         // Missing server configuration
         // -------------------------------------------------
+        _resetRateLimit();
         delete process.env
             .OMDB_API_KEY;
 
@@ -492,6 +496,7 @@ async function runTest() {
         // server secret injected,
         // client apikey and extra params ignored.
         // -------------------------------------------------
+        _resetRateLimit();
         process.env.OMDB_API_KEY =
             'server-test-secret';
 
@@ -592,6 +597,7 @@ async function runTest() {
         // -------------------------------------------------
         // OMDb Response:false application semantics
         // -------------------------------------------------
+        _resetRateLimit();
         global.fetch =
             async () =>
                 createUpstreamResponse({
@@ -642,6 +648,7 @@ async function runTest() {
             'Request limit reached!',
             'Invalid API key!'
         ]) {
+            _resetRateLimit();
             global.fetch =
                 async () =>
                     createUpstreamResponse({
@@ -691,6 +698,7 @@ async function runTest() {
         // -------------------------------------------------
         // Upstream HTTP failure
         // -------------------------------------------------
+        _resetRateLimit();
         global.fetch =
             async () =>
                 createUpstreamResponse(
@@ -721,6 +729,7 @@ async function runTest() {
         // Network failure:
         // raw internal message must not leak.
         // -------------------------------------------------
+        _resetRateLimit();
         global.fetch =
             async () => {
                 throw new Error(
@@ -766,6 +775,7 @@ async function runTest() {
         // Production remains 9000ms. Only this test
         // temporarily accelerates setTimeout to 0ms.
         // -------------------------------------------------
+        _resetRateLimit();
         const timeoutSecret =
             'INTERNAL_TIMEOUT_SECRET';
 
@@ -858,6 +868,59 @@ async function runTest() {
                 originalSetTimeout;
         }
 
+        let now = 0;
+        _resetRateLimit({ now: () => now });
+
+        let upstreamCalls = 0;
+        global.fetch = async () => {
+            upstreamCalls += 1;
+            return createUpstreamResponse({ Response: 'True' });
+        };
+
+        const rateLimitEvent = {
+            httpMethod: 'GET',
+            queryStringParameters: { i: 'tt1234567' },
+            headers: { 'X-Nf-Client-Connection-Ip': '192.0.2.10' }
+        };
+
+        for (let request = 0; request < 30; request += 1) {
+            response = await handler({
+                ...rateLimitEvent,
+                headers: {
+                    ...rateLimitEvent.headers,
+                    'X-Forwarded-For': `198.51.100.${request + 1}`
+                }
+            });
+            assert(response.statusCode === 200, 'The first 30 requests should be allowed');
+        }
+
+        now = 1_250;
+        response = await handler(rateLimitEvent);
+        assert(response.statusCode === 429, 'The 31st request from the same IP should return 429');
+        assert(response.headers['Retry-After'] === '59', 'Retry-After should round up the remaining seconds');
+        assert(response.headers['Cache-Control'] === 'no-store', 'A 429 response should not be cached');
+        assert(
+            parseBody(response).error === 'Çok fazla istek. Lütfen biraz sonra tekrar deneyin.',
+            'Unexpected rate limit error message'
+        );
+        assert(upstreamCalls === 30, 'A rate-limited request should not reach OMDb');
+
+        response = await handler({
+            ...rateLimitEvent,
+            headers: { 'X-Forwarded-For': ' 192.0.2.10 , 192.0.2.20' }
+        });
+        assert(response.statusCode === 429, 'The trimmed first forwarded IP should use its existing limit');
+
+        response = await handler({
+            ...rateLimitEvent,
+            headers: { 'X-Forwarded-For': ' 192.0.2.20 , 192.0.2.10' }
+        });
+        assert(response.statusCode === 200, 'A different IP should be allowed');
+
+        now = 60_000;
+        response = await handler(rateLimitEvent);
+        assert(response.statusCode === 200, 'Requests should be allowed when the fixed window expires');
+
         console.log(
             `[INFO] browser source files scanned: ${browserScan.files.length}`
         );
@@ -866,6 +929,7 @@ async function runTest() {
             '[PASS] OMDb proxy regression tests passed'
         );
     } finally {
+        _resetRateLimit();
         global.fetch =
             originalFetch;
 
