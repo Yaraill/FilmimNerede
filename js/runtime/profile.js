@@ -703,13 +703,11 @@ if (typeof document !== 'undefined' && typeof document.addEventListener === 'fun
 function switchProfileTab(tabId, btnElem) {
     document.querySelectorAll('.profile-tab-content').forEach(el => {
         el.classList.remove('active-tab');
-        el.style.display = 'none';
         el.hidden = true;
     });
     const target = document.getElementById(tabId);
     if (target) {
         target.classList.add('active-tab');
-        target.style.display = 'block';
         target.hidden = false;
     }
     
@@ -730,6 +728,9 @@ function switchProfileTab(tabId, btnElem) {
 
     if (tabId === 'profile-smart-recs' && typeof loadSmartRecommendations === 'function') {
         loadSmartRecommendations();
+    }
+    if (tabId === 'profile-tv-tracker') {
+        renderTvTrackerSection();
     }
 }
 
@@ -766,112 +767,124 @@ if (typeof document !== 'undefined' && typeof document.addEventListener === 'fun
 });
 }
 
-function loadProfile(routeContext = null) {
-    const watchlistGrid = document.getElementById('watchlist-grid');
-    const ratedTvGrid = document.getElementById('rated-tv-grid');
-    const ratedMovieGrid = document.getElementById('rated-movie-grid');
-    const actorsGrid = document.getElementById('favorite-actors-grid');
+function renderTvTrackerSection() {
+    const grid = document.getElementById('tv-tracker-grid');
+    if (!grid) return;
+
+    const shows = getAllTrackedTvShows();
+    const tab = document.getElementById('tab-profile-tv-tracker');
+    if (tab) {
+        const icon = tab.querySelector('i');
+        const label = shows.length ? ` Dizi Takibim (${shows.length})` : ' Dizi Takibim';
+        if (icon) {
+            tab.replaceChildren(icon, label);
+        } else {
+            tab.textContent = label.trim();
+        }
+    }
+
+    if (!shows.length) {
+        const empty = document.createElement('p');
+        empty.className = 'tv-tracker-empty';
+        empty.textContent = 'Henüz dizi takibiniz yok. Bir dizinin sezon rehberinde izlediğiniz bölümleri işaretleyin.';
+        grid.replaceChildren(empty);
+        return;
+    }
+
+    const cards = document.createDocumentFragment();
+    for (const show of shows) {
+        const summary = formatTvProgressSummary(show);
+        const card = document.createElement('article');
+        card.className = 'tv-tracker-card';
+        const openShow = () => openDetails(show.id, 'tv');
+
+        const titleButton = document.createElement('button');
+        titleButton.type = 'button';
+        titleButton.className = 'tv-tracker-title-btn';
+        titleButton.addEventListener('click', openShow);
+
+        const poster = document.createElement('img');
+        poster.className = 'tv-tracker-poster';
+        poster.src = getSafeTmdbImageUrl(show.poster_path, getSizedTmdbImageBase('w185', IMAGE_BASE), 'assets/placeholder.svg');
+        poster.alt = '';
+        poster.loading = 'lazy';
+        const title = document.createElement('span');
+        title.textContent = show.name;
+        titleButton.append(poster, title);
+
+        const progress = document.createElement('div');
+        progress.className = 'tv-tracker-progress';
+        const position = document.createElement('strong');
+        position.textContent = `Kaldığın Yer: ${summary.positionLabel}`;
+        const count = document.createElement('span');
+        count.textContent = summary.countLabel;
+        progress.append(position, count);
+        if (summary.totalEpisodes) {
+            progress.appendChild(createTvProgressBar(
+                summary.watchedCount, summary.totalEpisodes, `İzleme ilerlemesi %${summary.percent}`
+            ));
+        }
+
+        const actions = document.createElement('div');
+        actions.className = 'tv-tracker-actions';
+        const openButton = document.createElement('button');
+        openButton.type = 'button';
+        openButton.className = 'tv-tracker-open-btn';
+        openButton.textContent = 'Bölümlere Git';
+        openButton.addEventListener('click', openShow);
+
+        const resetButton = document.createElement('button');
+        resetButton.type = 'button';
+        resetButton.className = 'tv-tracker-reset-btn';
+        resetButton.textContent = 'Takibi Sıfırla';
+        resetButton.addEventListener('click', () => {
+            const hadFocus = document.activeElement === resetButton;
+            const cleared = clearTvShowProgress(show.id);
+            if (cleared && hadFocus) tab?.focus();
+            if (typeof announceA11y === 'function') {
+                announceA11y(cleared ? `${show.name} için izleme takibi sıfırlandı.` : 'İzleme takibi sıfırlanamadı.');
+            }
+        });
+        actions.append(openButton, resetButton);
+        card.append(titleButton, progress, actions);
+        cards.appendChild(card);
+    }
+    grid.replaceChildren(cards);
+}
+
+function refreshProfileWatchStats(routeContext = null) {
     const statsContainer = document.getElementById('profile-stats-container');
-    
+    if (!statsContainer) return;
+
     const watchlist = typeof safeReadStorage === 'function'
         ? safeReadStorage('watchlist', [])
         : [];
     const ratedMovies = typeof safeReadStorage === 'function'
         ? safeReadStorage('ratedMovies', [])
         : [];
-    let favoriteActors = [];
+    const savedRatings = typeof safeReadStorage === 'function'
+        ? safeReadStorage('movieRatings', {})
+        : {};
+    const trackedTvShows = typeof getAllTrackedTvShows === 'function' ? getAllTrackedTvShows() : [];
+    const trackedTvIds = new Set(trackedTvShows.map(show => `tv:${show.id}`));
 
-    try {
-        const parsedFavoriteActors =
-            JSON.parse(
-                localStorage.getItem(
-                    'favoriteActors'
-                ) ||
-                '[]'
-            );
-
-        if (
-            Array.isArray(
-                parsedFavoriteActors
-            )
-        ) {
-            favoriteActors =
-                parsedFavoriteActors;
-        }
-    } catch (error) {
-        console.warn(
-            'Favorite actors okunamadı:',
-            error
-        );
-    }
-        
-    // Stats Calculation
     let totalWatchTimeMinutes = 0;
-let needsFetch = false;
+    let needsFetch = false;
+    for (const item of ratedMovies) {
+        const id = normalizeTmdbId(item?.id);
+        if (!id) continue;
+        const mediaType = inferItemMediaType(item);
+        if (mediaType === 'tv' && trackedTvIds.has(`tv:${id}`)) continue;
 
-ratedMovies.forEach(m => {
-    const itemId =
-        normalizeTmdbId(
-            m?.id
-        );
-
-    if (!itemId) {
-        return;
+        const cachedRuntime = getPositiveWatchTimeNumber(item.exact_runtime_mins_v2);
+        totalWatchTimeMinutes += cachedRuntime ?? (mediaType === 'tv' ? 900 : 120);
+        if (cachedRuntime === null) needsFetch = true;
+    }
+    for (const show of trackedTvShows) {
+        totalWatchTimeMinutes += getTrackedTvWatchedMinutesLocal(show);
+        if (doesTrackedTvNeedRuntimeFetch(show)) needsFetch = true;
     }
 
-    const inferredMediaType =
-        (
-            m?.first_air_date ||
-            (
-                m?.name &&
-                !m?.title
-            )
-        )
-            ? 'tv'
-            : 'movie';
-
-    const mediaType =
-        normalizeMediaType(
-            m?.media_type,
-            inferredMediaType
-        );
-
-    if (!mediaType) {
-        return;
-    }
-
-    const cachedRuntime =
-        typeof m
-            ?.exact_runtime_mins_v2 ===
-            'number' &&
-        Number.isFinite(
-            m.exact_runtime_mins_v2
-        ) &&
-        m.exact_runtime_mins_v2 > 0
-            ? m.exact_runtime_mins_v2
-            : null;
-
-    if (cachedRuntime !== null) {
-        totalWatchTimeMinutes +=
-            cachedRuntime;
-
-        return;
-    }
-
-    totalWatchTimeMinutes +=
-        mediaType === 'tv'
-            ? 900
-            : 120;
-
-    needsFetch =
-        true;
-});
-    
-    let displayHours = Math.floor(totalWatchTimeMinutes / 60);
-    let displayMins = totalWatchTimeMinutes % 60;
-    let timeText = `${displayHours}s ${displayMins > 0 ? displayMins + 'd' : ''}`;
-    if (needsFetch) timeText = "~" + displayHours + "s";
-    
     let genreCounts = {};
     ratedMovies.forEach(m => {
         const gIds = Array.isArray(m?.genre_ids) && m.genre_ids.length > 0
@@ -909,9 +922,6 @@ ratedMovies.forEach(m => {
         }
     }
 
-    const savedRatings = typeof safeReadStorage === 'function'
-        ? safeReadStorage('movieRatings', {})
-        : {};
     const ratingValues = [];
     if (ratedMovies.length > 0) {
         ratedMovies.forEach(m => {
@@ -933,7 +943,7 @@ ratedMovies.forEach(m => {
         ? (ratingValues.reduce((a, b) => a + b, 0) / ratingValues.length).toFixed(1)
         : 0;
 
-    const uniqueMediaKeys = new Set();
+    const uniqueMediaKeys = new Set(trackedTvIds);
     [...watchlist, ...ratedMovies].forEach(item => {
         const id = normalizeTmdbId(item?.id);
         if (!id) return;
@@ -942,97 +952,70 @@ ratedMovies.forEach(m => {
     const totalUniqueContent = uniqueMediaKeys.size;
 
     statsContainer.innerHTML = `
-        <div class="stat-card" style="border-top: 2px solid var(--primary-color); position:relative; overflow:hidden;">
-            <i class="fas fa-film" style="position:absolute; right:-10px; bottom:-10px; font-size:4rem; color:rgba(128,128,128,0.1);"></i>
-            <div class="stat-value" style="background: -webkit-linear-gradient(45deg, var(--primary-color), var(--accent-color)); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">${totalUniqueContent}</div>
-            <div class="stat-label" style="font-weight:600; letter-spacing:1px; font-size:0.9rem;">Toplam İçerik</div>
+        <div class="stat-card stat-card--content">
+            <i class="fas fa-film stat-card-icon" aria-hidden="true"></i>
+            <div class="stat-value">${escapeHtml(totalUniqueContent)}</div>
+            <div class="stat-label">Toplam İçerik</div>
         </div>
-        <div class="stat-card" style="border-top: 2px solid #00c6ff; position:relative; overflow:hidden;" title="Puanladığın yapımların toplam süresi; diziler tüm bölümleriyle hesaplanır.">
-            <i class="fas fa-clock" style="position:absolute; right:-10px; bottom:-10px; font-size:4rem; color:rgba(128,128,128,0.1);"></i>
-            <div class="stat-value" id="profile-watch-time" style="background: -webkit-linear-gradient(45deg, #00c6ff, #0072ff); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">${timeText}</div>
-            <div class="stat-label" style="font-weight:600; letter-spacing:1px; font-size:0.9rem;">Tahmini İzleme Süresi</div>
+        <div class="stat-card stat-card--watch-time" title="Puanladığın yapımlar ve takip ettiğin dizi bölümlerinin toplam izleme süresi.">
+            <i class="fas fa-clock stat-card-icon" aria-hidden="true"></i>
+            <div class="stat-value" id="profile-watch-time">${escapeHtml(formatWatchTimeDuration(totalWatchTimeMinutes, needsFetch))}</div>
+            <div class="stat-label">Tahmini İzleme Süresi</div>
         </div>
-        <div class="stat-card" style="border-top: 2px solid #f1c40f; position:relative; overflow:hidden;">
-            <i class="fas fa-star" style="position:absolute; right:-10px; bottom:-10px; font-size:4rem; color:rgba(128,128,128,0.1);"></i>
-            <div class="stat-value" style="background: -webkit-linear-gradient(45deg, #f1c40f, #e67e22); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">${avgRating}</div>
-            <div class="stat-label" style="font-weight:600; letter-spacing:1px; font-size:0.9rem;">Ortalama Puan</div>
+        <div class="stat-card stat-card--rating">
+            <i class="fas fa-star stat-card-icon" aria-hidden="true"></i>
+            <div class="stat-value">${escapeHtml(avgRating)}</div>
+            <div class="stat-label">Ortalama Puan</div>
         </div>
-        <div class="stat-card" style="border-top: 2px solid #9b59b6; position:relative; overflow:hidden;">
-            <i class="fas fa-heart" style="position:absolute; right:-10px; bottom:-10px; font-size:4rem; color:rgba(128,128,128,0.1);"></i>
-            <div class="stat-value" style="font-size:1.5rem; line-height:2.5rem; background: -webkit-linear-gradient(45deg, #9b59b6, #8e44ad); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">${escapeHtml(favoriteGenre)}</div>
-            <div class="stat-label" style="font-weight:600; letter-spacing:1px; font-size:0.9rem;">Favori Tür</div>
+        <div class="stat-card stat-card--genre">
+            <i class="fas fa-heart stat-card-icon" aria-hidden="true"></i>
+            <div class="stat-value">${escapeHtml(favoriteGenre)}</div>
+            <div class="stat-label">Favori Tür</div>
         </div>
     `;
 
-    // Asynchronously calculate exact watch time
     if (needsFetch) {
-    calculateExactWatchTime(
-        ratedMovies,
-        routeContext?.signal
-    )
-        .then(exactMinutes => {
-            if (
-                routeContext
-                    ?.signal
-                    ?.aborted
-            ) {
-                return;
-            }
-
-            if (
-                routeContext &&
-                !isRouteContextCurrent(
-                    routeContext,
-                    'profile'
-                )
-            ) {
-                return;
-            }
-
-            const watchTimeElem =
-                document.getElementById(
-                    'profile-watch-time'
-                );
-
-            if (
-                watchTimeElem &&
-                exactMinutes > 0
-            ) {
-                const hours =
-                    Math.floor(
-                        exactMinutes /
-                        60
-                    );
-
-                const mins =
-                    exactMinutes %
-                    60;
-
-                watchTimeElem.innerText =
-                    `${hours}s ${mins > 0 ? mins + 'd' : ''}`;
-            }
-        })
-        .catch(error => {
-            if (
-                error.name ===
-                'AbortError'
-            ) {
-                return;
-            }
-
-            console.warn(
-                'İzleme süresi hesaplanamadı:',
-                error
-            );
-        });
+        const watchTimeElem = statsContainer.querySelector('#profile-watch-time');
+        calculateExactWatchTime(ratedMovies, routeContext?.signal, trackedTvShows)
+            .then(exactMinutes => {
+                if (routeContext?.signal?.aborted || !watchTimeElem?.isConnected) return;
+                if (routeContext && !isRouteContextCurrent(routeContext, 'profile')) return;
+                if (exactMinutes >= 0) watchTimeElem.textContent = formatWatchTimeDuration(exactMinutes);
+            })
+            .catch(error => {
+                if (error.name !== 'AbortError') console.warn('İzleme süresi hesaplanamadı:', error);
+            });
+    }
 }
-    
+
+function loadProfile(routeContext = null) {
+    renderTvTrackerSection();
+    refreshProfileWatchStats(routeContext);
+    const watchlistGrid = document.getElementById('watchlist-grid');
+    const ratedTvGrid = document.getElementById('rated-tv-grid');
+    const ratedMovieGrid = document.getElementById('rated-movie-grid');
+    const actorsGrid = document.getElementById('favorite-actors-grid');
+    const watchlist = typeof safeReadStorage === 'function'
+        ? safeReadStorage('watchlist', [])
+        : [];
+    const ratedMovies = typeof safeReadStorage === 'function'
+        ? safeReadStorage('ratedMovies', [])
+        : [];
+    let favoriteActors = [];
+
+    try {
+        const parsedFavoriteActors = JSON.parse(localStorage.getItem('favoriteActors') || '[]');
+        if (Array.isArray(parsedFavoriteActors)) favoriteActors = parsedFavoriteActors;
+    } catch (error) {
+        console.warn('Favorite actors okunamadı:', error);
+    }
+
     // Render Recently Viewed
     renderRecentlyViewed(routeContext);
 
     // Render Watchlist
     if (watchlist.length === 0) {
-        watchlistGrid.innerHTML = "<div class='no-provider' style='grid-column: 1/-1;'>İzleme listeniz boş.</div>";
+        watchlistGrid.innerHTML = "<div class='no-provider profile-grid-empty'>İzleme listeniz boş.</div>";
     } else {
         watchlistGrid.innerHTML = watchlist.map(item => {
             let type = item.media_type;
@@ -1054,13 +1037,13 @@ ratedMovies.forEach(m => {
     });
 
     if (ratedTvs.length === 0) {
-        ratedTvGrid.innerHTML = "<div class='no-provider' style='grid-column: 1/-1;'>Puanladığınız dizi yok.</div>";
+        ratedTvGrid.innerHTML = "<div class='no-provider profile-grid-empty'>Puanladığınız dizi yok.</div>";
     } else {
         ratedTvGrid.innerHTML = ratedTvs.map(item => createMovieCard(item, "tv", "rated")).join('');
     }
 
     if (ratedMoviesOnly.length === 0) {
-        ratedMovieGrid.innerHTML = "<div class='no-provider' style='grid-column: 1/-1;'>Puanladığınız film yok.</div>";
+        ratedMovieGrid.innerHTML = "<div class='no-provider profile-grid-empty'>Puanladığınız film yok.</div>";
     } else {
         ratedMovieGrid.innerHTML = ratedMoviesOnly.map(item => createMovieCard(item, "movie", "rated")).join('');
     }
@@ -1079,7 +1062,7 @@ ratedMovies.forEach(m => {
         validFavoriteActors.length === 0
     ) {
         actorsGrid.innerHTML =
-            "<div class='no-provider' style='grid-column: 1/-1;'>Favori oyuncunuz yok.</div>";
+            "<div class='no-provider profile-grid-empty'>Favori oyuncunuz yok.</div>";
     } else {
         actorsGrid.replaceChildren();
 
@@ -1404,19 +1387,69 @@ function calculateTvWatchMinutes(
     );
 }
 
+function formatWatchTimeDuration(totalMinutes, approximate = false) {
+    const minutes = Number.isFinite(totalMinutes) ? Math.round(totalMinutes) : 0;
+    if (minutes <= 0) return '0s';
+
+    const hours = Math.floor(minutes / 60);
+    const remainder = minutes % 60;
+    if (approximate) return hours ? `~${hours}s` : `~${remainder}d`;
+    if (!hours) return `${remainder}d`;
+    return remainder ? `${hours}s ${remainder}d` : `${hours}s`;
+}
+
+function calculateTvAverageEpisodeRuntime(data) {
+    const runtimes = Array.isArray(data?.episode_run_time)
+        ? data.episode_run_time.map(getPositiveWatchTimeNumber).filter(Boolean)
+        : [];
+    const average = runtimes.length
+        ? runtimes.reduce((total, minutes) => total + minutes, 0) / runtimes.length
+        : getPositiveWatchTimeNumber(data?.last_episode_to_air?.runtime);
+    return Math.round(average) || 45;
+}
+
+function getTrackedTvWatchedMinutesLocal(show, fallbackEpisodeRuntime = 45) {
+    if (typeof getTvShowWatchedMinutes === 'function') {
+        return getTvShowWatchedMinutes(show, fallbackEpisodeRuntime);
+    }
+    const average = getPositiveWatchTimeNumber(show?.avgEpisodeRuntime) ?? fallbackEpisodeRuntime;
+    return (show?.watched || []).reduce((total, key) => total +
+        (getPositiveWatchTimeNumber(show.episodeRuntimes?.[key]) ?? average), 0);
+}
+
+function doesTrackedTvNeedRuntimeFetch(show) {
+    if (typeof hasKnownTvWatchMinutes === 'function') return !hasKnownTvWatchMinutes(show);
+    return getPositiveWatchTimeNumber(show?.avgEpisodeRuntime) === null &&
+        (show?.watched || []).some(key => getPositiveWatchTimeNumber(show.episodeRuntimes?.[key]) === null);
+}
+
 async function calculateExactWatchTime(
     ratedMovies,
-    signal = null
+    signal = null,
+    trackedTvShows = []
 ) {
-    if (
-        !Array.isArray(
-            ratedMovies
-        ) ||
-        ratedMovies.length ===
-            0
-    ) {
-        return 0;
+    const trackedTvIds = new Set();
+    const trackedItems = [];
+    for (const show of Array.isArray(trackedTvShows) ? trackedTvShows : []) {
+        const itemId = normalizeTmdbId(show?.id);
+        if (!itemId || !Array.isArray(show.watched) || !show.watched.length) continue;
+        const key = `tv:${itemId}`;
+        if (trackedTvIds.has(key)) continue;
+        trackedTvIds.add(key);
+        trackedItems.push({ itemId, show });
     }
+
+    const ratedItems = [];
+    for (const item of Array.isArray(ratedMovies) ? ratedMovies : []) {
+        const itemId = normalizeTmdbId(item?.id);
+        if (!itemId) continue;
+        const mediaType = inferItemMediaType(item);
+        if (mediaType === 'tv' && trackedTvIds.has(`tv:${itemId}`)) continue;
+        ratedItems.push({ itemId, mediaType, item });
+    }
+
+    const workItems = [...ratedItems, ...trackedItems];
+    if (!workItems.length) return 0;
 
     if (signal?.aborted) {
         const error =
@@ -1518,9 +1551,9 @@ async function calculateExactWatchTime(
 
     const minutesPerItem =
         await runWatchTimeTasksWithConcurrency(
-            ratedMovies,
+            workItems,
             WATCH_TIME_CONCURRENCY,
-            async item => {
+            async ({ itemId, mediaType, item, show }) => {
                 if (signal?.aborted) {
                     const error =
                         new Error(
@@ -1533,36 +1566,15 @@ async function calculateExactWatchTime(
                     throw error;
                 }
 
-                const itemId =
-                    normalizeTmdbId(
-                        item?.id
-                    );
+                if (show) {
+                    if (!doesTrackedTvNeedRuntimeFetch(show)) return getTrackedTvWatchedMinutesLocal(show);
 
-                if (!itemId) {
-                    return 0;
-                }
-
-                const inferredMediaType =
-                    (
-                        item
-                            ?.first_air_date ||
-                        (
-                            item?.name &&
-                            !item?.title
-                        )
-                    )
-                        ? 'tv'
-                        : 'movie';
-
-                const mediaType =
-                    normalizeMediaType(
-                        item
-                            ?.media_type,
-                        inferredMediaType
-                    );
-
-                if (!mediaType) {
-                    return 0;
+                    const data = await fetchDetail('tv', itemId);
+                    const avgRuntime = calculateTvAverageEpisodeRuntime(data);
+                    if (data && !signal?.aborted && typeof updateTvShowAvgRuntime === 'function') {
+                        updateTvShowAvgRuntime(itemId, avgRuntime);
+                    }
+                    return getTrackedTvWatchedMinutesLocal({ ...show, avgEpisodeRuntime: avgRuntime });
                 }
 
                 const cachedMinutes =

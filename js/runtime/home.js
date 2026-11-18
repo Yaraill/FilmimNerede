@@ -1280,6 +1280,7 @@ async function loadTop10Trending(
 
         const top10PosterBase =
             getHomeSizedImageBase('w342', IMAGE_BASE);
+        const tvProgressMap = getTvProgressSnapshot();
 
         top10.forEach(
             (
@@ -1340,11 +1341,8 @@ async function loadTop10Trending(
 
                 card.className =
                     'recommendation-card top10-card';
-
-                card.style.cssText =
-                    'position:relative;' +
-                    'width:140px;' +
-                    'margin-left:20px;';
+                card.dataset.mediaId = String(itemId);
+                card.dataset.mediaType = mediaType;
 
                 const number =
                     document
@@ -1381,21 +1379,23 @@ async function loadTop10Trending(
                 image.width = 140;
                 image.height = 210;
 
-                image.style.cssText =
-                    'width:100%;' +
-                    'height:210px;' +
-                    'object-fit:cover;' +
-                    'border-radius:10px;' +
-                    'box-shadow:0 5px 15px rgba(0,0,0,0.5);';
-
                 card.setAttribute('role', 'button');
                 card.setAttribute('tabindex', '0');
                 card.setAttribute('aria-label', `Top 10 - ${index + 1}: ${title}`);
 
-                card.append(
-                    number,
-                    image
-                );
+                const posterFrame = document.createElement('div');
+                posterFrame.className = 'top10-poster';
+                posterFrame.append(number, image);
+                card.appendChild(posterFrame);
+
+                if (mediaType === 'tv') {
+                    const progressSlot = document.createElement('div');
+                    progressSlot.className = 'card-tv-progress-slot top10-tv-progress-slot';
+                    progressSlot.dataset.tvProgressId = String(itemId);
+                    progressSlot.dataset.progressVariant = 'top10';
+                    progressSlot.innerHTML = buildCardTvProgressHtml(itemId, tvProgressMap[`tv:${itemId}`], 'top10');
+                    posterFrame.appendChild(progressSlot);
+                }
 
                 const activateTop10 = () => {
                     openDetails(

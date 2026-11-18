@@ -2002,170 +2002,79 @@ if (imdbId) {
                         });
                     }
                 );
-
                 if (validSeasons.length > 0) {
-                    const guide =
-                        document.createElement(
-                            'div'
-                        );
+                    const episodeRuntimes = Array.isArray(fullData.episode_run_time)
+                        ? fullData.episode_run_time.filter(minutes => Number.isFinite(minutes) && minutes > 0)
+                        : [];
+                    const avgEpisodeRuntime = episodeRuntimes.length
+                        ? normalizePositiveMinutes(episodeRuntimes.reduce((sum, minutes) => sum + minutes, 0) / episodeRuntimes.length)
+                        : normalizePositiveMinutes(fullData.last_episode_to_air?.runtime);
+                    const tvProgressMeta = {
+                        id: item.id,
+                        name: fullData.name || fullData.title || item.name || item.title || 'Bilinmiyor',
+                        poster_path: isValidTmdbImagePath(fullData.poster_path) ? fullData.poster_path
+                            : (isValidTmdbImagePath(item.poster_path) ? item.poster_path : null),
+                        first_air_date: fullData.first_air_date || item.first_air_date || '',
+                        vote_average: typeof fullData.vote_average === 'number' ? fullData.vote_average : item.vote_average,
+                        genre_ids: Array.isArray(fullData.genres) ? fullData.genres.map(g => g?.id).filter(Boolean)
+                            : (Array.isArray(item.genre_ids) ? item.genre_ids : []),
+                        totalSeasons: validSeasons.length,
+                        avgEpisodeRuntime,
+                        totalEpisodes: typeof fullData.number_of_episodes === 'number' && fullData.number_of_episodes > 0
+                            ? fullData.number_of_episodes
+                            : validSeasons.reduce((total, season) => total + (season.episodeCount || 0), 0)
+                    };
 
-                    guide.id =
-                        'tv-guide-container';
+                    const guide = document.createElement('div');
+                    guide.id = 'tv-guide-container';
+                    guide.className = 'collection-section';
 
-                    guide.className =
-                        'collection-section';
+                    const heading = document.createElement('h3');
+                    heading.className = 'cast-title';
+                    heading.textContent = 'Dizi Sezon Rehberi';
 
-                    const heading =
-                        document.createElement(
-                            'h3'
-                        );
+                    const overallProgress = document.createElement('div');
+                    overallProgress.id = 'tv-overall-progress';
+                    overallProgress.className = 'tv-overall-progress';
 
-                    heading.className =
-                        'cast-title';
+                    const selectWrapper = document.createElement('div');
+                    selectWrapper.className = 'season-select-wrapper';
 
-                    heading.textContent =
-                        'Dizi Sezon Rehberi';
+                    const select = document.createElement('select');
+                    select.className = 'season-select';
+                    select.setAttribute('aria-label', 'Sezon seçin');
 
-                    const selectWrapper =
-                        document.createElement(
-                            'div'
-                        );
-
-                    selectWrapper.className =
-                        'season-select-wrapper';
-
-                    const select =
-                        document.createElement(
-                            'select'
-                        );
-
-                    select.className =
-                        'season-select';
-
-                    const placeholder =
-                        document.createElement(
-                            'option'
-                        );
-
-                    placeholder.value = '';
-                    placeholder.disabled = true;
-                    placeholder.selected = true;
-
-                    placeholder.textContent =
-                        'Bir sezon seçin...';
-
-                    select.appendChild(
-                        placeholder
-                    );
-
-                    validSeasons.forEach(
-                        season => {
-                            const option =
-                                document.createElement(
-                                    'option'
-                                );
-
-                            option.value =
-                                String(
-                                    season.seasonNumber
-                                );
-
-                            option.textContent =
-                                season.episodeCount !==
-                                null
-                                    ? `${season.name} (${season.episodeCount} Bölüm)`
-                                    : season.name;
-
-                            select.appendChild(
-                                option
-                            );
-                        }
-                    );
-
-                    select.addEventListener(
-                        'change',
-                        () => {
-                            const value =
-                                select.value.trim();
-
-                            if (
-                                !/^\d+$/.test(
-                                    value
-                                )
-                            ) {
-                                return;
-                            }
-
-                            const selectedSeason =
-                                Number(value);
-
-                            if (
-                                !Number.isSafeInteger(
-                                    selectedSeason
-                                ) ||
-                                selectedSeason <= 0
-                            ) {
-                                return;
-                            }
-
-                            loadSeasonEpisodes(
-                                item.id,
-                                selectedSeason,
-                                routeContext
-                            );
-                        }
-                    );
-
-                    selectWrapper.appendChild(
-                        select
-                    );
-
-                    const episodesContainer =
-                        document.createElement(
-                            'div'
-                        );
-
-                    episodesContainer.id =
-                        'episodes-container';
-
-                    episodesContainer.className =
-                        'episode-list';
-
-                    guide.append(
-                        heading,
-                        selectWrapper,
-                        episodesContainer
-                    );
-
-                    const castHeading =
-                        castContainer
-                            .previousElementSibling;
-
-                    if (
-                        castHeading &&
-                        castHeading.parentNode
-                    ) {
-                        castHeading.parentNode
-                            .insertBefore(
-                                guide,
-                                castHeading
-                            );
+                    for (const season of validSeasons) {
+                        const option = document.createElement('option');
+                        option.value = String(season.seasonNumber);
+                        option.dataset.seasonNumber = option.value;
+                        option.dataset.episodeCount = season.episodeCount ?? '';
+                        option.dataset.baseLabel = season.episodeCount === null
+                            ? season.name : `${season.name} (${season.episodeCount} Bölüm)`;
+                        option.textContent = option.dataset.baseLabel;
+                        select.appendChild(option);
                     }
+                    selectWrapper.appendChild(select);
 
-                    const firstSeason =
-                        validSeasons[0];
+                    const seasonProgress = document.createElement('div');
+                    seasonProgress.id = 'season-progress-bar';
+                    seasonProgress.className = 'season-progress-bar';
+                    seasonProgress.hidden = true;
 
-                    select.value =
-                        String(
-                            firstSeason
-                                .seasonNumber
-                        );
+                    const episodesContainer = document.createElement('div');
+                    episodesContainer.id = 'episodes-container';
+                    episodesContainer.className = 'episode-list';
 
-                    loadSeasonEpisodes(
-                        item.id,
-                        firstSeason.seasonNumber,
-                        routeContext
-                    );
+                    guide.append(heading, overallProgress, selectWrapper, seasonProgress, episodesContainer);
+                    castContainer.previousElementSibling?.before(guide);
+
+                    const lastSeason = getTvShowProgress(item.id)?.lastSeason;
+                    const initialSeason = validSeasons.find(season => season.seasonNumber === lastSeason) || validSeasons[0];
+                    select.value = String(initialSeason.seasonNumber);
+                    select.addEventListener('change', () => {
+                        loadSeasonEpisodes(item.id, select.value, routeContext, tvProgressMeta);
+                    });
+                    loadSeasonEpisodes(item.id, initialSeason.seasonNumber, routeContext, tvProgressMeta);
                 }
             }
 
@@ -3101,378 +3010,252 @@ function closeDetails(event, force = false) {
 // V5: PREMIUM FONKSİYONLAR (Tooltip, TV)
 // =========================================
 
-async function loadSeasonEpisodes(
-    tvId,
-    seasonNumber,
-    routeContext = null
-) {
-    const safeTvId =
-        normalizeTmdbId(tvId);
+function syncTvGuideSeasonOptions(tvId, select) {
+    for (const option of select.options) {
+        const { baseLabel, seasonNumber, episodeCount } = option.dataset;
+        const watchedCount = getWatchedEpisodesForSeason(tvId, seasonNumber).size;
+        const total = normalizeTmdbId(episodeCount);
+        let suffix = '';
+        if (watchedCount) {
+            suffix = total
+                ? (watchedCount >= total ? ' • ✓' : ` • ${watchedCount}/${total}`)
+                : ` • ${watchedCount} izlendi`;
+        }
+        option.textContent = baseLabel + suffix;
+    }
+}
 
-    if (!safeTvId) {
+function syncTvGuideOverallProgress(container, tvId, showMeta) {
+    const progress = getTvShowProgress(tvId);
+    if (!progress) {
+        container.textContent = 'İzlediğiniz bölümleri işaretleyerek kaldığınız yeri kaydedebilirsiniz.';
         return;
     }
 
-    let safeSeasonNumber =
-        null;
+    const summary = formatTvProgressSummary({
+        ...progress,
+        totalEpisodes: showMeta?.totalEpisodes || progress.totalEpisodes
+    });
+    const position = document.createElement('strong');
+    position.textContent = `Kaldığın Yer: ${summary.positionLabel}`;
+    const count = document.createElement('span');
+    count.textContent = summary.countLabel;
+    container.replaceChildren(position, count);
+    if (summary.totalEpisodes) {
+        container.appendChild(createTvProgressBar(
+            summary.watchedCount, summary.totalEpisodes, `İzleme ilerlemesi %${summary.percent}`
+        ));
+    }
+}
 
-    if (
-        typeof seasonNumber ===
-            'number'
-    ) {
-        safeSeasonNumber =
-            seasonNumber;
-    } else if (
-        typeof seasonNumber ===
-            'string' &&
-        /^\d+$/.test(
-            seasonNumber.trim()
-        )
-    ) {
-        safeSeasonNumber =
-            Number(
-                seasonNumber.trim()
-            );
+function createTvEpisodeCard(episode, episodeNumber, tvId, seasonNumber, imdbId) {
+    const episodeName = String(episode.name || 'Bilinmiyor');
+    const targetUrl = getSafeHttpUrl(imdbId
+        ? `https://www.imdb.com/title/${imdbId}/episodes?season=${seasonNumber}`
+        : `https://www.themoviedb.org/tv/${tvId}/season/${seasonNumber}/episode/${episodeNumber}`);
+
+    const card = document.createElement('article');
+    card.className = 'episode-card';
+    card.dataset.episodeNumber = String(episodeNumber);
+
+    const titleLink = document.createElement('a');
+    titleLink.className = 'episode-ext-link';
+    titleLink.href = targetUrl;
+    titleLink.target = '_blank';
+    titleLink.rel = 'noopener noreferrer';
+    titleLink.textContent = `${episodeNumber}. ${episodeName}`;
+
+    const stillLink = titleLink.cloneNode(false);
+    stillLink.className = 'episode-still-link';
+    stillLink.setAttribute('aria-label', `${seasonNumber}. sezon ${episodeNumber}. bölüm: ${episodeName} (${imdbId ? 'IMDb' : 'TMDB'})`);
+
+    const image = document.createElement('img');
+    image.src = getSafeTmdbImageUrl(episode.still_path, IMAGE_BASE, 'assets/placeholder.svg');
+    image.alt = '';
+    image.loading = 'lazy';
+    stillLink.appendChild(image);
+
+    const info = document.createElement('div');
+    info.className = 'episode-info';
+    const heading = document.createElement('h4');
+    heading.appendChild(titleLink);
+    if (imdbId) {
+        const icon = document.createElement('i');
+        icon.className = 'fab fa-imdb episode-imdb-icon';
+        icon.setAttribute('aria-hidden', 'true');
+        heading.appendChild(icon);
     }
 
-    if (
-        !Number.isSafeInteger(
-            safeSeasonNumber
-        ) ||
-        safeSeasonNumber <= 0
-    ) {
-        return;
-    }
+    const airDate = new Date(episode.air_date ?? NaN);
+    const dateText = document.createElement('p');
+    dateText.className = 'episode-date-line';
+    dateText.textContent = `Yayın: ${Number.isFinite(airDate.getTime()) ? airDate.toLocaleDateString('tr-TR') : 'Bilinmiyor'}`;
 
-    const container =
-        document.getElementById(
-            'episodes-container'
-        );
+    const overview = document.createElement('p');
+    overview.textContent = typeof episode.overview === 'string' && episode.overview.trim()
+        ? episode.overview : 'Bu bölüm için henüz özet bulunmuyor.';
 
-    if (!container) {
-        return;
-    }
+    const actions = document.createElement('div');
+    actions.className = 'episode-actions';
+    const watchButton = document.createElement('button');
+    watchButton.type = 'button';
+    watchButton.className = 'episode-watch-btn';
+    watchButton.setAttribute('aria-label', `${episodeNumber}. bölüm izleme durumu`);
 
-    routeContext =
-        routeContext ||
-        {
-            generation:
-                routeGeneration,
-            signal:
-                currentAbortController
-                    ?.signal
-        };
+    const markUpToButton = document.createElement('button');
+    markUpToButton.type = 'button';
+    markUpToButton.className = 'episode-mark-upto-btn';
+    markUpToButton.textContent = `1–${episodeNumber}. Bölümleri İşaretle`;
+    actions.append(watchButton, markUpToButton);
+    info.append(heading, dateText, overview, actions);
+    card.append(stillLink, info);
+    return { card, watchButton, markUpToButton };
+}
 
-    container.innerHTML =
-        "<div class='loading'>Bölümler yükleniyor...</div>";
+async function loadSeasonEpisodes(tvId, seasonNumber, routeContext = null, showMeta = null) {
+    const safeTvId = normalizeTmdbId(tvId);
+    const safeSeasonNumber = normalizeTmdbId(seasonNumber);
+    const guide = document.getElementById('tv-guide-container');
+    if (!safeTvId || !safeSeasonNumber || !guide) return;
+
+    const container = guide.querySelector('#episodes-container');
+    const overallProgress = guide.querySelector('#tv-overall-progress');
+    const seasonProgress = guide.querySelector('#season-progress-bar');
+    const select = guide.querySelector('.season-select');
+    routeContext = routeContext || { generation: routeGeneration, signal: currentAbortController?.signal };
+    if (!isRouteContextCurrent(routeContext, 'movie', safeTvId)) return;
+
+    // The loading node also distinguishes requests made within the same route.
+    const loading = document.createElement('div');
+    loading.className = 'loading';
+    loading.textContent = 'Bölümler yükleniyor...';
+    container.replaceChildren(loading);
+    seasonProgress.hidden = true;
+    syncTvGuideOverallProgress(overallProgress, safeTvId, showMeta);
+    syncTvGuideSeasonOptions(safeTvId, select);
+
+    const isCurrentRequest = () => guide.isConnected && container.firstElementChild === loading &&
+        isRouteContextCurrent(routeContext, 'movie', safeTvId);
 
     try {
-        const res =
-            await fetch(
-                `${BASE_URL}/tv/${safeTvId}/season/${safeSeasonNumber}?language=tr-TR`,
-                {
-                    signal:
-                        routeContext
-                            ?.signal
-                }
-            );
+        const response = await fetch(
+            `${BASE_URL}/tv/${safeTvId}/season/${safeSeasonNumber}?language=tr-TR`,
+            { signal: routeContext.signal }
+        );
+        if (!response.ok) throw new Error('Bölümler yüklenemedi.');
+        const data = await response.json();
+        if (!isCurrentRequest()) return;
 
-        const data =
-            await res.json();
-
-        if (
-            !isRouteContextCurrent(
-                routeContext,
-                'movie',
-                safeTvId
-            )
-        ) {
+        const episodes = new Map();
+        for (const episode of Array.isArray(data?.episodes) ? data.episodes : []) {
+            const number = episode?.episode_number;
+            if (Number.isSafeInteger(number) && number > 0 && !episodes.has(number)) {
+                episodes.set(number, episode);
+            }
+        }
+        if (!episodes.size) {
+            container.textContent = 'Bu sezon için bölüm bulunamadı.';
             return;
         }
 
-        const episodes =
-            Array.isArray(
-                data.episodes
-            )
-                ? data.episodes
-                : [];
-
-        if (episodes.length === 0) {
-            container.innerHTML =
-                '<div>Bu sezon için bölüm bulunamadı.</div>';
-
-            return;
+        const episodeNumbers = [...episodes.keys()].sort((a, b) => a - b);
+        const seasonEpisodeRuntimes = {};
+        for (const [number, episode] of episodes) {
+            const minutes = normalizePositiveMinutes(episode.runtime);
+            if (minutes) seasonEpisodeRuntimes[formatEpisodeKey(safeSeasonNumber, number)] = minutes;
         }
+        const runtimeValues = Object.values(seasonEpisodeRuntimes);
+        const seasonAvgRuntime = runtimeValues.length
+            ? normalizePositiveMinutes(runtimeValues.reduce((sum, minutes) => sum + minutes, 0) / runtimeValues.length)
+            : null;
+        const progressShowMeta = {
+            ...showMeta,
+            avgEpisodeRuntime: normalizePositiveMinutes(showMeta?.avgEpisodeRuntime) || seasonAvgRuntime,
+            episodeRuntimes: { ...showMeta?.episodeRuntimes, ...seasonEpisodeRuntimes }
+        };
+        const imdbId = isValidImdbId(window.currentImdbId) ? window.currentImdbId : null;
+        const label = document.createElement('strong');
+        const progress = createTvProgressBar(0, episodeNumbers.length, `Sezon ${safeSeasonNumber} izleme ilerlemesi`);
+        const toggleAll = document.createElement('button');
+        toggleAll.type = 'button';
+        toggleAll.className = 'season-toggle-all-btn';
 
-        const fragment =
-            document.createDocumentFragment();
+        const progressInfo = document.createElement('div');
+        progressInfo.className = 'season-progress-info';
+        progressInfo.append(label, progress);
+        seasonProgress.replaceChildren(progressInfo, toggleAll);
 
-        let renderedEpisodes = 0;
+        const fragment = document.createDocumentFragment();
+        const controls = new Map();
+        const syncProgress = () => {
+            const watched = getWatchedEpisodesForSeason(safeTvId, safeSeasonNumber);
+            let firstUnwatched = 1;
+            while (watched.has(firstUnwatched)) firstUnwatched++;
 
-        episodes.forEach(ep => {
-            const episodeNumber =
-                typeof ep
-                    ?.episode_number ===
-                    'number' &&
-                Number.isSafeInteger(
-                    ep.episode_number
-                ) &&
-                ep.episode_number > 0
-                    ? ep.episode_number
-                    : null;
-
-            if (
-                episodeNumber === null
-            ) {
-                return;
+            let watchedCount = 0;
+            for (const [number, { card, watchButton, markUpToButton }] of controls) {
+                const isWatched = watched.has(number);
+                if (isWatched) watchedCount++;
+                card.classList.toggle('episode-watched', isWatched);
+                watchButton.classList.toggle('watched', isWatched);
+                watchButton.setAttribute('aria-pressed', String(isWatched));
+                watchButton.setAttribute('aria-label', `${safeSeasonNumber}. Sezon ${number}. Bölümü ${isWatched ? 'izlendi işaretini kaldır' : 'izlendi olarak işaretle'}`);
+                const watchIcon = document.createElement('i');
+                watchIcon.className = isWatched ? 'fas fa-check-circle' : 'far fa-check-circle';
+                watchIcon.setAttribute('aria-hidden', 'true');
+                watchButton.replaceChildren(watchIcon, isWatched ? ' İzlendi' : ' İzledim');
+                const hideMarkUpTo = number <= 1 || number < firstUnwatched;
+                if (hideMarkUpTo && document.activeElement === markUpToButton) watchButton.focus();
+                markUpToButton.hidden = hideMarkUpTo;
             }
 
-            const episodeName =
-                String(
-                    ep.name ||
-                    'Bilinmiyor'
-                );
+            const complete = watchedCount === episodeNumbers.length;
+            label.textContent = `Sezon ${safeSeasonNumber}: ${watchedCount} / ${episodeNumbers.length} bölüm izlendi`;
+            progress.value = watchedCount;
+            toggleAll.setAttribute('aria-pressed', String(complete));
+            toggleAll.textContent = complete ? 'Sezon İşaretlerini Kaldır' : 'Bu Sezonu Tamamla';
+            syncTvGuideOverallProgress(overallProgress, safeTvId, showMeta);
+            syncTvGuideSeasonOptions(safeTvId, select);
+        };
 
-            const overview =
-                typeof ep.overview ===
-                    'string' &&
-                ep.overview.trim()
-                    ? ep.overview
-                    : 'Bu bölüm için henüz özet bulunmuyor.';
-
-            const still =
-                getSafeTmdbImageUrl(
-                    ep.still_path,
-                    IMAGE_BASE,
-                    'assets/placeholder.svg'
-                );
-
-            let airDate =
-                'Bilinmiyor';
-
-            if (ep.air_date) {
-                const date =
-                    new Date(
-                        ep.air_date
-                    );
-
-                if (
-                    !Number.isNaN(
-                        date.getTime()
-                    )
-                ) {
-                    airDate =
-                        date.toLocaleDateString(
-                            'tr-TR'
-                        );
-                }
+        const updateProgress = (saved, getMessage) => {
+            if (saved) syncProgress();
+            if (typeof announceA11y === 'function') {
+                announceA11y(saved ? getMessage() : 'İzleme ilerlemesi kaydedilemedi.');
             }
+        };
 
-            const validCurrentImdbId =
-                isValidImdbId(
-                    window.currentImdbId
-                )
-                    ? window.currentImdbId
-                    : null;
+        for (const number of episodeNumbers) {
+            const episodeControls = createTvEpisodeCard(episodes.get(number), number, safeTvId, safeSeasonNumber, imdbId);
+            const { card, watchButton, markUpToButton } = episodeControls;
+            controls.set(number, episodeControls);
 
-            const usesImdb =
-                Boolean(
-                    validCurrentImdbId
-                );
-
-            const rawTargetUrl =
-                usesImdb
-                    ? `https://www.imdb.com/title/${validCurrentImdbId}/episodes?season=${safeSeasonNumber}`
-                    : `https://www.themoviedb.org/tv/${safeTvId}/season/${safeSeasonNumber}/episode/${episodeNumber}`;
-
-            const targetUrl =
-                getSafeHttpUrl(
-                    rawTargetUrl,
-                    '#'
-                );
-
-            const card =
-                document.createElement(
-                    'div'
-                );
-
-            card.className =
-                'episode-card';
-
-            card.style.cssText =
-                'cursor:pointer;' +
-                'position:relative;' +
-                'transition:transform 0.2s;';
-
-            card.title =
-                usesImdb
-                    ? 'IMDb Sayfasını Aç'
-                    : 'TMDB Sayfasını Aç';
-
-            card.addEventListener(
-                'mouseover',
-                () => {
-                    card.style.transform =
-                        'scale(1.02)';
-                }
-            );
-
-            card.addEventListener(
-                'mouseout',
-                () => {
-                    card.style.transform =
-                        'scale(1)';
-                }
-            );
-
-            card.setAttribute('role', 'link');
-            card.setAttribute('tabindex', '0');
-            card.setAttribute('aria-label', `${safeSeasonNumber}. Sezon ${episodeNumber}. Bölüm: ${episodeName} (${usesImdb ? 'IMDb' : 'TMDB'})`);
-
-            const activateEpisode = () => {
-                if (
-                    targetUrl === '#'
-                ) {
-                    return;
-                }
-
-                const openedWindow =
-                    window.open(
-                        targetUrl,
-                        '_blank',
-                        'noopener,noreferrer'
-                    );
-
-                if (openedWindow) {
-                    openedWindow.opener =
-                        null;
-                }
-            };
-
-            card.addEventListener(
-                'click',
-                activateEpisode
-            );
-
-            card.addEventListener(
-                'keydown',
-                (e) => {
-                    if (e.key === 'Enter' || e.key === ' ') {
-                        e.preventDefault();
-                        activateEpisode();
-                    }
-                }
-            );
-
-            const image =
-                document.createElement(
-                    'img'
-                );
-
-            image.src =
-                still;
-
-            image.alt =
-                episodeName;
-
-            image.loading =
-                'lazy';
-
-            const info =
-                document.createElement(
-                    'div'
-                );
-
-            info.className =
-                'episode-info';
-
-            const heading =
-                document.createElement(
-                    'h4'
-                );
-
-            heading.appendChild(
-                document.createTextNode(
-                    `${episodeNumber}. ${episodeName}`
-                )
-            );
-
-            if (usesImdb) {
-                const imdbIcon =
-                    document.createElement(
-                        'i'
-                    );
-
-                imdbIcon.className =
-                    'fab fa-imdb';
-
-                imdbIcon.style.cssText =
-                    'color:#f5c518;' +
-                    'margin-left:5px;';
-
-                heading.appendChild(
-                    imdbIcon
-                );
-            }
-
-            const dateText =
-                document.createElement(
-                    'p'
-                );
-
-            dateText.style.cssText =
-                'color:var(--accent-color);' +
-                'font-weight:600;' +
-                'font-size:0.8rem;' +
-                'margin-bottom:5px;';
-
-            dateText.textContent =
-                `Yayın: ${airDate}`;
-
-            const overviewText =
-                document.createElement(
-                    'p'
-                );
-
-            overviewText.textContent =
-                overview;
-
-            info.append(
-                heading,
-                dateText,
-                overviewText
-            );
-
-            card.append(
-                image,
-                info
-            );
-
-            fragment.appendChild(
-                card
-            );
-
-            renderedEpisodes++;
+            watchButton.addEventListener('click', () => {
+                updateProgress(toggleEpisodeWatched(safeTvId, safeSeasonNumber, number, progressShowMeta), () =>
+                    watchButton.classList.contains('watched')
+                        ? `${number}. bölüm izlendi olarak işaretlendi.`
+                        : `${number}. bölümün izleme işareti kaldırıldı.`);
+            });
+            markUpToButton.addEventListener('click', () => {
+                updateProgress(markEpisodesUpTo(safeTvId, safeSeasonNumber, number, episodeNumbers, progressShowMeta), () =>
+                    `${number}. bölüme kadar olan bölümler izlendi olarak işaretlendi.`);
+            });
+            fragment.appendChild(card);
+        }
+        toggleAll.addEventListener('click', () => {
+            updateProgress(toggleSeasonWatched(safeTvId, safeSeasonNumber, episodeNumbers, progressShowMeta), () =>
+                toggleAll.getAttribute('aria-pressed') === 'true'
+                    ? `Sezon ${safeSeasonNumber} tamamlandı.`
+                    : `Sezon ${safeSeasonNumber} izleme işaretleri kaldırıldı.`);
         });
 
-        if (renderedEpisodes > 0) {
-            container.replaceChildren(
-                fragment
-            );
-        } else {
-            container.innerHTML =
-                '<div>Bu sezon için bölüm bulunamadı.</div>';
-        }
+        syncProgress();
+        container.replaceChildren(fragment);
+        seasonProgress.hidden = false;
     } catch (error) {
-        if (
-            error.name ===
-            'AbortError'
-        ) {
-            return;
+        if (error.name !== 'AbortError' && isCurrentRequest()) {
+            container.textContent = 'Bölümler yüklenemedi.';
         }
-
-        container.innerHTML =
-            "<div style='color:red'>Hata oluştu.</div>";
     }
 }
 

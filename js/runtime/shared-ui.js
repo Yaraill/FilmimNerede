@@ -260,6 +260,270 @@ function getMovieRatingsSnapshot() {
     return ratings;
 }
 
+const TV_EPISODE_PROGRESS_KEY = 'tvEpisodeProgress';
+let cachedTvProgressRaw;
+let cachedTvProgressMap = {};
+
+function formatEpisodeKey(seasonNumber, episodeNumber) {
+    const season = normalizeTmdbId(seasonNumber);
+    const episode = normalizeTmdbId(episodeNumber);
+    return season && episode ? `S${season}E${episode}` : null;
+}
+
+function parseEpisodeKey(key) {
+    const match = typeof key === 'string' && /^S([1-9]\d*)E([1-9]\d*)$/.exec(key);
+    if (!match) return null;
+    const seasonNumber = normalizeTmdbId(match[1]);
+    const episodeNumber = normalizeTmdbId(match[2]);
+    return seasonNumber && episodeNumber ? { seasonNumber, episodeNumber } : null;
+}
+
+function normalizePositiveMinutes(value) {
+    return typeof value === 'number' && Number.isFinite(value) && value > 0 ? Math.round(value) : null;
+}
+
+function normalizeTvProgressRecord(id, meta, watchedKeys, updatedAt) {
+    if (!Array.isArray(watchedKeys)) return null;
+    const episodes = [...new Set(watchedKeys)].map(parseEpisodeKey).filter(Boolean);
+    if (!episodes.length) return null;
+    episodes.sort((a, b) => a.seasonNumber - b.seasonNumber || a.episodeNumber - b.episodeNumber);
+    const last = episodes[episodes.length - 1];
+    const watched = episodes.map(({ seasonNumber, episodeNumber }) => formatEpisodeKey(seasonNumber, episodeNumber));
+    const episodeRuntimes = {};
+    for (const key of watched) {
+        const minutes = normalizePositiveMinutes(meta?.episodeRuntimes?.[key]);
+        if (minutes) episodeRuntimes[key] = minutes;
+    }
+
+    return {
+        id,
+        media_type: 'tv',
+        name: typeof meta.name === 'string' && meta.name.trim() ? meta.name : 'Bilinmiyor',
+        poster_path: isValidTmdbImagePath(meta.poster_path) ? meta.poster_path : null,
+        first_air_date: typeof meta.first_air_date === 'string' ? meta.first_air_date : '',
+        vote_average: Number.isFinite(meta.vote_average) ? meta.vote_average : null,
+        genre_ids: Array.isArray(meta.genre_ids) ? meta.genre_ids.map(normalizeTmdbId).filter(Boolean) : [],
+        totalSeasons: normalizeTmdbId(meta.totalSeasons) || null,
+        totalEpisodes: normalizeTmdbId(meta.totalEpisodes) || null,
+        watched,
+        avgEpisodeRuntime: normalizePositiveMinutes(meta?.avgEpisodeRuntime),
+        episodeRuntimes,
+        lastSeason: last.seasonNumber,
+        lastEpisode: last.episodeNumber,
+        updatedAt: Number.isFinite(updatedAt) && updatedAt >= 0 ? updatedAt : 0
+    };
+}
+
+function getTvProgressSnapshot() {
+    let raw;
+    try {
+        raw = localStorage.getItem(TV_EPISODE_PROGRESS_KEY);
+    } catch (error) {
+        console.warn('Storage okunamadı (tvEpisodeProgress):', error);
+        return {};
+    }
+    if (raw === cachedTvProgressRaw) return cachedTvProgressMap;
+
+    const progressMap = {};
+    const stored = safeReadStorage(TV_EPISODE_PROGRESS_KEY, {});
+    for (const [key, record] of Object.entries(stored)) {
+        const id = normalizeTmdbId(record?.id);
+        if (!id || key !== `tv:${id}` || record.media_type !== 'tv') continue;
+        const progress = normalizeTvProgressRecord(id, record, record.watched, record.updatedAt);
+        if (progress) progressMap[key] = progress;
+    }
+    cachedTvProgressRaw = raw;
+    cachedTvProgressMap = progressMap;
+    return progressMap;
+}
+
+function getTvShowProgress(tvId) {
+    const id = normalizeTmdbId(tvId);
+    return id ? getTvProgressSnapshot()[`tv:${id}`] || null : null;
+}
+
+function isEpisodeWatched(tvId, seasonNumber, episodeNumber) {
+    const key = formatEpisodeKey(seasonNumber, episodeNumber);
+    return Boolean(key && getTvShowProgress(tvId)?.watched.includes(key));
+}
+
+function getWatchedEpisodesForSeason(tvId, seasonNumber) {
+    const season = normalizeTmdbId(seasonNumber);
+    const watched = new Set();
+    for (const key of getTvShowProgress(tvId)?.watched || []) {
+        const episode = parseEpisodeKey(key);
+        if (episode && episode.seasonNumber === season) watched.add(episode.episodeNumber);
+    }
+    return watched;
+}
+
+function saveTvProgressMap(tvId, progressMap) {
+    if (!safeWriteStorage(TV_EPISODE_PROGRESS_KEY, progressMap)) return false;
+    cachedTvProgressRaw = undefined;
+    cachedTvProgressMap = {};
+    refreshTvProgressBadgesOnPage(tvId);
+    if (typeof renderTvTrackerSection === 'function' &&
+        document.querySelector('#profile.active-tab, #tv-tracker-grid')) {
+        renderTvTrackerSection();
+    }
+    if (typeof refreshProfileWatchStats === 'function' && document.getElementById('profile-stats-container')) {
+        refreshProfileWatchStats();
+    }
+    return true;
+}
+
+function setEpisodesWatchedState(tvId, episodeKeys, isWatched, showMeta = null) {
+    const id = normalizeTmdbId(tvId);
+    if (!id || !Array.isArray(episodeKeys)) return false;
+    const validKeys = episodeKeys.filter(parseEpisodeKey);
+    if (!validKeys.length) return false;
+
+    const key = `tv:${id}`;
+    const progressMap = { ...getTvProgressSnapshot() };
+    const previous = progressMap[key];
+    const watched = new Set(previous?.watched);
+    for (const episodeKey of validKeys) {
+        if (isWatched) watched.add(episodeKey);
+        else watched.delete(episodeKey);
+    }
+
+    if (watched.size) {
+        const meta = {
+            ...previous,
+            ...showMeta,
+            avgEpisodeRuntime: normalizePositiveMinutes(showMeta?.avgEpisodeRuntime) ??
+                normalizePositiveMinutes(previous?.avgEpisodeRuntime),
+            episodeRuntimes: { ...previous?.episodeRuntimes, ...showMeta?.episodeRuntimes }
+        };
+        progressMap[key] = normalizeTvProgressRecord(id, meta, [...watched], Date.now());
+    } else {
+        delete progressMap[key];
+    }
+    return saveTvProgressMap(id, progressMap);
+}
+
+function toggleEpisodeWatched(tvId, seasonNumber, episodeNumber, showMeta = null) {
+    return setEpisodesWatchedState(tvId, [formatEpisodeKey(seasonNumber, episodeNumber)],
+        !isEpisodeWatched(tvId, seasonNumber, episodeNumber), showMeta);
+}
+
+function markEpisodesUpTo(tvId, seasonNumber, upToEpisodeNumber, seasonEpisodeNumbers, showMeta = null) {
+    const limit = normalizeTmdbId(upToEpisodeNumber);
+    if (!limit || !Array.isArray(seasonEpisodeNumbers)) return false;
+    const keys = seasonEpisodeNumbers.filter(number => number <= limit)
+        .map(number => formatEpisodeKey(seasonNumber, number));
+    return setEpisodesWatchedState(tvId, keys, true, showMeta);
+}
+
+function toggleSeasonWatched(tvId, seasonNumber, seasonEpisodeNumbers, showMeta = null) {
+    if (!Array.isArray(seasonEpisodeNumbers)) return false;
+    const keys = seasonEpisodeNumbers.map(number => formatEpisodeKey(seasonNumber, number)).filter(Boolean);
+    const watched = new Set(getTvShowProgress(tvId)?.watched);
+    return setEpisodesWatchedState(tvId, keys, !keys.every(key => watched.has(key)), showMeta);
+}
+
+function clearTvShowProgress(tvId) {
+    const id = normalizeTmdbId(tvId);
+    if (!id) return false;
+    const key = `tv:${id}`;
+    const progressMap = { ...getTvProgressSnapshot() };
+    if (!progressMap[key]) return false;
+    delete progressMap[key];
+    return saveTvProgressMap(id, progressMap);
+}
+
+function getAllTrackedTvShows() {
+    return Object.values(getTvProgressSnapshot()).sort((a, b) => b.updatedAt - a.updatedAt);
+}
+
+function updateTvShowAvgRuntime(tvId, avgRuntimeMinutes) {
+    const id = normalizeTmdbId(tvId);
+    const minutes = normalizePositiveMinutes(avgRuntimeMinutes);
+    if (!id || !minutes) return false;
+
+    const key = `tv:${id}`;
+    const progressMap = getTvProgressSnapshot();
+    const show = progressMap[key];
+    if (!show || show.avgEpisodeRuntime === minutes) return false;
+
+    if (!safeWriteStorage(TV_EPISODE_PROGRESS_KEY, {
+        ...progressMap,
+        [key]: { ...show, avgEpisodeRuntime: minutes }
+    })) return false;
+
+    cachedTvProgressRaw = undefined;
+    cachedTvProgressMap = {};
+    return true;
+}
+
+function hasKnownTvWatchMinutes(progress) {
+    return Boolean(progress?.avgEpisodeRuntime) ||
+        (progress?.watched || []).every(key => Boolean(progress.episodeRuntimes?.[key]));
+}
+
+function getTvShowWatchedMinutes(progress, fallbackEpisodeRuntime = 45) {
+    return (progress?.watched || []).reduce((total, key) => total +
+        (progress.episodeRuntimes?.[key] || progress.avgEpisodeRuntime || fallbackEpisodeRuntime), 0);
+}
+
+function formatTvProgressSummary(progress) {
+    const watchedCount = progress?.watched?.length || 0;
+    const totalEpisodes = normalizeTmdbId(progress?.totalEpisodes);
+    const percent = totalEpisodes ? Math.min(100, Math.round(watchedCount * 100 / totalEpisodes)) : null;
+    return {
+        watchedCount,
+        totalEpisodes,
+        percent,
+        positionLabel: watchedCount ? `S${progress.lastSeason} • B${progress.lastEpisode}` : '',
+        countLabel: totalEpisodes ? `${watchedCount} / ${totalEpisodes} bölüm (%${percent})` : `${watchedCount} bölüm izlendi`
+    };
+}
+
+function createTvProgressBar(value, max, label) {
+    const progress = document.createElement('progress');
+    progress.className = 'tv-progress-bar-el';
+    progress.max = max;
+    progress.value = value;
+    progress.setAttribute('aria-label', label);
+    return progress;
+}
+
+function buildCardTvProgressHtml(tvId, progress, variant = 'card') {
+    const summary = formatTvProgressSummary(progress);
+    if (!normalizeTmdbId(tvId) || !summary.watchedCount) return '';
+    const tooltipText = `Kaldığın Yer: ${summary.positionLabel} • ${summary.countLabel}`;
+    const progressBar = summary.totalEpisodes > 0
+        ? `<progress class="tv-progress-bar-el" value="${escapeAttr(summary.watchedCount)}" max="${escapeAttr(summary.totalEpisodes)}" aria-label="İzleme ilerlemesi %${escapeAttr(summary.percent)}"></progress>`
+        : '';
+    if (variant === 'top10') {
+        return `
+            <div class="card-tv-progress card-tv-progress--top10" title="${escapeAttr(tooltipText)}">
+                <span class="card-tv-progress-pos">${escapeHtml(summary.positionLabel)}</span>
+                ${progressBar}
+            </div>
+        `;
+    }
+    return `
+        <div class="card-tv-progress card-tv-progress--overlay" title="${escapeAttr(tooltipText)}">
+            <div class="card-tv-progress-top">
+                <span class="card-tv-progress-pos"><i class="fas fa-tv" aria-hidden="true"></i> ${escapeHtml(summary.positionLabel)}</span>
+                <span class="card-tv-progress-count">${escapeHtml(summary.percent !== null ? `%${summary.percent}` : `${summary.watchedCount} blm`)}</span>
+            </div>
+            ${progressBar}
+        </div>
+    `;
+}
+
+function refreshTvProgressBadgesOnPage(tvId) {
+    const id = normalizeTmdbId(tvId);
+    if (!id) return;
+    const progress = getTvShowProgress(id);
+    document.querySelectorAll(`.card-tv-progress-slot[data-tv-progress-id="${id}"]`).forEach(slot => {
+        const variant = slot.dataset.progressVariant || 'card';
+        slot.innerHTML = buildCardTvProgressHtml(id, progress, variant);
+    });
+}
+
 function getMoviePosterLoadAttrs(tabContext, cardOptions) {
     const cardIndex = Number.isInteger(cardOptions?.cardIndex) ? cardOptions.cardIndex : -1;
     const isPrioritizedTab = tabContext === 'now-playing' || tabContext === 'upcoming';
@@ -278,7 +542,8 @@ function createMovieCardsBatch(items, defaultMediaType = "movie", tabContext = "
     }
     const renderOptions = {
         watchlistSnapshot: getWatchlistLookupSnapshot(),
-        savedRatings: getMovieRatingsSnapshot()
+        savedRatings: getMovieRatingsSnapshot(),
+        tvProgressMap: getTvProgressSnapshot()
     };
     let html = '';
     for (let i = 0; i < items.length; i++) {
@@ -528,10 +793,17 @@ function createMovieCard(item, mediaType = "movie", tabContext = "", renderOptio
         `;
     }
 
+    let tvProgressSlot = '';
+    if (normalizedMediaType === 'tv') {
+        const progressMap = renderOptions?.tvProgressMap || getTvProgressSnapshot();
+        const tvProgressHtml = buildCardTvProgressHtml(itemId, progressMap[`tv:${itemId}`]);
+        tvProgressSlot = `<div class="card-tv-progress-slot" data-tv-progress-id="${escapeAttr(itemId)}" data-progress-variant="card">${tvProgressHtml}</div>`;
+    }
+
     return `
         <div
             class="movie-card"
-            style="position:relative"
+            data-media-id="${itemId}" data-media-type="${normalizedMediaType}"
         >
             <div class="media-type-badge">
                 ${mediaBadgeLabel}
@@ -548,19 +820,22 @@ function createMovieCard(item, mediaType = "movie", tabContext = "", renderOptio
                 <i class="fas fa-heart" aria-hidden="true"></i>
             </button>
 
-            <img
-                src="${escapeHtml(poster)}"
-                alt="${escapeHtml(title)}"
-                class="movie-poster"
-                width="342"
-                height="513"
-                ${getMoviePosterLoadAttrs(tabContext, arguments[3])}
-                decoding="async"
-                style="cursor:pointer"
-                onclick="openDetails(${itemId}, '${normalizedMediaType}')"
-                onmouseenter="startHoverSlideshow(this, ${itemId}, '${normalizedMediaType}')"
-                onmouseleave="stopHoverSlideshow(this)"
-            >
+            <div class="movie-poster-wrap">
+                <img
+                    src="${escapeAttr(poster)}"
+                    alt="${escapeAttr(title)}"
+                    class="movie-poster"
+                    width="342"
+                    height="513"
+                    ${getMoviePosterLoadAttrs(tabContext, arguments[3])}
+                    decoding="async"
+                    style="cursor:pointer"
+                    onclick="openDetails(${escapeAttr(itemId)}, '${escapeAttr(normalizedMediaType)}')"
+                    onmouseenter="startHoverSlideshow(this, ${escapeAttr(itemId)}, '${escapeAttr(normalizedMediaType)}')"
+                    onmouseleave="stopHoverSlideshow(this)"
+                >
+                ${tvProgressSlot}
+            </div>
 
             <div class="movie-info">
                 <div class="movie-meta">

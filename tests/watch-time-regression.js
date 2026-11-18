@@ -247,8 +247,7 @@ async function runTest() {
                                 finish(
                                     () => {
                                         if (
-                                            key ===
-                                            'movie:404'
+                                            key === 'movie:404' || key === 'tv:606'
                                         ) {
                                             resolve({
                                                 ok: false,
@@ -419,6 +418,54 @@ async function runTest() {
         ) === 1,
         'Failure test request was not executed'
     );
+
+    const countRequests = () => [...requestCounts.values()].reduce((sum, count) => sum + count, 0);
+    const requestsBeforeTracked = countRequests();
+    const showWithEpisodeRuntimes = {
+        id: 202,
+        watched: ['S1E1', 'S1E2'],
+        episodeRuntimes: { S1E1: 58, S1E2: 48 }
+    };
+    const trackedOnlyMinutes = await context.calculateExactWatchTime([], null, [
+        showWithEpisodeRuntimes,
+        { ...showWithEpisodeRuntimes, id: '202' }
+    ]);
+    assert(trackedOnlyMinutes === 106, `Unexpected tracked-only total: ${trackedOnlyMinutes}`);
+    assert(countRequests() === requestsBeforeTracked, 'Known episode runtimes should require no fetch');
+
+    const cachedTvRuntimes = new Map();
+    context.updateTvShowAvgRuntime = (id, minutes) => cachedTvRuntimes.set(id, minutes);
+    const showWithMissingRuntime = { id: 202, watched: ['S1E1', 'S1E2'], episodeRuntimes: { S1E1: 58 } };
+    const previousTvRequests = requestCounts.get('tv:202');
+    const fetchedTvMinutes = await context.calculateExactWatchTime([], null, [showWithMissingRuntime]);
+    assert(fetchedTvMinutes === 108, `Unexpected total using a fetched series runtime: ${fetchedTvMinutes}`);
+    assert(requestCounts.get('tv:202') === previousTvRequests + 1, 'Missing episode runtime should fetch /3/tv/202');
+    assert(cachedTvRuntimes.get(202) === 50, 'Fetched series runtime was not cached');
+    const cachedTvMinutes = await context.calculateExactWatchTime([], null, [{
+        ...showWithMissingRuntime, avgEpisodeRuntime: cachedTvRuntimes.get(202)
+    }]);
+    assert(cachedTvMinutes === 108 && requestCounts.get('tv:202') === previousTvRequests + 1,
+        'Cached series runtime should prevent a repeat fetch');
+
+    const fallbackTvMinutes = await context.calculateExactWatchTime([], null, [{ id: 606, watched: ['S1E1'] }]);
+    assert(fallbackTvMinutes === 45 && requestCounts.get('tv:606') === 1, 'Failed tracked TV fetch should use 45 minutes');
+    assert(!cachedTvRuntimes.has(606), 'Failed request should leave the runtime cache available for a retry');
+
+    const requestsBeforeOverlap = countRequests();
+    const minutesWithoutOverlap = await context.calculateExactWatchTime(
+        [{ id: 202, media_type: 'tv', exact_runtime_mins_v2: 500 }],
+        null,
+        [{ id: 202, watched: ['S1E1', 'S1E2', 'S1E3'], avgEpisodeRuntime: 50 }]
+    );
+    assert(minutesWithoutOverlap === 150, `Rated series and tracked episodes were double-counted: ${minutesWithoutOverlap}`);
+    assert(countRequests() === requestsBeforeOverlap, 'Cached runtimes and tracked episodes should require no fetch');
+
+    for (const [minutes, approximate, expected] of [
+        [0, false, '0s'], [48, false, '48d'], [106, false, '1s 46d'], [120, false, '2s'],
+        [48, true, '~48d'], [106, true, '~1s']
+    ]) {
+        assert(context.formatWatchTimeDuration(minutes, approximate) === expected, `Expected duration ${expected}`);
+    }
 
     // -------------------------------------------------
     // AbortError must propagate.

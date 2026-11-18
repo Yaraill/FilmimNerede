@@ -12,6 +12,11 @@
     --card-bg: rgba(30, 41, 59, 0.9);
     --modal-overlay: rgba(0, 0, 0, 0.85);
     --nav-bg: rgba(15, 23, 42, 0.94);
+    --tv-progress-accent: #6ee7b7;
+    --tv-progress-track: #475569;
+    --tv-progress-surface: #123530;
+    --tv-progress-pressed: #164b3e;
+    --tv-imdb-color: #f5c518;
 }
 
 body.light-theme {
@@ -25,6 +30,11 @@ body.light-theme {
     --card-bg: rgba(255, 255, 255, 0.95);
     --modal-overlay: rgba(255, 255, 255, 0.85);
     --nav-bg: rgba(255, 255, 255, 0.95);
+    --tv-progress-accent: #065f46;
+    --tv-progress-track: #cbd5e1;
+    --tv-progress-surface: #e9f8f0;
+    --tv-progress-pressed: #d1fae5;
+    --tv-imdb-color: #785600;
 }
 
 .premium-search-input {
@@ -284,6 +294,15 @@ body.light-theme .navbar.scrolled {
     height: auto;
     aspect-ratio: 2 / 3;
     object-fit: cover;
+}
+
+.movie-poster-wrap {
+    position: relative;
+    width: 100%;
+    overflow: hidden;
+}
+.movie-poster-wrap .movie-poster {
+    display: block;
 }
 
 .movie-info {
@@ -1288,11 +1307,14 @@ body.light-theme .card-user-rating {
     text-align: left;
 }
 
-.movie-grid.list-view .movie-card img:not(.provider-logo) {
+.movie-grid.list-view .movie-poster-wrap {
     width: 166px;
-    height: auto;
-    aspect-ratio: 2 / 3;
-    object-fit: cover;
+    flex: 0 0 166px;
+    align-self: stretch;
+}
+.movie-grid.list-view .movie-poster-wrap img:not(.provider-logo) {
+    width: 100%;
+    height: 100%;
 }
 
 .movie-grid.list-view .movie-info {
@@ -1702,10 +1724,21 @@ body.light-theme .actor-bio-scroll::-webkit-scrollbar-thumb {
     width: 150px;
 }
 
-.top10-card {
+#top10-grid .top10-card {
+    width: 140px;
+    margin-left: 20px;
     transition: transform 0.3s ease;
-    flex: 0 0 auto;
-    
+}
+.top10-poster {
+    position: relative;
+}
+.top10-card .top10-poster img {
+    display: block;
+    width: 100%;
+    height: 210px;
+    object-fit: cover;
+    border-radius: 10px;
+    box-shadow: 0 5px 15px rgba(0, 0, 0, 0.5);
 }
 .top10-card:hover {
     transform: scale(1.05);
@@ -1720,7 +1753,7 @@ body.light-theme .actor-bio-scroll::-webkit-scrollbar-thumb {
     color: #000;
     -webkit-text-stroke: 3px var(--text-color);
     text-shadow: 2px 2px 5px rgba(0,0,0,0.8);
-    z-index: 1;
+    z-index: 3;
     pointer-events: none;
 }
 .light-theme .top10-number {
@@ -1830,6 +1863,7 @@ body.light-theme .actor-bio-scroll::-webkit-scrollbar-thumb {
     100% { background-position: -200% 0; }
 }
 .season-select {
+    max-width: 100%;
     padding: 10px 20px;
     border-radius: 10px;
     background: var(--card-bg);
@@ -1842,6 +1876,64 @@ body.light-theme .actor-bio-scroll::-webkit-scrollbar-thumb {
 .season-select option {
     background: var(--bg-color);
     color: var(--text-color);
+}
+.season-select-wrapper select:focus-visible {
+    outline: 2px solid var(--primary-color);
+    outline-offset: 2px;
+}
+.tv-overall-progress,
+.season-progress-bar {
+    padding: 12px 14px;
+    border: 1px solid var(--glass-border);
+    border-radius: 10px;
+    background: var(--card-bg);
+    color: var(--text-color);
+}
+.tv-overall-progress {
+    display: grid;
+    gap: 6px;
+}
+.tv-overall-progress span,
+.tv-tracker-progress span {
+    color: var(--text-muted);
+}
+.season-progress-bar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 12px;
+}
+.season-progress-bar[hidden],
+.episode-mark-upto-btn[hidden] {
+    display: none;
+}
+.season-progress-info {
+    display: grid;
+    flex: 1 1 12rem;
+    gap: 6px;
+    min-width: 0;
+}
+.tv-progress-bar-el {
+    display: block;
+    width: 100%;
+    height: 0.45rem;
+    appearance: none;
+    border: 0;
+    border-radius: 999px;
+    background: var(--tv-progress-track);
+    color: var(--tv-progress-accent);
+}
+.tv-progress-bar-el::-webkit-progress-bar {
+    border-radius: inherit;
+    background: var(--tv-progress-track);
+}
+.tv-progress-bar-el::-webkit-progress-value {
+    border-radius: inherit;
+    background: var(--tv-progress-accent);
+}
+.tv-progress-bar-el::-moz-progress-bar {
+    border-radius: inherit;
+    background: var(--tv-progress-accent);
 }
 .episode-list {
     display: flex;
@@ -1859,21 +1951,40 @@ body.light-theme .actor-bio-scroll::-webkit-scrollbar-thumb {
     border: 1px solid var(--glass-border);
     padding: 10px;
     border-radius: 10px;
-    transition: background 0.3s, transform 0.2s;
     color: var(--text-color);
 }
-.episode-card:hover {
-    background: var(--glass-bg);
+.episode-card.episode-watched {
+    border-color: var(--tv-progress-accent);
+    background: var(--tv-progress-surface);
 }
-.episode-card img {
+.episode-still-link {
+    flex: 0 0 auto;
+    align-self: flex-start;
+    border-radius: 5px;
+}
+.episode-still-link img {
+    display: block;
     width: 120px;
     height: 70px;
     border-radius: 5px;
     object-fit: cover;
 }
+.episode-info {
+    min-width: 0;
+    overflow-wrap: anywhere;
+}
 .episode-info h4 {
     margin: 0 0 5px;
     font-size: 1rem;
+}
+.episode-ext-link {
+    color: var(--text-color);
+    text-decoration: underline;
+    text-underline-offset: 0.15em;
+}
+.episode-imdb-icon {
+    margin-inline-start: 0.4em;
+    color: var(--tv-imdb-color);
 }
 .episode-info p {
     font-size: 0.85rem;
@@ -1883,6 +1994,160 @@ body.light-theme .actor-bio-scroll::-webkit-scrollbar-thumb {
     -webkit-line-clamp: 2;
     -webkit-box-orient: vertical;
     overflow: hidden;
+}
+.episode-info .episode-date-line {
+    margin-bottom: 5px;
+    color: var(--tv-progress-accent);
+    font-weight: 600;
+}
+.episode-actions,
+.tv-tracker-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+.episode-actions {
+    margin-top: 10px;
+}
+.season-toggle-all-btn,
+.episode-watch-btn,
+.episode-mark-upto-btn,
+.tv-tracker-open-btn,
+.tv-tracker-reset-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    min-height: 36px;
+    padding: 6px 10px;
+    border: 1px solid var(--tv-progress-track);
+    border-radius: 8px;
+    background: var(--card-bg);
+    color: var(--text-color);
+    font: inherit;
+    font-size: 0.85rem;
+    font-weight: 600;
+    cursor: pointer;
+}
+.season-toggle-all-btn[aria-pressed="true"],
+.episode-watch-btn.watched,
+.tv-tracker-open-btn {
+    border-color: var(--tv-progress-accent);
+    background: var(--tv-progress-pressed);
+    color: var(--tv-progress-accent);
+}
+.season-toggle-all-btn:hover,
+.episode-watch-btn:hover,
+.episode-mark-upto-btn:hover,
+.tv-tracker-open-btn:hover,
+.tv-tracker-reset-btn:hover {
+    border-color: var(--tv-progress-accent);
+}
+.movie-poster-wrap .card-tv-progress-slot {
+    position: absolute;
+    inset: auto 0 0 0;
+    margin: 0;
+    pointer-events: none;
+    z-index: 2;
+}
+#top10-grid .top10-poster .top10-tv-progress-slot {
+    position: absolute;
+    inset: 0;
+    margin: 0;
+    pointer-events: none;
+    z-index: 2;
+}
+.card-tv-progress-slot:empty {
+    display: none;
+}
+.card-tv-progress--overlay {
+    display: grid;
+    gap: 5px;
+    padding: 18px 8px 0;
+    border-radius: 0;
+    background: linear-gradient(to top, rgba(15, 23, 42, 0.94) 0%, rgba(15, 23, 42, 0.72) 68%, transparent 100%);
+    font-size: 0.74rem;
+    text-align: start;
+}
+.card-tv-progress--overlay .card-tv-progress-top {
+    display: flex;
+    padding: 0 2px;
+    align-items: center;
+    flex-wrap: nowrap;
+    justify-content: space-between;
+    gap: 4px 8px;
+}
+.card-tv-progress--overlay .card-tv-progress-pos {
+    color: #6ee7b7;
+    font-weight: 700;
+    white-space: nowrap;
+}
+.card-tv-progress--overlay .card-tv-progress-count {
+    color: #f8fafc;
+    font-weight: 600;
+    white-space: nowrap;
+}
+.card-tv-progress--overlay .tv-progress-bar-el {
+    height: 4px;
+    border-radius: 0;
+    --tv-progress-track: rgba(148, 163, 184, 0.35);
+    --tv-progress-accent: #10b981;
+}
+.card-tv-progress--top10 {
+    position: relative;
+    width: 100%;
+    height: 100%;
+    padding: 0;
+    background: transparent;
+    border-radius: 10px;
+    overflow: hidden;
+}
+.card-tv-progress--top10 .card-tv-progress-pos {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    padding: 3px 7px;
+    border-radius: 6px;
+    background: rgba(15, 23, 42, 0.84);
+    border: 1px solid rgba(110, 231, 183, 0.45);
+    color: #6ee7b7;
+    font-size: 0.68rem;
+    font-weight: 700;
+    line-height: 1.1;
+    backdrop-filter: blur(6px);
+}
+.card-tv-progress--top10 .tv-progress-bar-el {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    height: 4px;
+    border-radius: 0;
+    --tv-progress-track: rgba(15, 23, 42, 0.65);
+    --tv-progress-accent: #34d399;
+}
+
+@media (max-width: 768px) {
+    .season-select {
+        width: 100%;
+    }
+    .episode-list {
+        padding-right: 4px;
+    }
+    .episode-card {
+        gap: 10px;
+    }
+    .episode-still-link img {
+        width: 72px;
+        height: 48px;
+    }
+    .season-toggle-all-btn,
+    .episode-watch-btn,
+    .episode-mark-upto-btn,
+    .tv-tracker-open-btn,
+    .tv-tracker-reset-btn {
+        min-height: 44px;
+    }
 }
 
 /* Gelişmiş Oyuncu İpuçları (Smart Tooltips) */
@@ -2038,8 +2303,11 @@ body.light-theme .actor-bio-scroll::-webkit-scrollbar-thumb {
     margin-top: 20px;
 }
 .stat-card {
+    position: relative;
+    overflow: hidden;
     background: var(--glass-bg);
     border: 1px solid var(--glass-border);
+    border-top: 2px solid var(--stat-accent);
     border-radius: 15px;
     padding: 20px;
     text-align: center;
@@ -2047,15 +2315,50 @@ body.light-theme .actor-bio-scroll::-webkit-scrollbar-thumb {
     flex: 1 1 150px;
     max-width: 200px;
 }
+.stat-card--content {
+    --stat-accent: var(--primary-color);
+    --stat-gradient-end: var(--accent-color);
+}
+.stat-card--watch-time {
+    --stat-accent: #00c6ff;
+    --stat-gradient-end: #0072ff;
+}
+.stat-card--rating {
+    --stat-accent: #f1c40f;
+    --stat-gradient-end: #e67e22;
+}
+.stat-card--genre {
+    --stat-accent: #9b59b6;
+    --stat-gradient-end: #8e44ad;
+}
+.stat-card-icon {
+    position: absolute;
+    right: -10px;
+    bottom: -10px;
+    font-size: 4rem;
+    color: rgba(128, 128, 128, 0.1);
+}
 .stat-value {
     font-size: 2.5rem;
     font-weight: 800;
     color: var(--primary-color);
     margin-bottom: 5px;
+    background: linear-gradient(45deg, var(--stat-accent), var(--stat-gradient-end));
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+}
+.stat-card--genre .stat-value {
+    font-size: 1.5rem;
+    line-height: 2.5rem;
 }
 .stat-label {
     font-size: 0.9rem;
+    font-weight: 600;
+    letter-spacing: 1px;
     color: var(--text-muted);
+}
+.profile-grid-empty {
+    grid-column: 1 / -1;
 }
 .profile-backup-panel {
     display: grid;
@@ -2187,11 +2490,70 @@ body.light-theme .actor-bio-scroll::-webkit-scrollbar-thumb {
     color: white;
     border-color: var(--primary-color);
 }
-.profile-tab-content {
+.profile-tab-content[hidden] {
     display: none;
 }
-.profile-tab-content.active-tab {
-    display: block;
+.tv-tracker-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(min(100%, 250px), 1fr));
+    gap: 15px;
+}
+.tv-tracker-card,
+.tv-tracker-empty {
+    min-width: 0;
+    padding: 14px;
+    border: 1px solid var(--glass-border);
+    border-radius: 12px;
+    background: var(--card-bg);
+    color: var(--text-color);
+}
+.tv-tracker-card {
+    display: grid;
+    grid-template-rows: 1fr auto auto;
+    gap: 12px;
+}
+.tv-tracker-empty {
+    grid-column: 1 / -1;
+    margin: 0;
+    color: var(--text-muted);
+}
+.tv-tracker-title-btn {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 0;
+    border: 0;
+    border-radius: 6px;
+    background: transparent;
+    color: var(--text-color);
+    font: inherit;
+    font-weight: 700;
+    text-align: start;
+    overflow-wrap: anywhere;
+    cursor: pointer;
+}
+.tv-tracker-title-btn:hover span {
+    text-decoration: underline;
+}
+.tv-tracker-poster {
+    flex: 0 0 auto;
+    width: 56px;
+    aspect-ratio: 2 / 3;
+    border-radius: 6px;
+    object-fit: cover;
+}
+.tv-tracker-progress {
+    display: grid;
+    gap: 6px;
+}
+@media (max-width: 768px) {
+    .tv-tracker-grid {
+        gap: 10px;
+    }
+    .tv-tracker-card,
+    .tv-tracker-empty {
+        padding: 12px;
+    }
 }
 
 /* Actor Grid (for profile) */
@@ -2404,7 +2766,8 @@ body.light-theme .actor-bio-scroll::-webkit-scrollbar-thumb {
 body.light-theme .stat-card {
     background: var(--card-bg);
     color: var(--text-color);
-    border: 1px solid var(--glass-border);
+    border-color: var(--glass-border);
+    border-top-color: var(--stat-accent);
     box-shadow: 0 5px 15px rgba(0,0,0,0.05);
 }
 body.light-theme .stat-value {

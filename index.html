@@ -25,7 +25,7 @@
     </style>
     <!-- Google Fonts: Modern ve okunaklı bir font (Inter) -->
     <!-- Kendi CSS dosyamız -->
-    <link rel="stylesheet" href="style.css?v=60">
+    <link rel="stylesheet" href="style.css?v=62">
     <!-- Font Awesome (İkonlar için) -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" integrity="sha512-9usAa10IRO0HhonpyAIVpjrylPvoDwiPUiKdWk5t3PyolY1cOd4DSE0Ga+ri4AuTroPR5aQvXU9xC6qOPnzFeg==" crossorigin="anonymous" media="print" onload="this.media='all'">
     <noscript><link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" integrity="sha512-9usAa10IRO0HhonpyAIVpjrylPvoDwiPUiKdWk5t3PyolY1cOd4DSE0Ga+ri4AuTroPR5aQvXU9xC6qOPnzFeg==" crossorigin="anonymous"></noscript>
@@ -461,6 +461,7 @@
             
                     <div class="profile-tabs glass-nav" role="tablist" aria-label="Profil Sekmeleri">
                 <button type="button" class="profile-tab-btn active" role="tab" id="tab-profile-watchlist" aria-controls="profile-watchlist" aria-selected="true" tabindex="0" onclick="switchProfileTab('profile-watchlist', this)">Listeme Eklediklerim</button>
+                <button type="button" class="profile-tab-btn" role="tab" id="tab-profile-tv-tracker" aria-controls="profile-tv-tracker" aria-selected="false" tabindex="-1" onclick="switchProfileTab('profile-tv-tracker', this)"><i class="fas fa-tv" aria-hidden="true"></i> Dizi Takibim</button>
                 <button type="button" class="profile-tab-btn" role="tab" id="tab-profile-rated" aria-controls="profile-rated" aria-selected="false" tabindex="-1" onclick="switchProfileTab('profile-rated', this)">Puanladıklarım</button>
                 <button type="button" class="profile-tab-btn" role="tab" id="tab-profile-fav-actors" aria-controls="profile-fav-actors" aria-selected="false" tabindex="-1" onclick="switchProfileTab('profile-fav-actors', this)">Favori Oyuncularım</button>
                 <button type="button" class="profile-tab-btn" role="tab" id="tab-profile-smart-recs" aria-controls="profile-smart-recs" aria-selected="false" tabindex="-1" onclick="switchProfileTab('profile-smart-recs', this)"><i class="fas fa-magic" aria-hidden="true"></i> Sizin İçin Öneriler</button>
@@ -470,18 +471,22 @@
                 <div id="watchlist-grid" class="profile-movie-grid"></div>
             </div>
 
-            <div id="profile-rated" class="profile-tab-content" role="tabpanel" aria-labelledby="tab-profile-rated" tabindex="0" style="display:none;" hidden>
+            <div id="profile-tv-tracker" class="profile-tab-content" role="tabpanel" aria-labelledby="tab-profile-tv-tracker" tabindex="0" hidden>
+                <div id="tv-tracker-grid" class="tv-tracker-grid"></div>
+            </div>
+
+            <div id="profile-rated" class="profile-tab-content" role="tabpanel" aria-labelledby="tab-profile-rated" tabindex="0" hidden>
                 <h3 style="margin-top: 20px; color:var(--text-color);">Puanlanan Filmler</h3>
                 <div id="rated-movie-grid" class="profile-movie-grid"></div>
                 <h3 style="margin-top: 20px; color:var(--text-color);">Puanlanan Diziler</h3>
                 <div id="rated-tv-grid" class="profile-movie-grid"></div>
             </div>
             
-            <div id="profile-fav-actors" class="profile-tab-content" role="tabpanel" aria-labelledby="tab-profile-fav-actors" tabindex="0" style="display:none;" hidden>
+            <div id="profile-fav-actors" class="profile-tab-content" role="tabpanel" aria-labelledby="tab-profile-fav-actors" tabindex="0" hidden>
                 <div id="favorite-actors-grid" class="profile-movie-grid"></div>
             </div>
             
-            <div id="profile-smart-recs" class="profile-tab-content" role="tabpanel" aria-labelledby="tab-profile-smart-recs" tabindex="0" style="display:none;" hidden>
+            <div id="profile-smart-recs" class="profile-tab-content" role="tabpanel" aria-labelledby="tab-profile-smart-recs" tabindex="0" hidden>
                 <div id="smart-recommendations-section">
                     <h3 style="margin-top: 20px; color:var(--text-color);">Puanladıklarınıza Göre Sizin İçin Öneriler</h3>
                     <div id="smart-recommendations-list" class="profile-movie-grid">
@@ -888,14 +893,14 @@
     <script src="js/runtime/security.js?v=6"></script>
     <script src="js/runtime/state.js?v=1"></script>
     <script src="js/runtime/router.js?v=7"></script>
-    <script src="js/runtime/shared-ui.js?v=13"></script>
+    <script src="js/runtime/shared-ui.js?v=15"></script>
     <script src="js/runtime/providers.js?v=6"></script>
     <script src="js/runtime/platform.js?v=13"></script>
     <script src="js/runtime/search.js?v=7"></script>
-    <script src="js/runtime/movie.js?v=11"></script>
+    <script src="js/runtime/movie.js?v=13"></script>
     <script src="js/runtime/actor.js?v=13"></script>
-    <script src="js/runtime/home.js?v=12"></script>
-    <script src="js/runtime/profile.js?v=10"></script>
+    <script src="js/runtime/home.js?v=14"></script>
+    <script src="js/runtime/profile.js?v=12"></script>
     <script src="js/runtime/misc.js?v=12"></script>
     <script src="app.js?v=77"></script>
     <script>
