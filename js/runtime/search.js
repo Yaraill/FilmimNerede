@@ -4,12 +4,10 @@ function handleSearch(event) {
 
 async function applySearchResultFilters(
     results,
+    state,
     routeContext,
     requestGeneration
 ) {
-    const state =
-        getPlatformFilterStateFromUi();
-
     let filtered =
         Array.isArray(results)
             ? [...results]
@@ -301,7 +299,10 @@ async function applySearchResultFilters(
             providerFiltered;
     }
 
+    let hasRuntimeExcludedTv = false;
+    let hasRuntimeMovieCandidates = false;
     if (state.runtime) {
+        hasRuntimeExcludedTv = filtered.some(item => item.media_type === 'tv');
         const matchesRuntime =
             runtime => {
                 if (
@@ -350,6 +351,7 @@ async function applySearchResultFilters(
                     item.media_type ===
                     'movie'
             );
+        hasRuntimeMovieCandidates = movieCandidates.length > 0;
 
         const runtimeFiltered = [];
 
@@ -518,8 +520,10 @@ async function applySearchResultFilters(
         );
     }
 
-    return filtered;
+    return { results: filtered, hasRuntimeExcludedTv, hasRuntimeMovieCandidates };
 }
+
+let renderedSearchRoute = null;
 
 async function searchMovie(reset = true, isFilterChange = false, routeContext = null) {
     if (reset && !isFilterChange && !routeContext) {
@@ -561,6 +565,7 @@ async function searchMovie(reset = true, isFilterChange = false, routeContext = 
         : searchRequestGeneration;
 
     if (reset) {
+        renderedSearchRoute = null;
         currentSearchQuery = document.getElementById('searchInput').value.trim();
         if (!currentSearchQuery) {
             const activeNav = document.querySelector('.nav-links a.active');
@@ -578,26 +583,6 @@ async function searchMovie(reset = true, isFilterChange = false, routeContext = 
         }
         currentMode = "search";
         currentPage = 1;
-
-        if (!isFilterChange) {
-            const restoredFromSession =
-                typeof restoreSearchFilterStateFromSession === 'function' &&
-                restoreSearchFilterStateFromSession(currentSearchQuery);
-
-            if (!restoredFromSession) {
-                document
-                    .querySelectorAll(
-                        '.provider-filter-btn'
-                    )
-                    .forEach(button =>
-                        button.classList.remove(
-                            'active'
-                        )
-                    );
-
-                currentProvider = 0;
-            }
-        }
 
         updateCustomOptionVisibility('sortByFilter', 'order.asc', false);
         const sortSelect = document.getElementById('sortByFilter');
@@ -648,12 +633,15 @@ async function searchMovie(reset = true, isFilterChange = false, routeContext = 
 
     const requestQuery = currentSearchQuery;
     const requestPage = currentPage;
+    const filterState = getPlatformFilterStateFromUi();
 
     try {
         let pageToFetch = requestPage;
         let totalPages = 1;
         let filtered = [];
         let scanAttempts = 0;
+        let hasRuntimeExcludedTv = false;
+        let hasRuntimeMovieCandidates = false;
 
         while (scanAttempts < 3) {
             scanAttempts++;
@@ -682,18 +670,21 @@ async function searchMovie(reset = true, isFilterChange = false, routeContext = 
                 a.findIndex(t => t.id === v.id && (t.media_type || 'movie') === (v.media_type || 'movie')) === i
             );
 
-            pageFiltered =
+            const page =
                 await applySearchResultFilters(
                     pageFiltered,
+                    filterState,
                     routeContext,
                     requestGeneration
                 );
 
-            if (pageFiltered === null) {
+            if (page === null) {
                 return;
             }
 
-            filtered = filtered.concat(pageFiltered);
+            filtered = filtered.concat(page.results);
+            hasRuntimeExcludedTv = hasRuntimeExcludedTv || page.hasRuntimeExcludedTv;
+            hasRuntimeMovieCandidates = hasRuntimeMovieCandidates || page.hasRuntimeMovieCandidates;
             currentPage = pageToFetch;
 
             if (filtered.length > 0 || pageToFetch >= totalPages) {
@@ -703,10 +694,16 @@ async function searchMovie(reset = true, isFilterChange = false, routeContext = 
         }
 
         const container = document.getElementById('search-results');
-        if (reset) container.innerHTML = "";
+        const runtimeExcludedAllTv = hasRuntimeExcludedTv && !hasRuntimeMovieCandidates;
+        const runtimeNotice = reset && hasRuntimeExcludedTv
+            ? renderRuntimeFilterNotice(runtimeExcludedAllTv)
+            : '';
 
         if (filtered.length === 0 && reset) {
-            container.innerHTML = "<div class='loading'>Sonuç bulunamadı.</div>";
+            container.innerHTML = runtimeExcludedAllTv
+                ? runtimeNotice
+                : runtimeNotice + "<div class='loading'>Sonuç bulunamadı.</div>";
+            renderedSearchRoute = buildSearchRoute(requestQuery, filterState);
             document.getElementById('search-results').style.minHeight = '';
             if (currentPage < totalPages) {
                 document.getElementById('loadMoreBtn').style.display = 'inline-block';
@@ -716,7 +713,7 @@ async function searchMovie(reset = true, isFilterChange = false, routeContext = 
             return;
         }
 
-        let html = "";
+        let html = runtimeNotice;
         for (let i = 0; i < filtered.length; i++) {
             html += createMovieCard(
                 filtered[i],
@@ -727,6 +724,7 @@ async function searchMovie(reset = true, isFilterChange = false, routeContext = 
 
         if (reset) {
             container.innerHTML = html;
+            renderedSearchRoute = buildSearchRoute(requestQuery, filterState);
         } else {
             container.insertAdjacentHTML(
                 'beforeend',

@@ -83,7 +83,11 @@ async function fetchRandomMovie(isNext = false) {
         
         if (randomMovie) {
             randomMovie.media_type = "movie";
-            window.movieCache[randomMovie.id] = randomMovie;
+            if (typeof setCachedMedia === 'function') {
+                setCachedMedia(randomMovie, 'movie');
+            } else {
+                window.movieCache[`movie:${randomMovie.id}`] = randomMovie;
+            }
             if (!isNext) closeRandom(null, true);
             
             window.isRandomMode = true;
@@ -316,7 +320,11 @@ async function startNewGame() {
         
         currentGameMovie = shuffled[0];
         currentGameMovie.media_type = 'movie';
-        window.movieCache[currentGameMovie.id] = currentGameMovie;
+        if (typeof setCachedMedia === 'function') {
+            setCachedMedia(currentGameMovie, 'movie');
+        } else {
+            window.movieCache[`movie:${currentGameMovie.id}`] = currentGameMovie;
+        }
         playedGameMovies.push(currentGameMovie.id);
         
         const normalizeGameTitle = title => String(title || '').trim().toLocaleLowerCase('tr-TR');

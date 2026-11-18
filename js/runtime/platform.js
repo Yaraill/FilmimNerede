@@ -100,7 +100,7 @@ function getPlatformFilterStateFromUi() {
     return sanitizePlatformFilterState(params.toString());
 }
 
-function buildPlatformRoute(state = getPlatformFilterStateFromUi()) {
+function buildPlatformFilterParams(state) {
     const params = new URLSearchParams();
 
     if (state.media !== PLATFORM_FILTER_DEFAULTS.media) {
@@ -125,8 +125,18 @@ function buildPlatformRoute(state = getPlatformFilterStateFromUi()) {
         params.set('provider', state.provider);
     }
 
-    const queryString = params.toString();
+    return params;
+}
+
+function buildPlatformRoute(state = getPlatformFilterStateFromUi()) {
+    const queryString = buildPlatformFilterParams(state).toString();
     return queryString ? `platform?${queryString}` : 'platform';
+}
+
+function buildSearchRoute(query, state = getPlatformFilterStateFromUi()) {
+    const filters = buildPlatformFilterParams(state).toString();
+    const route = `search?q=${encodeURIComponent(query)}`;
+    return filters ? `${route}&${filters}` : route;
 }
 
 function syncPlatformSelect(selectId, value) {
@@ -508,14 +518,12 @@ function resetPlatformView(routeContext = null) {
 }
 
 
-function saveSearchFilterStateToSession(query) {
+function saveSearchFilterStateToSession(query, state = getPlatformFilterStateFromUi()) {
     try {
         if (!query) return;
-        const route = buildPlatformRoute();
-        const queryString = route.includes('?') ? route.split('?')[1] : '';
         sessionStorage.setItem('search_filter_state', JSON.stringify({
             q: String(query).trim(),
-            filters: queryString
+            filters: buildPlatformFilterParams(state).toString()
         }));
     } catch (e) {}
 }
@@ -538,8 +546,12 @@ function applyPlatformFilters() {
     if (currentMode === "actor") {
         renderActor(currentActorId, document.getElementById('searchInput').value, true, currentJobType, 0, true);
     } else if (currentMode === "search") {
-        saveSearchFilterStateToSession(currentSearchQuery || document.getElementById('searchInput')?.value);
-        searchMovie(true, true);
+        const query = (currentSearchQuery || document.getElementById('searchInput')?.value || '').trim();
+        if (!query) return;
+
+        const state = getPlatformFilterStateFromUi();
+        saveSearchFilterStateToSession(query, state);
+        navigate(buildSearchRoute(query, state), { replace: true, searchFilterChange: true });
     } else {
         navigateToCurrentPlatformFilters();
     }
@@ -572,12 +584,7 @@ function handlePlatformButtonClick(pid) {
         });
 
     if (currentMode === 'search') {
-        saveSearchFilterStateToSession(currentSearchQuery || document.getElementById('searchInput')?.value);
-        searchMovie(
-            true,
-            true
-        );
-
+        applyPlatformFilters();
         return;
     }
 
@@ -668,6 +675,13 @@ async function fetchMovieRuntimesBounded(items, routeContext, requestGeneration)
     const workerCount = Math.min(PLATFORM_RUNTIME_CONCURRENCY, items.length);
     await Promise.all(Array.from({ length: workerCount }, () => worker()));
     return output;
+}
+
+function renderRuntimeFilterNotice(tvOnly = false) {
+    const message = tvOnly
+        ? 'Süre filtresi yalnızca filmler için geçerlidir. Dizileri görmek için süre filtresini kaldırın.'
+        : 'Süre filtresi seçili olduğu için yalnızca filmler gösteriliyor.';
+    return `<div class="filter-scope-note" role="status">${escapeHtml(message)}</div>`;
 }
 
 async function loadPlatformMovies(providerId = 0, reset = true, isFilterChange = false, routeContext = null) {
@@ -831,6 +845,15 @@ async function loadPlatformMovies(providerId = 0, reset = true, isFilterChange =
         if (requestGeneration !== platformRequestGeneration || currentMode !== "platform") return;
         if (routeContext && !isRouteContextCurrent(routeContext, "platform")) return;
 
+        const container = document.getElementById('search-results');
+        if (typesToFetch.length === 0) {
+            if (reset) {
+                container.innerHTML = renderRuntimeFilterNotice(true);
+                container.style.minHeight = '';
+            }
+            return;
+        }
+
         for (const payload of typePayloads) {
             if (!payload) return;
             if (payload.totalPages > maxTotalPages) {
@@ -858,18 +881,19 @@ async function loadPlatformMovies(providerId = 0, reset = true, isFilterChange =
             allResults.sort((a, b) => Number(b.popularity || 0) - Number(a.popularity || 0));
         }
         
-        const container = document.getElementById('search-results');
-        if (reset) container.innerHTML = "";
+        const runtimeNotice = reset && runtime && mediaType === "all"
+            ? renderRuntimeFilterNotice()
+            : '';
         
         if (allResults.length === 0 && reset) {
-            container.innerHTML = "<div class='loading'>Bu filtrelere uygun içerik bulunamadı.</div>";
+            container.innerHTML = runtimeNotice + "<div class='loading'>Bu filtrelere uygun içerik bulunamadı.</div>";
             if (currentPage < maxTotalPages) {
                 document.getElementById('loadMoreBtn').style.display = 'inline-block';
             }
             return;
         }
         
-        let html = "";
+        let html = runtimeNotice;
         for (let i = 0; i < allResults.length; i++) {
             html += createMovieCard(
                 allResults[i],
@@ -907,7 +931,7 @@ async function loadPlatformMovies(providerId = 0, reset = true, isFilterChange =
         if (allResults.length > 0 || currentPage < maxTotalPages) {
             document.getElementById('loadMoreBtn').style.display = 'inline-block';
         }
-        if (reset) document.getElementById('search-results').style.minHeight = '';
+        if (reset) container.style.minHeight = '';
     } catch (error) {
         if (error.name === 'AbortError') return;
         if (requestGeneration !== platformRequestGeneration) return;

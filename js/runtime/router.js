@@ -48,10 +48,10 @@ function isValidRouteId(value) {
 }
 
 function navigate(route, options = {}) {
-    const { replace = false } = options;
+    const { replace = false, searchFilterChange = false } = options;
     const url = '#' + route;
 
-    if (window.location.hash === url) {
+    if (window.location.hash === url && !searchFilterChange) {
         return;
     }
 
@@ -82,7 +82,7 @@ function navigate(route, options = {}) {
     window.isHistoryRestoration = false;
     currentRouterIndex = currentIndex;
 
-    handleRoute();
+    handleRoute({ searchFilterChange });
 }
 
 function parseRoute() {
@@ -160,7 +160,8 @@ function parseRoute() {
 
         return {
             page: "search",
-            query: params.get("q")
+            query: params.get("q"),
+            filterQuery: queryString
         };
     }
 
@@ -180,7 +181,7 @@ window.isHistoryRestoration = false;
 let currentRouterIndex = -1;
 let lastRenderedHash = null;
 
-function handleRoute() {
+function handleRoute({ searchFilterChange = false } = {}) {
     if (window.location.hash === '#main-content') {
         const mainEl = document.getElementById('main-content');
         if (mainEl) {
@@ -201,7 +202,7 @@ function handleRoute() {
     const currentHash =
         window.location.hash || "#home";
 
-    if (lastRenderedHash === currentHash) {
+    if (lastRenderedHash === currentHash && !searchFilterChange) {
         return;
     }
 
@@ -528,11 +529,29 @@ function handleRoute() {
                         queryStr;
                 }
 
-                if (window.isHistoryRestoration && typeof currentSearchQuery !== 'undefined' && currentSearchQuery === queryStr && document.getElementById('search-results')?.children.length > 0) {
-                    // DOM is already populated, let history api restore scroll position
-                } else {
-                    searchMovie(true, false, routeContext);
+                const filterParams = new URLSearchParams(route.filterQuery);
+                if (Object.keys(PLATFORM_FILTER_DEFAULTS).some(key => filterParams.has(key))) {
+                    const state = sanitizePlatformFilterState(route.filterQuery);
+                    restorePlatformFilterState(state);
+                    saveSearchFilterStateToSession(queryStr, state);
+                } else if (!searchFilterChange && !restoreSearchFilterStateFromSession(queryStr)) {
+                    restorePlatformFilterState(sanitizePlatformFilterState(''));
+                    document.querySelectorAll('.provider-filter-btn.active').forEach(button => {
+                        button.classList.remove('active');
+                    });
+                    currentProvider = 0;
                 }
+
+                if (
+                    window.isHistoryRestoration &&
+                    currentMode === 'search' &&
+                    renderedSearchRoute === buildSearchRoute(queryStr) &&
+                    document.getElementById('search-results')?.children.length > 0
+                ) {
+                    break;
+                }
+
+                searchMovie(true, searchFilterChange, routeContext);
             } else {
                 navigate(
                     'platform',

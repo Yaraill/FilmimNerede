@@ -548,6 +548,85 @@ async function runTest() {
             'Existing #search?q= route should continue to issue the expected search request'
         );
 
+        const filteredSearchHash = '#search?q=matrix&rating=7&sort=vote_count.desc';
+        const countMatrixSearches = () => searchRequests.filter(value => {
+            const params = new URL(value).searchParams;
+            return params.get('query') === 'matrix' && params.get('page') === '1';
+        }).length;
+
+        await page.evaluate(() => {
+            sessionStorage.setItem('search_filter_state', JSON.stringify({
+                q: 'matrix', filters: 'year=2020&rating=8&provider=119'
+            }));
+        });
+        await page.goto(`http://127.0.0.1:${port}/index.html${filteredSearchHash}`, {
+            waitUntil: 'domcontentloaded', timeout: 30000
+        });
+        await page.waitForFunction(() =>
+            document.getElementById('ratingFilter').value === '7' &&
+            document.getElementById('sortByFilter').value === 'vote_count.desc' &&
+            document.querySelector('#search-results .movie-title')?.textContent.includes('Matrix Search Result')
+        );
+        assert(countMatrixSearches() === 1, 'The filtered search link should issue one first-page request');
+        const savedSearch = await page.evaluate(() => JSON.parse(sessionStorage.getItem('search_filter_state')));
+        assert(
+            savedSearch.q === 'matrix' && savedSearch.filters === 'rating=7&sort=vote_count.desc',
+            'Explicit URL filters should replace the saved filters for the same query'
+        );
+
+        const searchHistoryLength = await page.evaluate(() => history.length);
+        const yearSearchHash = '#search?q=matrix&year=2020&rating=7&sort=vote_count.desc';
+        await page.evaluate(() => {
+            document.getElementById('yearFilter').value = '2020';
+            applyPlatformFilters();
+        });
+        await page.waitForFunction(hash =>
+            location.hash === hash &&
+            document.querySelector('#search-results .loading')?.textContent.includes('Sonuç bulunamadı'),
+        {}, yearSearchHash);
+        assert(countMatrixSearches() === 2, 'Applying the year should issue exactly one new search request');
+        assert(
+            await page.evaluate(() => history.length) === searchHistoryLength,
+            'Applying search filters should replace the current history entry'
+        );
+
+        await page.evaluate(() => applyPlatformFilters());
+        await page.waitForFunction(() =>
+            document.querySelector('#search-results .loading')?.textContent.includes('Sonuç bulunamadı')
+        );
+        assert(countMatrixSearches() === 3, 'Reapplying the same search hash should issue one request');
+
+        await page.evaluate(() => navigate('search?q=matrix&provider=119'));
+        await page.waitForFunction(() =>
+            currentProvider === 119 &&
+            document.querySelector('#search-results .loading')?.textContent.includes('Sonuç bulunamadı')
+        );
+        await page.click('#btn-prov-119');
+        await page.waitForFunction(() =>
+            location.hash === '#search?q=matrix' &&
+            document.querySelector('#search-results .movie-title')?.textContent.includes('Matrix Search Result')
+        );
+        await page.evaluate(() => history.back());
+        await page.waitForFunction(hash =>
+            location.hash === hash &&
+            document.getElementById('yearFilter').value === '2020' &&
+            document.querySelector('#search-results .loading')?.textContent.includes('Sonuç bulunamadı'),
+        {}, yearSearchHash);
+
+        await page.$eval('#searchInput', input => { input.value = 'arrival & friends'; });
+        await page.click('.search-submit-btn');
+        await page.waitForFunction(() =>
+            location.hash === '#search?q=arrival%20%26%20friends' &&
+            document.getElementById('yearFilter').value === '' &&
+            document.getElementById('ratingFilter').value === '0' &&
+            document.getElementById('sortByFilter').value === 'popularity.desc' &&
+            document.querySelector('#search-results .movie-title')?.textContent.includes('Matrix Search Result')
+        );
+        assert(
+            searchRequests.some(value => new URL(value).searchParams.get('query') === 'arrival & friends'),
+            'A newly submitted query should search with reset filters'
+        );
+
         await page.evaluate(() => navigate('platform'));
         await waitForPlatformState(page, {
             media: 'all',
