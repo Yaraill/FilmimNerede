@@ -947,10 +947,10 @@ ratedMovies.forEach(m => {
             <div class="stat-value" style="background: -webkit-linear-gradient(45deg, var(--primary-color), var(--accent-color)); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">${totalUniqueContent}</div>
             <div class="stat-label" style="font-weight:600; letter-spacing:1px; font-size:0.9rem;">Toplam İçerik</div>
         </div>
-        <div class="stat-card" style="border-top: 2px solid #00c6ff; position:relative; overflow:hidden;">
+        <div class="stat-card" style="border-top: 2px solid #00c6ff; position:relative; overflow:hidden;" title="Puanladığın yapımların toplam süresi; diziler tüm bölümleriyle hesaplanır.">
             <i class="fas fa-clock" style="position:absolute; right:-10px; bottom:-10px; font-size:4rem; color:rgba(128,128,128,0.1);"></i>
             <div class="stat-value" id="profile-watch-time" style="background: -webkit-linear-gradient(45deg, #00c6ff, #0072ff); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">${timeText}</div>
-            <div class="stat-label" style="font-weight:600; letter-spacing:1px; font-size:0.9rem;">İzleme Süresi</div>
+            <div class="stat-label" style="font-weight:600; letter-spacing:1px; font-size:0.9rem;">Tahmini İzleme Süresi</div>
         </div>
         <div class="stat-card" style="border-top: 2px solid #f1c40f; position:relative; overflow:hidden;">
             <i class="fas fa-star" style="position:absolute; right:-10px; bottom:-10px; font-size:4rem; color:rgba(128,128,128,0.1);"></i>

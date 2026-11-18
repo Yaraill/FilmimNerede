@@ -80,7 +80,7 @@ async function renderActor(
             document.getElementById('loadMoreBtn').style.display = 'none';
         } else {
             container.style.minHeight = container.offsetHeight + 'px';
-            const oldMovies = container.querySelectorAll('.movie-card, .no-provider, .loading');
+            const oldMovies = container.querySelectorAll('.movie-card, .no-provider, .loading, .filter-scope-note');
             oldMovies.forEach(m => m.remove());
             
             let skel = "";
@@ -251,8 +251,12 @@ async function renderActor(
         }
         
         const runtimeFilter = document.getElementById('runtimeFilter')?.value || "";
+        let hasRuntimeExcludedTv = false;
+        let runtimeExcludedAllTv = false;
         if (runtimeFilter !== "") {
+            hasRuntimeExcludedTv = movies.some(m => m.media_type === 'tv');
             movies = movies.filter(m => m.media_type === "movie");
+            runtimeExcludedAllTv = hasRuntimeExcludedTv && movies.length === 0;
             
             const validMovies = [];
             const maxToCheck = Math.min(movies.length, Math.max(60, currentPage * 40));
@@ -836,20 +840,14 @@ async function renderActor(
         );
     }
 
+    if (reset && hasRuntimeExcludedTv) {
+        container.insertAdjacentHTML('beforeend', renderRuntimeFilterNotice(runtimeExcludedAllTv));
+    }
+
     if (
         pagedMovies.length === 0 &&
         reset
     ) {
-        const emptyMsg =
-            filterProvId > 0
-                ? (
-                    jobType ===
-                        'Director'
-                        ? 'Yönetmenin bu platformda içeriği yok.'
-                        : 'Oyuncunun bu platformda içeriği yok.'
-                )
-                : 'Seçtiğiniz filtrelere uygun yapım bulunamadı.';
-
         const existingMsgs =
             container.querySelectorAll(
                 '.loading'
@@ -860,24 +858,17 @@ async function renderActor(
                 message.remove()
         );
 
-        const emptyElement =
-            document.createElement(
-                'div'
-            );
-
-        emptyElement.className =
-            'loading';
-
-        emptyElement.style.cssText =
-            'margin-top:20px;' +
-            'text-align:center;';
-
-        emptyElement.textContent =
-            emptyMsg;
-
-        container.appendChild(
-            emptyElement
-        );
+        if (!runtimeExcludedAllTv) {
+            const emptyMsg = filterProvId > 0
+                ? (jobType === 'Director'
+                    ? 'Yönetmenin bu platformda içeriği yok.'
+                    : 'Oyuncunun bu platformda içeriği yok.')
+                : 'Seçtiğiniz filtrelere uygun yapım bulunamadı.';
+            const emptyElement = document.createElement('div');
+            emptyElement.className = 'loading actor-empty-results';
+            emptyElement.textContent = emptyMsg;
+            container.appendChild(emptyElement);
+        }
 
         container.style.minHeight =
             '';

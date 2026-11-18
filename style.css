@@ -343,6 +343,20 @@ body.light-theme .navbar.scrolled {
     width: 100%;
 }
 
+.actor-empty-results {
+    margin-top: 20px;
+}
+
+.filter-scope-note {
+    grid-column: 1 / -1;
+    align-self: stretch;
+    padding: 12px 16px;
+    color: var(--text-color);
+    background: var(--card-bg);
+    border: 1px solid var(--glass-border);
+    border-radius: 10px;
+}
+
 /* =========================================
    Arama Kutusu
    ========================================= */
