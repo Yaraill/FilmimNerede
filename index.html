@@ -25,7 +25,7 @@
     </style>
     <!-- Google Fonts: Modern ve okunaklı bir font (Inter) -->
     <!-- Kendi CSS dosyamız -->
-    <link rel="stylesheet" href="style.css?v=62">
+    <link rel="stylesheet" href="style.css?v=67">
     <!-- Font Awesome (İkonlar için) -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" integrity="sha512-9usAa10IRO0HhonpyAIVpjrylPvoDwiPUiKdWk5t3PyolY1cOd4DSE0Ga+ri4AuTroPR5aQvXU9xC6qOPnzFeg==" crossorigin="anonymous" media="print" onload="this.media='all'">
     <noscript><link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" integrity="sha512-9usAa10IRO0HhonpyAIVpjrylPvoDwiPUiKdWk5t3PyolY1cOd4DSE0Ga+ri4AuTroPR5aQvXU9xC6qOPnzFeg==" crossorigin="anonymous"></noscript>
@@ -462,17 +462,47 @@
                     <div class="profile-tabs glass-nav" role="tablist" aria-label="Profil Sekmeleri">
                 <button type="button" class="profile-tab-btn active" role="tab" id="tab-profile-watchlist" aria-controls="profile-watchlist" aria-selected="true" tabindex="0" onclick="switchProfileTab('profile-watchlist', this)">Listeme Eklediklerim</button>
                 <button type="button" class="profile-tab-btn" role="tab" id="tab-profile-tv-tracker" aria-controls="profile-tv-tracker" aria-selected="false" tabindex="-1" onclick="switchProfileTab('profile-tv-tracker', this)"><i class="fas fa-tv" aria-hidden="true"></i> Dizi Takibim</button>
+                <button type="button" class="profile-tab-btn" role="tab" id="tab-profile-shared-lists" aria-controls="profile-shared-lists" aria-selected="false" tabindex="-1" onclick="switchProfileTab('profile-shared-lists', this)"><i class="fas fa-list-ul" aria-hidden="true"></i> Seçkilerim</button>
                 <button type="button" class="profile-tab-btn" role="tab" id="tab-profile-rated" aria-controls="profile-rated" aria-selected="false" tabindex="-1" onclick="switchProfileTab('profile-rated', this)">Puanladıklarım</button>
                 <button type="button" class="profile-tab-btn" role="tab" id="tab-profile-fav-actors" aria-controls="profile-fav-actors" aria-selected="false" tabindex="-1" onclick="switchProfileTab('profile-fav-actors', this)">Favori Oyuncularım</button>
                 <button type="button" class="profile-tab-btn" role="tab" id="tab-profile-smart-recs" aria-controls="profile-smart-recs" aria-selected="false" tabindex="-1" onclick="switchProfileTab('profile-smart-recs', this)"><i class="fas fa-magic" aria-hidden="true"></i> Sizin İçin Öneriler</button>
             </div>
 
             <div id="profile-watchlist" class="profile-tab-content active-tab" role="tabpanel" aria-labelledby="tab-profile-watchlist" tabindex="0">
+                <div class="watchlist-share-bar glass">
+                    <div class="watchlist-share-copy">
+                        <strong>Seçki Paylaş</strong>
+                        <span>İzleme listeni veya özel bir seçkiyi tek linkle arkadaşlarınla paylaş.</span>
+                    </div>
+                    <div class="watchlist-share-actions">
+                        <button type="button" id="share-watchlist-quick-btn" class="action-btn watchlist-share-btn" onclick="shareWatchlistQuick()">
+                            <i class="fas fa-share-alt" aria-hidden="true"></i> Listemi Linkle Paylaş
+                        </button>
+                        <button type="button" id="open-share-builder-btn" class="action-btn watchlist-share-btn secondary" onclick="openShareListBuilder()">
+                            <i class="fas fa-list-ul" aria-hidden="true"></i> Özel Seçki Oluştur
+                        </button>
+                    </div>
+                    <div id="watchlist-share-status" class="watchlist-share-status" role="status" aria-live="polite" aria-atomic="true"></div>
+                </div>
                 <div id="watchlist-grid" class="profile-movie-grid"></div>
             </div>
 
             <div id="profile-tv-tracker" class="profile-tab-content" role="tabpanel" aria-labelledby="tab-profile-tv-tracker" tabindex="0" hidden>
                 <div id="tv-tracker-grid" class="tv-tracker-grid"></div>
+            </div>
+
+            <div id="profile-shared-lists" class="profile-tab-content" role="tabpanel" aria-labelledby="tab-profile-shared-lists" tabindex="0" hidden>
+                <div class="saved-lists-toolbar glass">
+                    <div class="watchlist-share-copy">
+                        <strong>Kayıtlı Seçkilerim</strong>
+                        <span>Oluşturduğun veya profiline kaydettiğin seçkilere buradan tekrar ulaşabilir, düzenleyebilir ve paylaşabilirsin.</span>
+                    </div>
+                    <button type="button" id="saved-lists-create-btn" class="action-btn watchlist-share-btn" onclick="openShareListBuilder()">
+                        <i class="fas fa-plus" aria-hidden="true"></i> Yeni Seçki Oluştur
+                    </button>
+                    <div id="saved-lists-status" class="watchlist-share-status" role="status" aria-live="polite" aria-atomic="true"></div>
+                </div>
+                <div id="saved-lists-grid" class="saved-lists-grid"></div>
             </div>
 
             <div id="profile-rated" class="profile-tab-content" role="tabpanel" aria-labelledby="tab-profile-rated" tabindex="0" hidden>
@@ -676,6 +706,35 @@
             </div>
         </section>
 
+        <section id="shared-list" class="tab-content" aria-labelledby="shared-list-title">
+            <div class="shared-list-header glass">
+                <div class="shared-list-heading">
+                    <span class="shared-list-kicker"><i class="fas fa-link" aria-hidden="true"></i> Paylaşılan Seçki</span>
+                    <h2 id="shared-list-title">Paylaşılan Film &amp; Dizi Seçkisi</h2>
+                    <p id="shared-list-subtitle" class="shared-list-subtitle"></p>
+                    <p id="shared-list-notice" class="shared-list-notice" role="status" aria-live="polite" hidden></p>
+                </div>
+                <div class="shared-list-actions" id="shared-list-actions" hidden>
+                    <button type="button" id="shared-list-add-all-btn" class="action-btn shared-list-btn primary" onclick="addSharedListToWatchlist()">
+                        <i class="fas fa-heart" aria-hidden="true"></i> Tümünü Listeme Ekle
+                    </button>
+                    <button type="button" id="shared-list-pick-random-btn" class="action-btn shared-list-btn accent" onclick="pickRandomFromSharedList()">
+                        <i class="fas fa-random" aria-hidden="true"></i> Rastgele Birini Seç
+                    </button>
+                    <button type="button" id="shared-list-copy-btn" class="action-btn shared-list-btn" onclick="copyCurrentSharedListLink()">
+                        <i class="fas fa-copy" aria-hidden="true"></i> Linki Kopyala
+                    </button>
+                    <button type="button" id="shared-list-clone-btn" class="action-btn shared-list-btn" onclick="openShareListBuilderFromCurrent()">
+                        <i class="fas fa-edit" aria-hidden="true"></i> Kopyalayıp Düzenle
+                    </button>
+                    <button type="button" id="shared-list-save-btn" class="action-btn shared-list-btn" onclick="saveCurrentSharedListToProfile()" aria-pressed="false">
+                        <i class="fas fa-bookmark" aria-hidden="true"></i> Profilime Kaydet
+                    </button>
+                </div>
+                <p id="shared-list-status" class="shared-list-status" role="status" aria-live="polite" aria-atomic="true"></p>
+            </div>
+            <div id="shared-list-grid" class="movie-grid"></div>
+        </section>
     </main>
 
     <!-- Footer (Alt Bilgi) -->
@@ -727,6 +786,48 @@
                 <option value="16">Animasyon</option>
             </select>
             <button type="button" onclick="fetchRandomMovie()" class="btn-buy-ticket" style="width: 100%; justify-content: center; font-size: 1.2rem; padding: 15px;"><i class="fas fa-magic" aria-hidden="true"></i> Bana Öner!</button>
+        </div>
+    </div>
+
+    <div id="share-list-modal" class="modal" onclick="closeShareListModal(event)" role="dialog" aria-modal="true" aria-labelledby="share-list-modal-title" aria-hidden="true" inert>
+        <div class="modal-content glass share-list-modal-content">
+            <button type="button" class="close-btn" onclick="closeShareListModal(null, true)" aria-label="Seçki oluşturucuyu kapat">&times;</button>
+            <h2 id="share-list-modal-title"><i class="fas fa-list-ul" aria-hidden="true"></i> Paylaşılabilir Seçki Oluştur</h2>
+            <div class="share-list-builder-layout">
+                <div class="share-list-builder-main">
+                    <div class="share-list-field">
+                        <label for="share-list-title-input">Seçki Başlığı</label>
+                        <input type="text" id="share-list-title-input" class="share-list-input" maxlength="80" placeholder="Örn: Cuma Film Gecesi">
+                    </div>
+                    <div class="share-list-field">
+                        <label for="share-list-search-input">Film, Dizi, Oyuncu veya Yönetmen Ara</label>
+                        <div class="share-list-search-row">
+                            <input type="search" id="share-list-search-input" class="share-list-input" placeholder="Film, dizi, oyuncu veya yönetmen adı yazın..." autocomplete="off">
+                            <button type="button" id="share-list-search-btn" class="action-btn shared-list-btn">Ara</button>
+                        </div>
+                        <div id="share-list-person-bar" class="share-list-person-bar" hidden></div>
+                        <div id="share-list-search-results" class="share-list-search-results" aria-live="polite"></div>
+                    </div>
+                    <div id="share-list-library-section" class="share-list-field" hidden>
+                        <span class="share-list-field-label">Listem ve Puanladıklarımdan Hızlı Ekle</span>
+                        <div id="share-list-library-chips" class="share-list-library-chips"></div>
+                    </div>
+                    <div class="share-list-selected-section">
+                        <div class="share-list-selected-header">
+                            <strong id="share-list-selected-count">Seçilen Yapımlar (0 / 30)</strong>
+                            <button type="button" id="share-list-clear-btn" class="share-list-text-btn" onclick="clearShareListDraft()">Temizle</button>
+                        </div>
+                        <div id="share-list-selected-items" class="share-list-selected-items"></div>
+                    </div>
+                    <div class="share-list-footer">
+                        <button type="button" id="share-list-save-btn" class="action-btn shared-list-btn accent" onclick="saveBuiltSharedList()"><i class="fas fa-save" aria-hidden="true"></i> Profilime Kaydet</button>
+                        <button type="button" id="share-list-copy-link-btn" class="action-btn shared-list-btn primary" onclick="copyBuiltSharedListLink()"><i class="fas fa-copy" aria-hidden="true"></i> Linki Kopyala</button>
+                        <button type="button" id="share-list-open-btn" class="action-btn shared-list-btn" onclick="openBuiltSharedList()"><i class="fas fa-external-link-alt" aria-hidden="true"></i> Seçkiyi Aç</button>
+                    </div>
+                    <p id="share-list-modal-status" class="shared-list-status" role="status" aria-live="polite" aria-atomic="true"></p>
+                </div>
+                <aside id="share-list-preview" class="share-list-preview" aria-live="polite"></aside>
+            </div>
         </div>
     </div>
 
@@ -892,7 +993,7 @@
     <script src="js/runtime/config.js?v=2"></script>
     <script src="js/runtime/security.js?v=6"></script>
     <script src="js/runtime/state.js?v=1"></script>
-    <script src="js/runtime/router.js?v=7"></script>
+    <script src="js/runtime/router.js?v=9"></script>
     <script src="js/runtime/shared-ui.js?v=15"></script>
     <script src="js/runtime/providers.js?v=6"></script>
     <script src="js/runtime/platform.js?v=13"></script>
@@ -900,9 +1001,9 @@
     <script src="js/runtime/movie.js?v=13"></script>
     <script src="js/runtime/actor.js?v=13"></script>
     <script src="js/runtime/home.js?v=14"></script>
-    <script src="js/runtime/profile.js?v=12"></script>
+    <script src="js/runtime/profile.js?v=17"></script>
     <script src="js/runtime/misc.js?v=12"></script>
-    <script src="app.js?v=77"></script>
+    <script src="app.js?v=78"></script>
     <script>
         if ('serviceWorker' in navigator) {
             window.addEventListener('load', () => {

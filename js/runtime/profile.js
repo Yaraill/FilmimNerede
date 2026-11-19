@@ -701,6 +701,8 @@ if (typeof document !== 'undefined' && typeof document.addEventListener === 'fun
 }
 
 function switchProfileTab(tabId, btnElem) {
+    if (typeof document === 'undefined' || typeof document.querySelectorAll !== 'function' ||
+        typeof document.getElementById !== 'function') return;
     document.querySelectorAll('.profile-tab-content').forEach(el => {
         el.classList.remove('active-tab');
         el.hidden = true;
@@ -731,6 +733,9 @@ function switchProfileTab(tabId, btnElem) {
     }
     if (tabId === 'profile-tv-tracker') {
         renderTvTrackerSection();
+    }
+    if (tabId === 'profile-shared-lists') {
+        renderSavedSharedListsSection();
     }
 }
 
@@ -989,7 +994,9 @@ function refreshProfileWatchStats(routeContext = null) {
 }
 
 function loadProfile(routeContext = null) {
+    if (typeof document === 'undefined' || typeof document.getElementById !== 'function') return;
     renderTvTrackerSection();
+    renderSavedSharedListsSection();
     refreshProfileWatchStats(routeContext);
     const watchlistGrid = document.getElementById('watchlist-grid');
     const ratedTvGrid = document.getElementById('rated-tv-grid');
@@ -1687,4 +1694,1569 @@ async function calculateExactWatchTime(
     }
 
     return exactTimeMinutes;
+}
+
+const SHARED_LIST_MAX_ITEMS = 30;
+const SHARED_LIST_MAX_TITLE_LENGTH = 80;
+const SHARED_LIST_DEFAULT_TITLE = 'Paylaşılan Film & Dizi Seçkisi';
+const SHARED_LIST_FETCH_CONCURRENCY = 4;
+const SHARED_LIST_CACHE_LIMIT = 20;
+const SAVED_SHARED_LISTS_KEY = 'savedSharedLists';
+const SAVED_SHARED_LISTS_MAX = 40;
+const SHARED_LIST_B64URL_CHARS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_';
+const SHARE_PERSON_EXCLUDED_GENRES = new Set([10767, 10763, 10764, 99]);
+const SHARE_PERSON_BLOCKED_TITLE_WORDS = [
+    'award', 'oscar', 'grammy', 'emmy', 'golden globe', 'bafta', 'tony',
+    'ceremony', 'making of', 'behind the scenes', 'the making', 'assembled',
+    'a film by', 'road to', 'story of', 'tribute', 'red carpet', 'late show', 'tonight show'
+];
+const SHARE_PERSON_SELF_CHARACTER_PATTERN = /^(?:self|himself|herself|guest|host|presenter|narrator|various|archive footage)\b|\b(?:himself|herself|archive footage|uncredited)\b/i;
+const sharedListResultCache = new Map();
+const shareListPersonCreditsCache = new Map();
+
+let currentSharedListState = null;
+let shareListDraft = null;
+let shareListDraftInitialSignature = '';
+let shareListSearchTimer = null;
+let shareListSearchController = null;
+let shareListPreviewItem = null;
+let shareListGenresRequest = null;
+let shareListLastSearchResults = [];
+let shareListActivePerson = null;
+
+function getShareListDraftSignature(draft) {
+    if (!draft) return '';
+    const title = normalizeSharedListTitle(draft.title, '');
+    const tokens = getUniqueShareListItems(draft.items)
+        .slice(0, SHARED_LIST_MAX_ITEMS)
+        .map(encodeSharedListItemToken)
+        .filter(Boolean)
+        .join(',');
+    return `${title}|${tokens}`;
+}
+
+function isShareListDraftDirty() {
+    return Boolean(shareListDraft) && getShareListDraftSignature(shareListDraft) !== shareListDraftInitialSignature;
+}
+
+function normalizeSharedListTitle(rawTitle, fallback = SHARED_LIST_DEFAULT_TITLE) {
+    if (typeof rawTitle !== 'string') return fallback;
+    const trimmed = rawTitle.trim().slice(0, SHARED_LIST_MAX_TITLE_LENGTH);
+    const wellFormed = typeof trimmed.toWellFormed === 'function' ? trimmed.toWellFormed() : trimmed;
+    return wellFormed.trimEnd() || fallback;
+}
+
+function encodeShareUtf8Base64Url(text) {
+    if (typeof text !== 'string' || !text) return '';
+    const encodedUri = encodeURIComponent(text);
+    const bytes = [];
+    for (let i = 0; i < encodedUri.length; i++) {
+        if (encodedUri[i] === '%') {
+            bytes.push(parseInt(encodedUri.slice(i + 1, i + 3), 16));
+            i += 2;
+        } else {
+            bytes.push(encodedUri.charCodeAt(i));
+        }
+    }
+    let output = '';
+    for (let i = 0; i < bytes.length; i += 3) {
+        const b0 = bytes[i];
+        const b1 = i + 1 < bytes.length ? bytes[i + 1] : -1;
+        const b2 = i + 2 < bytes.length ? bytes[i + 2] : -1;
+        output += SHARED_LIST_B64URL_CHARS[b0 >> 2];
+        output += SHARED_LIST_B64URL_CHARS[((b0 & 3) << 4) | (b1 >= 0 ? b1 >> 4 : 0)];
+        if (b1 >= 0) output += SHARED_LIST_B64URL_CHARS[((b1 & 15) << 2) | (b2 >= 0 ? b2 >> 6 : 0)];
+        if (b2 >= 0) output += SHARED_LIST_B64URL_CHARS[b2 & 63];
+    }
+    return output;
+}
+
+function decodeShareUtf8Base64Url(encoded) {
+    if (typeof encoded !== 'string' || !/^[A-Za-z0-9_-]{1,440}$/.test(encoded) || encoded.length % 4 === 1) {
+        return null;
+    }
+    const bytes = [];
+    for (let i = 0; i < encoded.length; i += 4) {
+        const c0 = SHARED_LIST_B64URL_CHARS.indexOf(encoded[i]);
+        const c1 = SHARED_LIST_B64URL_CHARS.indexOf(encoded[i + 1]);
+        const c2 = i + 2 < encoded.length ? SHARED_LIST_B64URL_CHARS.indexOf(encoded[i + 2]) : -1;
+        const c3 = i + 3 < encoded.length ? SHARED_LIST_B64URL_CHARS.indexOf(encoded[i + 3]) : -1;
+        if (c0 < 0 || c1 < 0 || (i + 2 < encoded.length && c2 < 0) || (i + 3 < encoded.length && c3 < 0)) {
+            return null;
+        }
+        if (c2 < 0 && (c1 & 15) !== 0) return null;
+        if (c3 < 0 && c2 >= 0 && (c2 & 3) !== 0) return null;
+        bytes.push((c0 << 2) | (c1 >> 4));
+        if (c2 >= 0) {
+            bytes.push(((c1 & 15) << 4) | (c2 >> 2));
+            if (c3 >= 0) bytes.push(((c2 & 3) << 6) | c3);
+        }
+    }
+    try {
+        return decodeURIComponent(bytes.map(byte => '%' + byte.toString(16).padStart(2, '0')).join(''));
+    } catch (_) {
+        return null;
+    }
+}
+
+function slugifySharedListTitle(title) {
+    if (typeof title !== 'string') return '';
+    const mapped = title
+        .replace(/[çÇ]/g, 'c')
+        .replace(/[ğĞ]/g, 'g')
+        .replace(/[ıİ]/g, 'i')
+        .replace(/[öÖ]/g, 'o')
+        .replace(/[şŞ]/g, 's')
+        .replace(/[üÜ]/g, 'u');
+    const ascii = typeof mapped.normalize === 'function'
+        ? mapped.normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+        : mapped;
+    return ascii
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/^-+|-+$/g, '')
+        .slice(0, 48)
+        .replace(/-+$/g, '');
+}
+
+function titleFromSharedListSlug(slug) {
+    if (typeof slug !== 'string' || !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(slug)) return '';
+    return slug
+        .split('-')
+        .map(word => word[0].toUpperCase() + word.slice(1))
+        .join(' ');
+}
+
+function encodeSharedListItemToken(item) {
+    if (typeof normalizeTmdbId !== 'function' || typeof normalizeMediaType !== 'function') return null;
+    const id = normalizeTmdbId(item?.id);
+    if (!id || String(id).length > 15) return null;
+
+    const explicitType = item.mediaType ?? item.media_type;
+    const mediaType = explicitType && explicitType !== 'undefined'
+        ? normalizeMediaType(explicitType)
+        : resolveProfileItemMediaType(item);
+    if (!mediaType) return null;
+    return (mediaType === 'movie' ? 'm' : 't') + id;
+}
+
+function encodeSharedListCompactToken(item) {
+    const token = encodeSharedListItemToken(item);
+    if (!token) return null;
+    return token[0] + Number(token.slice(1)).toString(36);
+}
+
+function extractShareItemYear(item) {
+    for (const value of [item?.release_date, item?.first_air_date, item?.year]) {
+        if (typeof value !== 'string' && typeof value !== 'number') continue;
+        const match = /^(\d{4})(?!\d)/.exec(String(value).trim());
+        if (match) return match[1];
+    }
+    return '';
+}
+
+function formatShareItemLabel(item) {
+    const title = item?.title || item?.name || 'İsimsiz yapım';
+    const year = extractShareItemYear(item);
+    return year ? `${title} (${year})` : title;
+}
+
+function getShareItemRating(item) {
+    const value = item?.vote_average;
+    const rating = typeof value === 'number' || typeof value === 'string' ? Number(value) : NaN;
+    return Number.isFinite(rating) && rating > 0 ? rating : null;
+}
+
+function getShareItemGenreIds(item) {
+    if (typeof normalizeTmdbId !== 'function') return [];
+    const ids = Array.isArray(item?.genre_ids) ? item.genre_ids : [];
+    const genres = Array.isArray(item?.genres) ? item.genres : [];
+    return [...new Set([...ids, ...genres.map(genre => genre?.id)].map(normalizeTmdbId).filter(Boolean))];
+}
+
+function getShareItemGenres(item) {
+    const browser = typeof window !== 'undefined' ? window : null;
+    const cache = browser?.genresCache;
+    const cachedGenres = [cache?.movie, cache?.tv].filter(Array.isArray).flat();
+    const map = typeof genreMap !== 'undefined' ? genreMap : null;
+    const directNames = Array.isArray(item?.genres) ? item.genres.map(genre => genre?.name) : [];
+    const mappedNames = getShareItemGenreIds(item).map(id =>
+        browser?.genreMap?.[id] || map?.[id] || cachedGenres.find(genre => String(genre?.id) === String(id))?.name
+    );
+    return [...new Set([...directNames, ...mappedNames]
+        .filter(name => typeof name === 'string').map(name => name.trim()).filter(Boolean))].slice(0, 3);
+}
+
+function compactShareItemText(value, limit) {
+    if (typeof value !== 'string') return '';
+    const text = value.trim();
+    if (text.length <= limit) return text;
+    return text.slice(0, limit - 1).replace(/[\uD800-\uDBFF]$/u, '').trimEnd() + '…';
+}
+
+function normalizeShareListItemSnapshot(item) {
+    const token = encodeSharedListItemToken(item);
+    if (!token) return null;
+    const poster = item.poster_path;
+    return {
+        id: Number(token.slice(1)),
+        media_type: token[0] === 'm' ? 'movie' : 'tv',
+        title: compactShareItemText(item.title, 160),
+        name: compactShareItemText(item.name, 160),
+        poster_path: typeof isValidTmdbImagePath === 'function' &&
+            isValidTmdbImagePath(poster) && poster.length <= 128 ? poster : null,
+        release_date: compactShareItemText(item.release_date, 10),
+        first_air_date: compactShareItemText(item.first_air_date, 10),
+        year: extractShareItemYear(item),
+        vote_average: getShareItemRating(item),
+        overview: compactShareItemText(item.overview, 420),
+        genre_ids: getShareItemGenreIds(item).slice(0, 12)
+    };
+}
+
+function parseSharedListQuery(queryString) {
+    const params = new URLSearchParams(queryString);
+    const customTitle = normalizeSharedListTitle(params.get('title'), '');
+    const rawItems = params.get('items');
+    const seen = new Set();
+    const items = [];
+    let ignoredCount = 0;
+
+    for (const token of rawItems ? rawItems.split(',') : []) {
+        const match = /^(m|t)([1-9]\d{0,14})$/.exec(token);
+        const id = match ? Number(match[2]) : null;
+        if (!Number.isSafeInteger(id) || seen.has(token)) {
+            ignoredCount++;
+            continue;
+        }
+        seen.add(token);
+        if (items.length < SHARED_LIST_MAX_ITEMS) {
+            const mediaType = match[1] === 'm' ? 'movie' : 'tv';
+            items.push({ id, mediaType, key: `${mediaType}:${id}`, token });
+        }
+    }
+
+    return {
+        title: customTitle || SHARED_LIST_DEFAULT_TITLE,
+        hasCustomTitle: Boolean(customTitle),
+        items,
+        truncated: seen.size > SHARED_LIST_MAX_ITEMS,
+        ignoredCount
+    };
+}
+
+function parseSharedListPath(rawPath) {
+    const trimmedPath = typeof rawPath === 'string' ? rawPath.trim().replace(/^\/+|\/+$/g, '') : '';
+    if (!trimmedPath) {
+        return {
+            title: SHARED_LIST_DEFAULT_TITLE,
+            hasCustomTitle: false,
+            items: [],
+            truncated: false,
+            ignoredCount: 0
+        };
+    }
+
+    const segments = trimmedPath.split('/');
+    if (segments.length > 2) {
+        return {
+            title: SHARED_LIST_DEFAULT_TITLE,
+            hasCustomTitle: false,
+            items: [],
+            truncated: false,
+            ignoredCount: 1
+        };
+    }
+
+    const slug = segments.length === 2 ? segments[0] : '';
+    const payload = segments.length === 2 ? segments[1] : segments[0];
+    const tildeParts = payload.split('~');
+    if (tildeParts.length > 2) {
+        return {
+            title: SHARED_LIST_DEFAULT_TITLE,
+            hasCustomTitle: false,
+            items: [],
+            truncated: false,
+            ignoredCount: 1
+        };
+    }
+
+    const itemsPart = tildeParts[0];
+    const encodedTitle = tildeParts[1] || '';
+    const seen = new Set();
+    const items = [];
+    let ignoredCount = 0;
+
+    for (const token of itemsPart ? itemsPart.split('.') : []) {
+        const match = /^(m|t)([1-9a-z][0-9a-z]{0,10})$/.exec(token);
+        const id = match ? parseInt(match[2], 36) : null;
+        if (!match || !Number.isSafeInteger(id) || id <= 0 || String(id).length > 15 || id.toString(36) !== match[2]) {
+            ignoredCount++;
+            continue;
+        }
+        const mediaType = match[1] === 'm' ? 'movie' : 'tv';
+        const decimalToken = `${match[1]}${id}`;
+        if (seen.has(decimalToken)) {
+            ignoredCount++;
+            continue;
+        }
+        seen.add(decimalToken);
+        if (items.length < SHARED_LIST_MAX_ITEMS) {
+            items.push({ id, mediaType, key: `${mediaType}:${id}`, token: decimalToken });
+        }
+    }
+
+    const decodedTitle = encodedTitle ? decodeShareUtf8Base64Url(encodedTitle) : '';
+    const customTitle = decodedTitle
+        ? normalizeSharedListTitle(decodedTitle, '')
+        : normalizeSharedListTitle(titleFromSharedListSlug(slug), '');
+
+    return {
+        title: customTitle || SHARED_LIST_DEFAULT_TITLE,
+        hasCustomTitle: Boolean(customTitle),
+        items,
+        truncated: seen.size > SHARED_LIST_MAX_ITEMS,
+        ignoredCount
+    };
+}
+
+function parseSharedListRoute(route) {
+    if (typeof route !== 'string') return parseSharedListPath('');
+    const normalized = route.startsWith('#') ? route.slice(1) : route;
+    if (normalized === 'secki' || normalized.startsWith('secki/')) {
+        return parseSharedListPath(normalized.slice('secki'.length));
+    }
+    if (normalized === 'list' || normalized.startsWith('list?')) {
+        const queryIndex = normalized.indexOf('?');
+        return parseSharedListQuery(queryIndex === -1 ? '' : normalized.slice(queryIndex + 1));
+    }
+    return parseSharedListPath('');
+}
+
+function buildLegacySharedListRoute(title, items) {
+    const tokens = new Set();
+    for (const item of Array.isArray(items) ? items : []) {
+        const token = encodeSharedListItemToken(item);
+        if (token) tokens.add(token);
+        if (tokens.size === SHARED_LIST_MAX_ITEMS) break;
+    }
+    if (!tokens.size) return null;
+
+    const params = new URLSearchParams();
+    const customTitle = normalizeSharedListTitle(title, '');
+    if (customTitle) params.set('title', customTitle);
+    params.set('items', Array.from(tokens).join(','));
+    return 'list?' + params.toString();
+}
+
+function buildSharedListRoute(title, items) {
+    const seen = new Set();
+    const compactTokens = [];
+    for (const item of Array.isArray(items) ? items : []) {
+        const token = encodeSharedListItemToken(item);
+        const compact = token ? encodeSharedListCompactToken(item) : null;
+        if (token && compact && !seen.has(token)) {
+            seen.add(token);
+            compactTokens.push(compact);
+        }
+        if (compactTokens.length === SHARED_LIST_MAX_ITEMS) break;
+    }
+    if (!compactTokens.length) return null;
+
+    const itemsPart = compactTokens.join('.');
+    const customTitle = normalizeSharedListTitle(title, '');
+    if (!customTitle) return 'secki/' + itemsPart;
+
+    const slug = slugifySharedListTitle(customTitle);
+    const needsExactTitle = !slug || titleFromSharedListSlug(slug) !== customTitle;
+    const payload = needsExactTitle
+        ? `${itemsPart}~${encodeShareUtf8Base64Url(customTitle)}`
+        : itemsPart;
+    return slug ? `secki/${slug}/${payload}` : `secki/${payload}`;
+}
+
+function buildSharedListUrl(title, items) {
+    const route = buildSharedListRoute(title, items);
+    return route ? getSharedListRouteUrl(route) : null;
+}
+
+function getSharedListRouteUrl(route) {
+    return window.location.origin + window.location.pathname + '#' + route;
+}
+
+async function copyTextToClipboard(text) {
+    if (typeof text !== 'string' || !text) return false;
+    try {
+        if (typeof navigator !== 'undefined' && typeof navigator.clipboard?.writeText === 'function') {
+            await navigator.clipboard.writeText(text);
+            return true;
+        }
+    } catch (_) {
+        // Clipboard permissions can require the selection-based fallback.
+    }
+
+    if (typeof document === 'undefined' || typeof document.execCommand !== 'function' ||
+        typeof document.createElement !== 'function' || !document.body) return false;
+
+    const input = document.createElement('textarea');
+    input.className = 'share-list-clipboard';
+    input.value = text;
+    input.readOnly = true;
+    const focused = document.activeElement;
+    const manager = window.ModalManager;
+    const topModal = typeof manager?.getTopModal === 'function' ? manager.getTopModal() : null;
+    (topModal?.element || document.body).append(input);
+    try {
+        input.focus({ preventScroll: true });
+        input.select();
+        return document.execCommand('copy');
+    } catch (_) {
+        return false;
+    } finally {
+        input.remove();
+        if (typeof focused?.focus === 'function') focused.focus({ preventScroll: true });
+    }
+}
+
+function setSharedListStatus(id, message = '') {
+    if (typeof document === 'undefined' || typeof document.getElementById !== 'function') return;
+    const status = document.getElementById(id);
+    if (status) status.textContent = message;
+}
+
+function renderSharedListEmpty(grid, message) {
+    grid.innerHTML = `
+        <div class="shared-list-empty glass">
+            <p></p>
+            <div class="shared-list-empty-actions">
+                <button type="button" class="action-btn shared-list-btn" onclick="if (typeof navigate === 'function') navigate('platform')">Keşfet'e Dön</button>
+                <button type="button" class="action-btn shared-list-btn primary" onclick="openShareListBuilder()">Yeni Seçki Oluştur</button>
+            </div>
+        </div>
+    `;
+    grid.querySelector('p').textContent = message;
+}
+
+async function fetchSharedListItem(entry, signal) {
+    if (signal?.aborted) return null;
+    const cached = typeof getCachedMedia === 'function' ? getCachedMedia(entry.id, entry.mediaType) : null;
+    if ((cached?.title || cached?.name) && typeof cached.overview === 'string' && cached.poster_path !== undefined) {
+        return { ...cached, id: entry.id, media_type: entry.mediaType };
+    }
+
+    try {
+        const response = await fetch(`${BASE_URL}/${entry.mediaType}/${entry.id}?language=tr-TR`, { signal });
+        if (!response.ok) return null;
+        const item = await response.json();
+        if (typeof normalizeTmdbId !== 'function' || normalizeTmdbId(item?.id) !== entry.id ||
+            !(item.title || item.name)) return null;
+        return { ...item, id: entry.id, media_type: entry.mediaType };
+    } catch (_) {
+        return null;
+    }
+}
+
+async function loadSharedList(routeContext = null) {
+    if (typeof document === 'undefined' || typeof document.getElementById !== 'function' ||
+        typeof window === 'undefined') return;
+    const grid = document.getElementById('shared-list-grid');
+    if (!grid) return;
+    const hash = window.location.hash;
+    const rawRoute = hash.startsWith('#') ? hash.slice(1) : '';
+    const queryStart = hash.indexOf('?');
+    const parsed = typeof routeContext?.listPath === 'string' && (rawRoute === 'secki' || rawRoute.startsWith('secki/'))
+        ? parseSharedListPath(routeContext.listPath)
+        : (rawRoute === 'secki' || rawRoute.startsWith('secki/'))
+            ? parseSharedListRoute(rawRoute)
+            : parseSharedListQuery(routeContext?.listQuery ?? (queryStart === -1 ? '' : hash.slice(queryStart + 1)));
+    const actions = document.getElementById('shared-list-actions');
+    const notice = document.getElementById('shared-list-notice');
+    const previousState = currentSharedListState;
+    const state = {
+        title: parsed.title,
+        items: [],
+        entries: parsed.items,
+        route: buildSharedListRoute(parsed.hasCustomTitle ? parsed.title : '', parsed.items),
+        hash
+    };
+    currentSharedListState = state;
+
+    setSharedListStatus('shared-list-title', parsed.title);
+    setSharedListStatus('shared-list-status');
+    notice.hidden = true;
+    notice.textContent = '';
+    actions.hidden = !state.route;
+    syncSharedListSaveButton();
+    if (!state.route) {
+        const message = 'Bu seçki bağlantısında geçerli film veya dizi bulunamadı.';
+        setSharedListStatus('shared-list-subtitle', message);
+        renderSharedListEmpty(grid, 'Geçerli bir seçki için keşfet sayfasına dönebilir veya yeni bir seçki oluşturabilirsin.');
+        return;
+    }
+
+    const itemActions = actions.querySelectorAll('button:not(#shared-list-copy-btn, #shared-list-save-btn)');
+    itemActions.forEach(button => { button.disabled = true; });
+    let loadedItems = sharedListResultCache.get(state.route);
+    if (!loadedItems) {
+        setSharedListStatus('shared-list-subtitle', 'Seçki yükleniyor…');
+        if (typeof showSkeletons === 'function') {
+            showSkeletons('shared-list-grid', Math.min(parsed.items.length, 8));
+        }
+        const results = await runWatchTimeTasksWithConcurrency(
+            parsed.items,
+            SHARED_LIST_FETCH_CONCURRENCY,
+            entry => fetchSharedListItem(entry, routeContext?.signal)
+        );
+        loadedItems = results.filter(Boolean);
+    }
+    if (currentSharedListState !== state || window.location.hash !== hash ||
+        (routeContext && typeof isRouteContextCurrent === 'function' &&
+            !isRouteContextCurrent(routeContext, 'list'))) return;
+
+    state.items = loadedItems;
+    syncSharedListSaveButton();
+    if (loadedItems.length) {
+        sharedListResultCache.delete(state.route);
+        sharedListResultCache.set(state.route, loadedItems);
+        if (sharedListResultCache.size > SHARED_LIST_CACHE_LIMIT) {
+            sharedListResultCache.delete(sharedListResultCache.keys().next().value);
+        }
+    }
+
+    const skippedCount = parsed.items.length - loadedItems.length;
+    const notices = [];
+    if (parsed.truncated) notices.push('Bağlantıdaki ilk 30 geçerli yapım gösteriliyor.');
+    if (parsed.ignoredCount) notices.push(`${parsed.ignoredCount} geçersiz veya yinelenen kayıt atlandı.`);
+    if (skippedCount) notices.push(`${skippedCount} yapım yüklenemedi.`);
+    notice.textContent = notices.join(' ');
+    notice.hidden = !notices.length;
+
+    if (!loadedItems.length) {
+        setSharedListStatus('shared-list-subtitle', '0 yapım');
+        renderSharedListEmpty(grid, 'Seçkideki yapımlar şu anda yüklenemedi.');
+        return;
+    }
+
+    const movieCount = loadedItems.filter(item => item.media_type === 'movie').length;
+    setSharedListStatus('shared-list-subtitle', `${loadedItems.length} yapım • ${movieCount} Film, ${loadedItems.length - movieCount} Dizi`);
+    itemActions.forEach(button => { button.disabled = false; });
+    if (typeof setCachedMedia === 'function') {
+        loadedItems.forEach(item => setCachedMedia(item, item.media_type));
+    }
+    // Keep the triggering card in the DOM when the details modal restores focus.
+    const restoredCardFocus = routeContext?.returningFromDetails &&
+        previousState?.route === state.route && grid.contains(document.activeElement);
+    if (!restoredCardFocus && typeof createMovieCardsBatch === 'function') {
+        grid.innerHTML = createMovieCardsBatch(loadedItems, null, 'shared-list');
+    }
+    if (typeof fetchAndInjectProviders === 'function') {
+        loadedItems.forEach(item => fetchAndInjectProviders(item.id, item.media_type, item, routeContext));
+    }
+}
+
+function getCurrentSharedList() {
+    return typeof window !== 'undefined' && currentSharedListState?.hash === window.location.hash
+        ? currentSharedListState : null;
+}
+
+function getSavedSharedLists() {
+    if (typeof safeReadStorage !== 'function') return [];
+    const records = safeReadStorage(SAVED_SHARED_LISTS_KEY, []);
+    if (!Array.isArray(records)) return [];
+    const valid = [];
+    for (const record of records) {
+        if (typeof record?.id !== 'string' || !/^[\w-]{1,80}$/.test(record.id) ||
+            typeof record.title !== 'string' || typeof record.route !== 'string' ||
+            (!record.route.startsWith('secki/') && !record.route.startsWith('list?')) ||
+            record.route.length > 2048 ||
+            !Array.isArray(record.items) || record.items.length > SHARED_LIST_MAX_ITEMS ||
+            !Number.isFinite(record.updatedAt)) continue;
+
+        const parsed = parseSharedListRoute(record.route);
+        const items = getUniqueShareListItems(record.items).map(normalizeShareListItemSnapshot);
+        const titleArg = parsed.hasCustomTitle ? parsed.title : '';
+        const canonicalRoute = buildSharedListRoute(titleArg, items);
+        const legacyRoute = buildLegacySharedListRoute(titleArg, items);
+        if (!canonicalRoute || (record.route !== canonicalRoute && record.route !== legacyRoute) ||
+            record.title !== parsed.title) continue;
+        valid.push({ id: record.id, title: parsed.title, route: canonicalRoute, items, updatedAt: record.updatedAt });
+    }
+    const seen = new Set();
+    return valid.sort((a, b) => b.updatedAt - a.updatedAt).filter(record => {
+        if (seen.has(record.id)) return false;
+        seen.add(record.id);
+        return true;
+    }).slice(0, SAVED_SHARED_LISTS_MAX);
+}
+
+function saveSharedListRecord({ id = null, title, items }) {
+    if (typeof safeWriteStorage !== 'function') return null;
+    const snapshots = getUniqueShareListItems(items).slice(0, SHARED_LIST_MAX_ITEMS).map(normalizeShareListItemSnapshot);
+    const customTitle = normalizeSharedListTitle(title, '');
+    const route = buildSharedListRoute(customTitle, snapshots);
+    if (!route) return null;
+
+    const lists = getSavedSharedLists();
+    const previous = lists.find(list => list.id === id) || lists.find(list => list.route === route);
+    const now = Date.now();
+    const record = {
+        id: previous?.id || `list_${now}_${Math.random().toString(36).slice(2, 7)}`,
+        title: customTitle || SHARED_LIST_DEFAULT_TITLE,
+        route,
+        items: snapshots,
+        updatedAt: now
+    };
+    const updated = [record, ...lists.filter(list => list.id !== record.id)].slice(0, SAVED_SHARED_LISTS_MAX);
+    if (!safeWriteStorage(SAVED_SHARED_LISTS_KEY, updated)) return null;
+    renderSavedSharedListsSection(updated);
+    syncSharedListSaveButton(updated);
+    return record;
+}
+
+function deleteSavedSharedList(listId) {
+    if (typeof safeWriteStorage !== 'function') return;
+    const lists = getSavedSharedLists();
+    const index = lists.findIndex(list => list.id === listId);
+    if (index === -1) return;
+    const removed = lists.splice(index, 1)[0];
+    const deleted = safeWriteStorage(SAVED_SHARED_LISTS_KEY, lists);
+    const message = deleted ? `“${removed.title}” silindi.` : 'Seçki silinemedi.';
+    if (deleted) {
+        renderSavedSharedListsSection(lists);
+        syncSharedListSaveButton(lists);
+        if (typeof document !== 'undefined' && typeof document.getElementById === 'function') {
+            const next = lists[index] || lists[index - 1];
+            const focusTarget = document.getElementById(next ? `saved-list-delete-${next.id}` : 'saved-lists-create-btn');
+            if (typeof focusTarget?.focus === 'function') focusTarget.focus();
+        }
+    }
+    setSharedListStatus('saved-lists-status', message);
+    if (typeof announceA11y === 'function') announceA11y(message);
+}
+
+async function copySavedSharedListLink(listId) {
+    const list = getSavedSharedLists().find(entry => entry.id === listId);
+    if (!list || typeof window === 'undefined') return;
+    const copied = await copyTextToClipboard(getSharedListRouteUrl(list.route));
+    setSharedListStatus('saved-lists-status', copied ? 'Seçki linki kopyalandı.' : 'Seçki linki kopyalanamadı.');
+}
+
+function renderSavedSharedListsSection(lists = null) {
+    if (typeof document === 'undefined' || typeof document.getElementById !== 'function' ||
+        typeof document.createElement !== 'function') return;
+    const tab = document.getElementById('tab-profile-shared-lists');
+    const grid = document.getElementById('saved-lists-grid');
+    if (!tab && !grid) return;
+    lists ??= getSavedSharedLists();
+    if (tab) setShareListIconButtonLabel(tab, lists.length ? `Seçkilerim (${lists.length})` : 'Seçkilerim');
+    if (!grid) return;
+    if (!lists.length) {
+        grid.replaceChildren(createShareListElement('p', 'tv-tracker-empty', 'Henüz kayıtlı seçkin yok.'));
+        return;
+    }
+    grid.replaceChildren(...lists.map(createSavedSharedListCard));
+}
+
+function createSavedSharedListCard(list) {
+    const card = createShareListElement('article', 'saved-list-card');
+    const posters = createShareListElement('div', 'saved-list-posters');
+    for (const item of list.items) {
+        if (posters.childElementCount === 4) break;
+        const poster = createShareListPoster(item, 'w154', '', false);
+        if (poster) posters.append(poster);
+    }
+    if (posters.childElementCount) card.append(posters);
+
+    const open = () => {
+        if (typeof navigate === 'function') navigate(list.route);
+    };
+    const movieCount = list.items.filter(item => item.media_type === 'movie').length;
+    const meta = `${list.items.length} yapım • ${movieCount} Film, ${list.items.length - movieCount} Dizi`;
+    const sample = list.items.slice(0, 3).map(formatShareItemLabel).join(' • ');
+    card.append(
+        createSavedSharedListButton(list.title, open, 'saved-list-title-btn'),
+        createShareListElement('p', 'saved-list-meta', meta),
+        createShareListElement('p', 'saved-list-sample', sample)
+    );
+
+    const actions = createShareListElement('div', 'saved-list-actions');
+    const edit = createSavedSharedListButton('Düzenle', () => openShareListBuilder(list));
+    edit.id = `saved-list-edit-${list.id}`;
+    const remove = createSavedSharedListButton('Sil', () => deleteSavedSharedList(list.id),
+        'action-btn shared-list-btn saved-list-delete-btn');
+    remove.id = `saved-list-delete-${list.id}`;
+    actions.append(
+        createSavedSharedListButton('Seçkiyi Aç', open, 'action-btn shared-list-btn primary'),
+        createSavedSharedListButton('Linki Kopyala', () => copySavedSharedListLink(list.id)),
+        edit,
+        remove
+    );
+    card.append(actions);
+    return card;
+}
+
+function createSavedSharedListButton(label, action, className = 'action-btn shared-list-btn') {
+    const button = createShareListElement('button', className, label);
+    button.type = 'button';
+    if (typeof button.addEventListener === 'function') button.addEventListener('click', action);
+    return button;
+}
+
+function setShareListIconButtonLabel(button, label) {
+    const icon = button.querySelector('i');
+    if (button.textContent.trim() === label) return;
+    if (icon) button.replaceChildren(icon, ' ' + label);
+    else button.textContent = label;
+}
+
+function syncSharedListSaveButton(lists = null) {
+    if (typeof document === 'undefined' || typeof document.getElementById !== 'function') return;
+    const button = document.getElementById('shared-list-save-btn');
+    if (!button) return;
+    const state = getCurrentSharedList();
+    const saved = Boolean(state?.route && (lists ?? getSavedSharedLists()).some(list => list.route === state.route));
+    button.disabled = !state?.items.length;
+    button.setAttribute('aria-pressed', String(saved));
+    setShareListIconButtonLabel(button, saved ? 'Profilde Kayıtlı' : 'Profilime Kaydet');
+    const cloneBtn = document.getElementById('shared-list-clone-btn');
+    if (cloneBtn) setShareListIconButtonLabel(cloneBtn, saved ? 'Seçkiyi Düzenle' : 'Kopyalayıp Düzenle');
+}
+
+function saveCurrentSharedListToProfile() {
+    const state = getCurrentSharedList();
+    if (!state?.route || !state.items.length) return;
+    if (getSavedSharedLists().some(list => list.route === state.route)) {
+        setSharedListStatus('shared-list-status', 'Seçki zaten profilinde kayıtlı.');
+        return;
+    }
+    const loaded = new Map(state.items.map(item => [encodeSharedListItemToken(item), item]));
+    const items = state.entries.map(entry => loaded.get(entry.token) || entry);
+    const title = parseSharedListRoute(state.route);
+    const saved = saveSharedListRecord({ title: title.hasCustomTitle ? title.title : '', items });
+    const message = saved ? 'Seçki profiline kaydedildi.' : 'Seçki profiline kaydedilemedi.';
+    setSharedListStatus('shared-list-status', message);
+}
+
+function readShareListLibrary(key) {
+    return typeof safeReadStorage === 'function' ? safeReadStorage(key, []) : [];
+}
+
+function syncSharedListWatchlistHearts(items) {
+    const keys = new Set(items.map(encodeSharedListItemToken));
+    document.querySelectorAll('.btn-heart[data-media-id][data-media-type]').forEach(button => {
+        const { mediaId, mediaType } = button.dataset;
+        if (!keys.has(encodeSharedListItemToken({ id: mediaId, mediaType }))) return;
+        button.classList.add('active');
+        button.setAttribute('aria-pressed', 'true');
+        button.setAttribute('aria-label', 'Listeden çıkar');
+    });
+}
+
+function addSharedListToWatchlist() {
+    const state = getCurrentSharedList();
+    if (!state?.items.length || typeof safeWriteStorage !== 'function' ||
+        typeof normalizeTmdbId !== 'function' || typeof normalizeMediaType !== 'function') return;
+
+    const watchlist = readShareListLibrary('watchlist');
+    const added = state.items.filter(item => !watchlist.some(entry => isSameProfileMedia(entry, item.id, item.media_type)));
+    let message;
+    if (added.length && !safeWriteStorage('watchlist', [...watchlist, ...added])) {
+        message = 'İzleme listesi kaydedilemedi.';
+    } else {
+        if (added.length) profileMutationGeneration++;
+        syncSharedListWatchlistHearts(state.items);
+        message = `${added.length} yapım eklendi, ${state.items.length - added.length} yapım zaten listende.`;
+    }
+    setSharedListStatus('shared-list-status', message);
+    if (typeof announceA11y === 'function') announceA11y(message);
+}
+
+function pickRandomFromSharedList() {
+    const items = getCurrentSharedList()?.items;
+    if (!items?.length || typeof openDetails !== 'function') return;
+    const picked = items[Math.floor(Math.random() * items.length)];
+    const message = `Seçilen yapım: ${picked.title || picked.name}`;
+    setSharedListStatus('shared-list-status', message);
+    if (typeof announceA11y === 'function') announceA11y(message);
+    openDetails(picked.id, picked.media_type);
+}
+
+async function copyCurrentSharedListLink() {
+    const state = getCurrentSharedList();
+    if (!state?.route) return;
+    const copied = await copyTextToClipboard(getSharedListRouteUrl(state.route));
+    if (state === getCurrentSharedList()) {
+        setSharedListStatus('shared-list-status', copied ? 'Seçki linki kopyalandı.' : 'Seçki linki kopyalanamadı.');
+    }
+}
+
+function openShareListBuilderFromCurrent() {
+    const state = getCurrentSharedList();
+    if (!state?.items.length) return;
+    const existing = getSavedSharedLists().find(list => list.route === state.route);
+    openShareListBuilder(
+        existing ? { ...existing, items: state.items } : state,
+        { fromCurrentSharedList: true }
+    );
+}
+
+async function shareWatchlistQuick() {
+    const status = document.getElementById('watchlist-share-status');
+    const watchlist = readShareListLibrary('watchlist');
+    const route = buildSharedListRoute('İzleme Listem', watchlist.slice(0, SHARED_LIST_MAX_ITEMS));
+    if (!route) {
+        status.textContent = 'İzleme listende paylaşılabilecek yapım yok.';
+        return;
+    }
+
+    const copied = await copyTextToClipboard(getSharedListRouteUrl(route));
+    const cap = watchlist.length > SHARED_LIST_MAX_ITEMS ? ' İlk 30 yapım paylaşılıyor.' : '';
+    status.textContent = (copied ? 'Seçki linki kopyalandı.' : 'Seçki linki kopyalanamadı.') + cap;
+    const openButton = document.createElement('button');
+    openButton.type = 'button';
+    openButton.className = 'share-list-inline-open-btn';
+    openButton.textContent = 'Seçkiyi Aç';
+    if (typeof openButton.addEventListener === 'function') {
+        openButton.addEventListener('click', () => {
+            if (typeof navigate === 'function') navigate(route);
+        });
+    }
+    status.append(openButton);
+}
+
+function getUniqueShareListItems(items) {
+    const unique = new Map();
+    for (const item of Array.isArray(items) ? items : []) {
+        const token = encodeSharedListItemToken(item);
+        if (token && !unique.has(token)) unique.set(token, item);
+    }
+    return Array.from(unique.values());
+}
+
+function createShareListElement(tag, className = '', text = '') {
+    const element = document.createElement(tag);
+    if (className) element.className = className;
+    if (text) element.textContent = text;
+    return element;
+}
+
+function createShareListImage(path, size, className, usePlaceholder = true) {
+    const hasPath = typeof isValidTmdbImagePath === 'function' && isValidTmdbImagePath(path);
+    if (!hasPath && !usePlaceholder) return null;
+    const base = typeof getSizedTmdbImageBase === 'function'
+        ? getSizedTmdbImageBase(size, typeof IMAGE_BASE === 'string' ? IMAGE_BASE : undefined)
+        : `https://image.tmdb.org/t/p/${size}`;
+    const fallback = usePlaceholder ? 'assets/placeholder.svg' : '';
+    const url = typeof getSafeTmdbImageUrl === 'function'
+        ? getSafeTmdbImageUrl(path, base, fallback)
+        : fallback;
+    if (!url) return null;
+    const image = createShareListElement('img', className);
+    image.src = url;
+    image.alt = '';
+    image.loading = 'lazy';
+    return image;
+}
+
+function createShareListPoster(item, size, className, usePlaceholder = true) {
+    return createShareListImage(item?.poster_path, size, className, usePlaceholder);
+}
+
+function createShareListPersonPhoto(person, size, className, usePlaceholder = true) {
+    return createShareListImage(person?.profile_path, size, className, usePlaceholder);
+}
+
+function getShareItemTypeLabel(item) {
+    return encodeSharedListItemToken(item)?.[0] === 't' ? 'Dizi' : 'Film';
+}
+
+function getSharePersonRoleLabel(department) {
+    if (department === 'Directing') return 'Yönetmen';
+    if (department === 'Writing') return 'Senarist';
+    if (department === 'Production') return 'Yapımcı';
+    return 'Oyuncu';
+}
+
+function renderShareListPersonPreview(person) {
+    if (typeof document === 'undefined' || typeof document.getElementById !== 'function' ||
+        typeof document.createElement !== 'function') return;
+    const preview = document.getElementById('share-list-preview');
+    if (!preview) return;
+
+    shareListPreviewItem = null;
+    if (!person) {
+        renderShareListPreview(null);
+        return;
+    }
+
+    const card = createShareListElement('div', 'share-list-preview-card');
+    const photo = createShareListPersonPhoto(person, 'w185', 'share-list-preview-poster share-list-person-thumb');
+    if (photo) card.append(photo);
+
+    const header = createShareListElement('div', 'share-list-preview-header');
+    const meta = createShareListElement('div', 'share-list-preview-meta');
+    meta.append(createShareListElement('span', 'share-list-preview-type', getSharePersonRoleLabel(person.known_for_department)));
+    header.append(createShareListElement('h3', '', person.name || 'İsimsiz kişi'), meta);
+    card.append(header);
+
+    const knownFor = Array.isArray(person.known_for)
+        ? person.known_for.filter(entry => entry?.title || entry?.name).map(formatShareItemLabel).slice(0, 3)
+        : [];
+    if (knownFor.length) {
+        const works = createShareListElement('div', 'share-list-preview-genres');
+        works.append(...knownFor.map(title => createShareListElement('span', '', title)));
+        card.append(works);
+    }
+
+    card.append(createShareListElement('p', 'share-list-preview-overview', 'Film ve dizilerini görmek için tıkla.'));
+    preview.replaceChildren(card);
+}
+
+function renderShareListPreview(item) {
+    if (typeof document === 'undefined' || typeof document.getElementById !== 'function' ||
+        typeof document.createElement !== 'function') return;
+    const preview = document.getElementById('share-list-preview');
+    if (!preview) return;
+
+    shareListPreviewItem = item;
+    if (!item) {
+        preview.replaceChildren(createShareListElement('p', 'share-list-preview-empty',
+            'Detayını görmek için bir film veya dizinin üzerine gel.'));
+        return;
+    }
+
+    const card = createShareListElement('div', 'share-list-preview-card');
+    const poster = createShareListPoster(item, 'w185', 'share-list-preview-poster');
+    if (poster) card.append(poster);
+
+    const header = createShareListElement('div', 'share-list-preview-header');
+    const meta = createShareListElement('div', 'share-list-preview-meta');
+    const year = extractShareItemYear(item);
+    const rating = getShareItemRating(item);
+    meta.append(createShareListElement('span', 'share-list-preview-type', getShareItemTypeLabel(item)));
+    if (year) meta.append(createShareListElement('span', 'share-list-preview-year', year));
+    if (rating) meta.append(createShareListElement('span', 'share-list-preview-rating', `★ ${rating.toFixed(1)}/10`));
+    header.append(createShareListElement('h3', '', formatShareItemLabel(item)), meta);
+    card.append(header);
+
+    const names = getShareItemGenres(item);
+    if (names.length) {
+        const genres = createShareListElement('div', 'share-list-preview-genres');
+        genres.append(...names.map(name => createShareListElement('span', '', name)));
+        card.append(genres);
+    }
+
+    const overview = typeof item.overview === 'string' ? item.overview.trim() : '';
+    card.append(createShareListElement('p', 'share-list-preview-overview', overview || 'Konu özeti bulunmuyor.'));
+    preview.replaceChildren(card);
+}
+
+function loadShareListPreviewGenres() {
+    if (typeof window === 'undefined' || window.genresCache || shareListGenresRequest ||
+        typeof loadGenres !== 'function') return;
+    shareListGenresRequest = Promise.resolve().then(() => loadGenres()).then(() => {
+        if (isShareListBuilderOpen() && shareListPreviewItem) renderShareListPreview(shareListPreviewItem);
+    }).catch(() => {
+        // Previews can still show genre names supplied with the item.
+    }).finally(() => {
+        shareListGenresRequest = null;
+    });
+}
+
+function hideShareListPersonBar() {
+    shareListActivePerson = null;
+    if (typeof document === 'undefined' || typeof document.getElementById !== 'function') return;
+    const personBar = document.getElementById('share-list-person-bar');
+    if (personBar) {
+        personBar.hidden = true;
+        personBar.replaceChildren();
+    }
+}
+
+function openShareListBuilder(initialDraft = null, options = null) {
+    if (typeof document === 'undefined' || typeof document.getElementById !== 'function' ||
+        typeof document.createElement !== 'function' || typeof window === 'undefined') return;
+    const modal = document.getElementById('share-list-modal');
+    const manager = window.ModalManager;
+    if (!modal || typeof manager?.openModal !== 'function') return;
+
+    cancelShareListSearch();
+    shareListLastSearchResults = [];
+    hideShareListPersonBar();
+    const parsedDraftRoute = typeof initialDraft?.route === 'string' &&
+        (initialDraft.route.startsWith('secki/') || initialDraft.route.startsWith('list?'))
+        ? parseSharedListRoute(initialDraft.route)
+        : null;
+    const savedTitle = parsedDraftRoute
+        ? (parsedDraftRoute.hasCustomTitle ? parsedDraftRoute.title : '')
+        : initialDraft?.title;
+    shareListDraft = {
+        id: initialDraft?.id || null,
+        title: normalizeSharedListTitle(savedTitle, ''),
+        items: getUniqueShareListItems(initialDraft?.items).slice(0, SHARED_LIST_MAX_ITEMS),
+        fromCurrentSharedList: Boolean(options?.fromCurrentSharedList)
+    };
+    shareListDraftInitialSignature = getShareListDraftSignature(shareListDraft);
+    const saveBtn = document.getElementById('share-list-save-btn');
+    if (saveBtn) {
+        setShareListIconButtonLabel(
+            saveBtn,
+            (shareListDraft.id || shareListDraft.fromCurrentSharedList) ? 'Kaydet ve Güncelle' : 'Profilime Kaydet'
+        );
+    }
+    document.getElementById('share-list-title-input').value = shareListDraft.title;
+    document.getElementById('share-list-search-input').value = '';
+    document.getElementById('share-list-search-results').replaceChildren();
+    setSharedListStatus('share-list-modal-status');
+
+    const library = getUniqueShareListItems([
+        ...readShareListLibrary('watchlist'),
+        ...readShareListLibrary('ratedMovies')
+    ]);
+    const chips = document.getElementById('share-list-library-chips');
+    chips.replaceChildren(...library.map(item => createShareListChoice(item, true)));
+    document.getElementById('share-list-library-section').hidden = !library.length;
+    renderShareListDraft();
+    renderShareListPreview(shareListDraft.items[0] || library[0]);
+    manager.openModal(modal);
+    loadShareListPreviewGenres();
+}
+
+function closeShareListModal(event, force = false) {
+    if (typeof document === 'undefined' || typeof document.getElementById !== 'function' ||
+        typeof window === 'undefined') return;
+    const modal = document.getElementById('share-list-modal');
+    const manager = window.ModalManager;
+    if (!modal || (!force && event?.target !== modal) || typeof manager?.closeModal !== 'function') return;
+    if (!force && isShareListDraftDirty()) {
+        const message = 'Kaydedilmemiş değişiklikler var. Kaydetmek için aşağıdaki butonları kullan veya çıkmak için × tuşuna bas.';
+        setSharedListStatus('share-list-modal-status', message);
+        if (typeof announceA11y === 'function') announceA11y(message);
+        return;
+    }
+    cancelShareListSearch();
+    shareListLastSearchResults = [];
+    shareListDraftInitialSignature = '';
+    hideShareListPersonBar();
+    manager.closeModal(modal);
+}
+
+function createShareListChoice(item, isLibrary) {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = isLibrary ? 'share-list-library-chip' : 'share-list-result-btn';
+    button.dataset.shareToken = encodeSharedListItemToken(item);
+    const label = createShareListElement('span', 'share-list-item-label', formatShareItemLabel(item));
+    const type = getShareItemTypeLabel(item);
+    if (isLibrary) {
+        button.append(label, createShareListElement('span', 'share-list-item-type', type));
+    } else {
+        const thumbnail = createShareListPoster(item, 'w92', 'share-list-thumb');
+        if (thumbnail) button.append(thumbnail);
+        const body = createShareListElement('span', 'share-list-result-body');
+        const rating = getShareItemRating(item);
+        const meta = [type, extractShareItemYear(item), rating ? `★ ${rating.toFixed(1)}` : '']
+            .filter(Boolean).join(' • ');
+        body.append(label, createShareListElement('span', 'share-list-result-meta', meta));
+        const overview = compactShareItemText(item.overview, 160);
+        if (overview) body.append(createShareListElement('span', 'share-list-result-overview', overview));
+        button.append(body);
+    }
+    button.append(createShareListElement('span', 'share-list-choice-action'));
+    if (typeof button.addEventListener === 'function') {
+        button.addEventListener('click', () => toggleShareListDraftItem(item));
+        button.addEventListener('mouseenter', () => renderShareListPreview(item));
+        button.addEventListener('focus', () => renderShareListPreview(item));
+    }
+    return button;
+}
+
+function syncShareListChoices() {
+    const selected = new Set(shareListDraft.items.map(encodeSharedListItemToken));
+    document.querySelectorAll('#share-list-modal [data-share-token]').forEach(button => {
+        const added = selected.has(button.dataset.shareToken);
+        button.setAttribute('aria-pressed', String(added));
+        button.querySelector('.share-list-choice-action').textContent = added ? 'Eklendi' : '+ Ekle';
+    });
+}
+
+function renderShareListDraft() {
+    const { items } = shareListDraft;
+    setSharedListStatus('share-list-selected-count', `Seçilen Yapımlar (${items.length} / ${SHARED_LIST_MAX_ITEMS})`);
+    const saveBtn = document.getElementById('share-list-save-btn');
+    if (saveBtn) saveBtn.disabled = !items.length;
+    document.getElementById('share-list-clear-btn').disabled = !items.length;
+    document.getElementById('share-list-open-btn').disabled = !items.length;
+    document.getElementById('share-list-copy-link-btn').disabled = !items.length;
+    const selected = document.getElementById('share-list-selected-items');
+    selected.replaceChildren(...items.map(item => {
+        const label = formatShareItemLabel(item);
+        const pill = document.createElement('div');
+        pill.className = 'share-list-pill';
+        if (typeof pill.addEventListener === 'function') {
+            pill.addEventListener('mouseenter', () => renderShareListPreview(item));
+            pill.addEventListener('focusin', () => renderShareListPreview(item));
+        }
+        const name = document.createElement('span');
+        name.textContent = label;
+        const remove = document.createElement('button');
+        remove.type = 'button';
+        remove.textContent = '×';
+        remove.setAttribute('aria-label', `${label} seçkiden çıkar`);
+        if (typeof remove.addEventListener === 'function') {
+            remove.addEventListener('click', () => {
+                const nextIndex = Array.from(selected.querySelectorAll('button')).indexOf(remove);
+                toggleShareListDraftItem(item);
+                const buttons = selected.querySelectorAll('button');
+                const next = buttons[nextIndex] || buttons[buttons.length - 1] ||
+                    document.getElementById('share-list-search-input');
+                if (typeof next?.focus === 'function') next.focus();
+            });
+        }
+        pill.append(name, remove);
+        return pill;
+    }));
+    syncShareListChoices();
+}
+
+function toggleShareListDraftItem(item) {
+    if (!shareListDraft) return;
+    const token = encodeSharedListItemToken(item);
+    if (!token) return;
+    const { items } = shareListDraft;
+    const index = items.findIndex(entry => encodeSharedListItemToken(entry) === token);
+    if (index !== -1) {
+        items.splice(index, 1);
+    } else if (items.length < SHARED_LIST_MAX_ITEMS) {
+        items.push(item);
+    } else {
+        setSharedListStatus('share-list-modal-status', `Bir seçkiye en fazla ${SHARED_LIST_MAX_ITEMS} yapım ekleyebilirsin.`);
+        return;
+    }
+    setSharedListStatus('share-list-modal-status');
+    renderShareListDraft();
+}
+
+function clearShareListDraft() {
+    if (!shareListDraft) return;
+    shareListDraft.items = [];
+    renderShareListDraft();
+    setSharedListStatus('share-list-modal-status', 'Seçilen yapımlar temizlendi.');
+    const searchInput = document.getElementById('share-list-search-input');
+    if (typeof searchInput?.focus === 'function') searchInput.focus();
+}
+
+function isShareListBuilderOpen() {
+    if (typeof window === 'undefined') return false;
+    const manager = window.ModalManager;
+    return typeof manager?.isModalOpen === 'function' && manager.isModalOpen('share-list-modal');
+}
+
+function cancelShareListSearch() {
+    clearTimeout(shareListSearchTimer);
+    shareListSearchTimer = null;
+    shareListSearchController?.abort();
+    shareListSearchController = null;
+}
+
+function createShareListPersonChoice(person) {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'share-list-result-btn share-list-person-btn';
+    const personId = typeof normalizeTmdbId === 'function' ? normalizeTmdbId(person?.id) : null;
+    if (personId) button.dataset.sharePersonId = String(personId);
+
+    const photo = createShareListPersonPhoto(person, 'w92', 'share-list-thumb share-list-person-thumb');
+    if (photo) button.append(photo);
+
+    const body = createShareListElement('span', 'share-list-result-body');
+    const roleLabel = getSharePersonRoleLabel(person?.known_for_department);
+    body.append(
+        createShareListElement('span', 'share-list-item-label', person?.name || 'İsimsiz kişi'),
+        createShareListElement('span', 'share-list-result-meta', `Kişi • ${roleLabel}`)
+    );
+    const knownFor = Array.isArray(person?.known_for)
+        ? compactShareItemText(
+            person.known_for.filter(entry => entry?.title || entry?.name).map(formatShareItemLabel).join(' • '),
+            160
+        )
+        : '';
+    if (knownFor) body.append(createShareListElement('span', 'share-list-result-overview', knownFor));
+
+    button.append(body, createShareListElement('span', 'share-list-choice-action', 'Yapımları →'));
+    if (typeof button.addEventListener === 'function') {
+        button.addEventListener('click', () => openShareListPersonCredits(person));
+        button.addEventListener('mouseenter', () => renderShareListPersonPreview(person));
+        button.addEventListener('focus', () => renderShareListPersonPreview(person));
+    }
+    return button;
+}
+
+function renderShareListSearchResults(items, emptyMessage = 'Film, dizi veya kişi bulunamadı.') {
+    if (typeof document === 'undefined' || typeof document.getElementById !== 'function') return;
+    const results = document.getElementById('share-list-search-results');
+    if (!results) return;
+    if (!items.length) {
+        results.textContent = emptyMessage;
+        return;
+    }
+    results.replaceChildren(...items.map(item =>
+        item?.media_type === 'person' ? createShareListPersonChoice(item) : createShareListChoice(item, false)
+    ));
+    syncShareListChoices();
+}
+
+function isSharePersonCreditClean(entry, isCast = false) {
+    if (!entry || (entry.media_type !== 'movie' && entry.media_type !== 'tv')) return false;
+    const title = typeof entry.title === 'string' && entry.title.trim()
+        ? entry.title.trim()
+        : (typeof entry.name === 'string' ? entry.name.trim() : '');
+    if (!title) return false;
+    const hasPoster = typeof isValidTmdbImagePath === 'function'
+        ? isValidTmdbImagePath(entry.poster_path)
+        : Boolean(entry.poster_path);
+    if (!hasPoster) return false;
+    if (Array.isArray(entry.genre_ids) && entry.genre_ids.some(id => SHARE_PERSON_EXCLUDED_GENRES.has(Number(id)))) {
+        return false;
+    }
+    const lowerTitle = title.toLowerCase();
+    if (SHARE_PERSON_BLOCKED_TITLE_WORDS.some(word => lowerTitle.includes(word))) return false;
+    if (isCast && typeof entry.character === 'string' && SHARE_PERSON_SELF_CHARACTER_PATTERN.test(entry.character.trim())) {
+        return false;
+    }
+    return true;
+}
+
+function buildSharePersonCredits(data) {
+    const normalizeBucket = (entries, isCast = false) => {
+        const deduped = new Map();
+        for (const entry of Array.isArray(entries) ? entries : []) {
+            if (!isSharePersonCreditClean(entry, isCast)) continue;
+            const token = encodeSharedListItemToken(entry);
+            if (token && !deduped.has(token)) deduped.set(token, entry);
+        }
+        const isMinorGuestTv = entry =>
+            entry.media_type === 'tv' && Number(entry.episode_count) === 1 && entry.job !== 'Director';
+        return Array.from(deduped.values()).sort((a, b) => {
+            const minorDiff = (isMinorGuestTv(a) ? 1 : 0) - (isMinorGuestTv(b) ? 1 : 0);
+            if (minorDiff !== 0) return minorDiff;
+            const aNotable = (Number(a.vote_count) || 0) >= 100 ? 1 : 0;
+            const bNotable = (Number(b.vote_count) || 0) >= 100 ? 1 : 0;
+            if (bNotable !== aNotable) return bNotable - aNotable;
+            const voteDiff = (Number(b.vote_count) || 0) - (Number(a.vote_count) || 0);
+            if (voteDiff !== 0) return voteDiff;
+            return (Number(b.popularity) || 0) - (Number(a.popularity) || 0);
+        }).slice(0, 60);
+    };
+
+    const rawCrew = Array.isArray(data?.crew) ? data.crew : [];
+    const director = normalizeBucket(rawCrew.filter(entry => entry?.job === 'Director'), false);
+    const cast = normalizeBucket(data?.cast, true);
+    const all = normalizeBucket([...director, ...cast], false);
+    return { director, cast, all };
+}
+
+function getActiveSharePersonItems() {
+    if (!shareListActivePerson?.creditsByRole) return [];
+    const roleItems = shareListActivePerson.creditsByRole[shareListActivePerson.activeRole] || [];
+    if (shareListActivePerson.activeMediaType === 'movie') {
+        return roleItems.filter(item => item.media_type === 'movie');
+    }
+    if (shareListActivePerson.activeMediaType === 'tv') {
+        return roleItems.filter(item => item.media_type === 'tv');
+    }
+    return roleItems;
+}
+
+function renderShareListPersonBar() {
+    if (typeof document === 'undefined' || typeof document.getElementById !== 'function') return;
+    const personBar = document.getElementById('share-list-person-bar');
+    if (!personBar) return;
+    if (!shareListActivePerson) {
+        personBar.hidden = true;
+        personBar.replaceChildren();
+        return;
+    }
+
+    const { person, creditsByRole, activeRole, activeMediaType = 'all' } = shareListActivePerson;
+    const backBtn = createShareListElement('button', 'share-list-person-back-btn', '← Sonuçlara Dön');
+    backBtn.type = 'button';
+    if (typeof backBtn.addEventListener === 'function') {
+        backBtn.addEventListener('click', () => {
+            const personId = typeof normalizeTmdbId === 'function' ? normalizeTmdbId(person?.id) : null;
+            cancelShareListSearch();
+            hideShareListPersonBar();
+            renderShareListSearchResults(shareListLastSearchResults);
+            if (person) renderShareListPersonPreview(person);
+            const focusTarget = (personId && document.querySelector(`#share-list-search-results [data-share-person-id="${personId}"]`)) ||
+                document.getElementById('share-list-search-input');
+            if (typeof focusTarget?.focus === 'function') focusTarget.focus();
+        });
+    }
+
+    const roleItems = creditsByRole?.[activeRole] || [];
+    const activeCount = roleItems.length;
+    const titleText = creditsByRole && !creditsByRole.director.length && !creditsByRole.cast.length
+        ? (person?.name || 'Kişi')
+        : creditsByRole && !(creditsByRole.director.length && creditsByRole.cast.length)
+            ? `${person?.name || 'Kişi'} (${activeCount})`
+            : (person?.name || 'Kişi');
+    const title = createShareListElement('span', 'share-list-person-title', titleText);
+    const children = [backBtn, title];
+
+    if (creditsByRole && creditsByRole.director.length && creditsByRole.cast.length) {
+        const filters = createShareListElement('div', 'share-list-person-filters');
+        for (const [role, label] of [['director', 'Yönetmen'], ['cast', 'Oyuncu'], ['all', 'Tümü']]) {
+            const count = creditsByRole[role].length;
+            if (!count) continue;
+            const filterBtn = createShareListElement('button', 'share-list-person-filter-btn', `${label} (${count})`);
+            filterBtn.type = 'button';
+            filterBtn.setAttribute('aria-pressed', String(activeRole === role));
+            if (typeof filterBtn.addEventListener === 'function') {
+                filterBtn.addEventListener('click', () => {
+                    if (!shareListActivePerson) return;
+                    shareListActivePerson.activeRole = role;
+                    if (shareListActivePerson.activeMediaType !== 'all' && !getActiveSharePersonItems().length) {
+                        shareListActivePerson.activeMediaType = 'all';
+                    }
+                    renderShareListPersonBar();
+                    const list = getActiveSharePersonItems();
+                    renderShareListSearchResults(list, 'Bu kategoride eklenebilir yapım bulunamadı.');
+                    if (list[0]) renderShareListPreview(list[0]);
+                });
+            }
+            filters.append(filterBtn);
+        }
+        children.push(filters);
+    }
+
+    const movieCount = roleItems.filter(item => item.media_type === 'movie').length;
+    const tvCount = roleItems.filter(item => item.media_type === 'tv').length;
+    if (movieCount && tvCount) {
+        const mediaFilters = createShareListElement('div', 'share-list-person-media-filters');
+        for (const [mediaFilter, label, count] of [
+            ['all', 'Tümü', roleItems.length],
+            ['movie', 'Filmler', movieCount],
+            ['tv', 'Diziler', tvCount]
+        ]) {
+            const mediaBtn = createShareListElement('button', 'share-list-person-filter-btn', `${label} (${count})`);
+            mediaBtn.type = 'button';
+            mediaBtn.dataset.shareMediaFilter = mediaFilter;
+            mediaBtn.setAttribute('aria-pressed', String(activeMediaType === mediaFilter));
+            if (typeof mediaBtn.addEventListener === 'function') {
+                mediaBtn.addEventListener('click', () => {
+                    if (!shareListActivePerson) return;
+                    shareListActivePerson.activeMediaType = mediaFilter;
+                    renderShareListPersonBar();
+                    const list = getActiveSharePersonItems();
+                    renderShareListSearchResults(list, 'Bu kategoride eklenebilir yapım bulunamadı.');
+                    if (list[0]) renderShareListPreview(list[0]);
+                });
+            }
+            mediaFilters.append(mediaBtn);
+        }
+        children.push(mediaFilters);
+    }
+
+    personBar.hidden = false;
+    personBar.replaceChildren(...children);
+}
+
+async function openShareListPersonCredits(person) {
+    const personId = typeof normalizeTmdbId === 'function' ? normalizeTmdbId(person?.id) : null;
+    if (!personId || !isShareListBuilderOpen()) return;
+
+    cancelShareListSearch();
+    const results = document.getElementById('share-list-search-results');
+    if (!results) return;
+
+    renderShareListPersonPreview(person);
+    const cacheKey = String(personId);
+    let creditsByRole = shareListPersonCreditsCache.get(cacheKey);
+    if (!creditsByRole) {
+        shareListActivePerson = { person, creditsByRole: null, activeRole: 'all', activeMediaType: 'all' };
+        renderShareListPersonBar();
+        results.textContent = 'Yapımlar yükleniyor…';
+        const controller = new AbortController();
+        shareListSearchController = controller;
+        try {
+            const params = new URLSearchParams({ language: 'tr-TR' });
+            const response = await fetch(`${BASE_URL}/person/${personId}/combined_credits?${params}`, {
+                signal: controller.signal
+            });
+            if (!response.ok) throw new Error('Kişi yapımları yüklenemedi.');
+            const data = await response.json();
+            if (controller.signal.aborted || !isShareListBuilderOpen()) return;
+            creditsByRole = buildSharePersonCredits(data);
+            shareListPersonCreditsCache.delete(cacheKey);
+            shareListPersonCreditsCache.set(cacheKey, creditsByRole);
+            if (shareListPersonCreditsCache.size > SHARED_LIST_CACHE_LIMIT) {
+                shareListPersonCreditsCache.delete(shareListPersonCreditsCache.keys().next().value);
+            }
+        } catch (_) {
+            if (!controller.signal.aborted) {
+                results.textContent = 'Kişinin yapımları yüklenemedi. Tekrar deneyebilirsin.';
+            }
+            return;
+        } finally {
+            if (shareListSearchController === controller) shareListSearchController = null;
+        }
+    }
+
+    if (!isShareListBuilderOpen()) return;
+    const activeRole = person?.known_for_department === 'Directing' && creditsByRole.director.length
+        ? 'director'
+        : creditsByRole.cast.length
+            ? 'cast'
+            : 'all';
+    shareListActivePerson = { person, creditsByRole, activeRole, activeMediaType: 'all' };
+    renderShareListPersonBar();
+    const activeItems = getActiveSharePersonItems();
+    renderShareListSearchResults(activeItems, 'Bu kişi için eklenebilir yapım bulunamadı.');
+    if (activeItems[0]) renderShareListPreview(activeItems[0]);
+}
+
+async function searchShareListItems() {
+    cancelShareListSearch();
+    hideShareListPersonBar();
+    if (!isShareListBuilderOpen()) return;
+    const query = document.getElementById('share-list-search-input').value.trim();
+    const results = document.getElementById('share-list-search-results');
+    if (!query) {
+        shareListLastSearchResults = [];
+        results.replaceChildren();
+        return;
+    }
+
+    const controller = new AbortController();
+    shareListSearchController = controller;
+    const params = new URLSearchParams({ language: 'tr-TR', query, include_adult: 'false' });
+    results.textContent = 'Aranıyor…';
+    try {
+        const response = await fetch(`${BASE_URL}/search/multi?${params}`, { signal: controller.signal });
+        if (!response.ok) throw new Error('Seçki araması başarısız oldu.');
+        const data = await response.json();
+        if (controller.signal.aborted) return;
+
+        const items = [];
+        const seenTokens = new Set();
+        for (const item of Array.isArray(data.results) ? data.results : []) {
+            if (!item || (item.media_type !== 'movie' && item.media_type !== 'tv' && item.media_type !== 'person')) continue;
+            if (item.media_type === 'person') {
+                const personId = typeof normalizeTmdbId === 'function' ? normalizeTmdbId(item.id) : null;
+                if (!personId || !String(item.name || '').trim()) continue;
+                const personToken = `p${personId}`;
+                if (seenTokens.has(personToken)) continue;
+                seenTokens.add(personToken);
+                items.push(item);
+                continue;
+            }
+            const token = encodeSharedListItemToken(item);
+            if (!token || seenTokens.has(token)) continue;
+            seenTokens.add(token);
+            items.push(item);
+        }
+
+        shareListLastSearchResults = items;
+        renderShareListSearchResults(items);
+    } catch (_) {
+        if (!controller.signal.aborted) results.textContent = 'Arama yapılamadı. Tekrar deneyebilirsin.';
+    } finally {
+        if (shareListSearchController === controller) shareListSearchController = null;
+    }
+}
+
+function saveBuiltSharedList() {
+    const draft = shareListDraft;
+    if (!draft?.items.length) return;
+    const hadExistingId = Boolean(draft.id);
+    const fromCurrentSharedList = Boolean(draft.fromCurrentSharedList);
+    const saved = saveSharedListRecord(draft);
+    if (!saved) {
+        setSharedListStatus('share-list-modal-status', 'Seçki profiline kaydedilemedi.');
+        return;
+    }
+    draft.id = saved.id;
+    shareListDraftInitialSignature = getShareListDraftSignature(draft);
+    const currentState = getCurrentSharedList();
+    closeShareListModal(null, true);
+    if (fromCurrentSharedList || currentState) {
+        if (currentState?.route !== saved.route && typeof navigate === 'function') {
+            navigate(saved.route);
+        } else {
+            const message = hadExistingId ? 'Seçki güncellendi.' : 'Seçki profiline kaydedildi.';
+            setSharedListStatus('shared-list-status', message);
+            if (typeof announceA11y === 'function') announceA11y(message);
+        }
+        return;
+    }
+    const message = hadExistingId ? 'Seçki güncellendi.' : 'Seçki profiline kaydedildi.';
+    setSharedListStatus('saved-lists-status', message);
+    setSharedListStatus('watchlist-share-status', message);
+    if (typeof announceA11y === 'function') announceA11y(message);
+}
+
+async function copyBuiltSharedListLink() {
+    const draft = shareListDraft;
+    if (!draft?.items.length || typeof window === 'undefined') return;
+    const saved = saveSharedListRecord(draft);
+    if (saved) {
+        draft.id = saved.id;
+        shareListDraftInitialSignature = getShareListDraftSignature(draft);
+        const saveBtn = document.getElementById('share-list-save-btn');
+        if (saveBtn) setShareListIconButtonLabel(saveBtn, 'Kaydet ve Güncelle');
+    }
+    const route = saved?.route || buildSharedListRoute(draft.title, draft.items);
+    if (!route) return;
+    const copied = await copyTextToClipboard(getSharedListRouteUrl(route));
+    if (draft === shareListDraft && isShareListBuilderOpen()) {
+        const message = copied ? 'Seçki linki kopyalandı.' : 'Seçki linki kopyalanamadı.';
+        setSharedListStatus('share-list-modal-status', saved ? message : message + ' Seçki profiline kaydedilemedi.');
+    }
+}
+
+function openBuiltSharedList() {
+    if (!shareListDraft || typeof navigate !== 'function') return;
+    const saved = saveSharedListRecord(shareListDraft);
+    if (saved) shareListDraft.id = saved.id;
+    const route = saved?.route || buildSharedListRoute(shareListDraft.title, shareListDraft.items);
+    if (!route) return;
+    closeShareListModal(null, true);
+    navigate(route);
+    if (!saved && typeof announceA11y === 'function') announceA11y('Seçki profiline kaydedilemedi.');
+}
+
+function bindShareListControls() {
+    const title = document.getElementById('share-list-title-input');
+    if (typeof title?.addEventListener === 'function') {
+        title.addEventListener('input', () => {
+            if (shareListDraft) shareListDraft.title = title.value;
+        });
+    }
+    const searchInput = document.getElementById('share-list-search-input');
+    if (typeof searchInput?.addEventListener === 'function') {
+        searchInput.addEventListener('input', () => {
+            cancelShareListSearch();
+            hideShareListPersonBar();
+            shareListLastSearchResults = [];
+            document.getElementById('share-list-search-results').replaceChildren();
+            if (searchInput.value.trim()) {
+                shareListSearchTimer = setTimeout(searchShareListItems, 300);
+            }
+        });
+        searchInput.addEventListener('keydown', event => {
+            if (event.key === 'Enter' && !event.isComposing) {
+                event.preventDefault();
+                searchShareListItems();
+            }
+        });
+    }
+    const searchButton = document.getElementById('share-list-search-btn');
+    if (typeof searchButton?.addEventListener === 'function') {
+        searchButton.addEventListener('click', searchShareListItems);
+    }
+}
+
+if (typeof document !== 'undefined' && typeof document.addEventListener === 'function') {
+    document.addEventListener('DOMContentLoaded', bindShareListControls);
 }

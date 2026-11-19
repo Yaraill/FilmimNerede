@@ -23,6 +23,8 @@ function isRouteContextCurrent(routeContext, expectedPage, expectedId = null) {
         currentId = hashPath.split("/")[1];
     } else if (hashPath === "search") {
         currentPage = "search";
+    } else if (hashPath === "list" || hashPath === "secki" || hashPath.startsWith("secki/")) {
+        currentPage = "list";
     } else if (hashPath) {
         currentPage = hashPath;
     }
@@ -172,6 +174,18 @@ function parseRoute() {
         };
     }
 
+    if (path === "list") {
+        return { page: "list", listQuery: queryString, listPath: "" };
+    }
+
+    if (path === "secki" || path.startsWith("secki/")) {
+        return {
+            page: "list",
+            listQuery: queryString,
+            listPath: path.slice("secki".length).replace(/^\/+/, "")
+        };
+    }
+
     if (path === "upcoming") {
         history.replaceState(history.state, "", "#vizyon");
         return { page: "vizyon" };
@@ -249,6 +263,8 @@ function handleRoute({ searchFilterChange = false } = {}) {
         platformQuery: route.page === 'platform'
             ? (route.platformQuery || '')
             : null,
+        listQuery: route.page === 'list' ? (route.listQuery || '') : null,
+        listPath: route.page === 'list' ? (route.listPath || '') : null,
         returningFromDetails:
             shouldRestoreDetailsFocus
     };
@@ -320,6 +336,20 @@ function handleRoute({ searchFilterChange = false } = {}) {
             randomModal.classList.remove('active');
             randomModal.setAttribute('aria-hidden', 'true');
             randomModal.inert = true;
+        }
+    }
+
+    const shareListModal = document.getElementById('share-list-modal');
+    if (shareListModal) {
+        if (shareListModal.classList.contains('active') && typeof cancelShareListSearch === 'function') {
+            cancelShareListSearch();
+        }
+        if (window.ModalManager && window.ModalManager.isModalOpen(shareListModal)) {
+            window.ModalManager.closeModal(shareListModal, { skipFocusRestore: true });
+        } else if (shareListModal.classList.contains('active')) {
+            shareListModal.classList.remove('active');
+            shareListModal.setAttribute('aria-hidden', 'true');
+            shareListModal.inert = true;
         }
     }
 
@@ -561,6 +591,10 @@ function handleRoute({ searchFilterChange = false } = {}) {
                 );
             }
 
+            break;
+
+        case "list":
+            renderSection("list", routeContext);
             break;
 
         case "vizyon":

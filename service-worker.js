@@ -1,12 +1,12 @@
-const CACHE_NAME = 'filmimnerede-v110';
+const CACHE_NAME = 'filmimnerede-v116';
 const ASSETS_TO_CACHE = [
   '/',
   '/index.html',
-  '/style.css?v=62',
+  '/style.css?v=67',
   '/js/runtime/config.js?v=2',
   '/js/runtime/security.js?v=6',
   '/js/runtime/state.js?v=1',
-  '/js/runtime/router.js?v=7',
+  '/js/runtime/router.js?v=9',
   '/js/runtime/shared-ui.js?v=15',
   '/js/runtime/providers.js?v=6',
   '/js/runtime/platform.js?v=13',
@@ -14,9 +14,9 @@ const ASSETS_TO_CACHE = [
   '/js/runtime/movie.js?v=13',
   '/js/runtime/actor.js?v=13',
   '/js/runtime/home.js?v=14',
-  '/js/runtime/profile.js?v=12',
+  '/js/runtime/profile.js?v=17',
   '/js/runtime/misc.js?v=12',
-  '/app.js?v=77',
+  '/app.js?v=78',
   '/assets/icons/icon-192.png',
   '/assets/icons/icon-512.png',
   '/assets/icons/icon-maskable-192.png',

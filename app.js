@@ -90,6 +90,8 @@ document.addEventListener('DOMContentLoaded', () => {
                         closeDetails(null, true);
                     } else if (topModal.id === 'random-modal') {
                         closeRandom(null, true);
+                    } else if (topModal.id === 'share-list-modal') {
+                        closeShareListModal(null, true);
                     } else if (topModal.id === 'actor-modal') {
                         closeActor(null, true);
                     } else {
@@ -445,6 +447,7 @@ function switchTab(event, tabId) {
 function renderSection(tabId, routeContext = null) {
     const routePage = tabId;
     if (tabId === 'home') tabId = 'now-playing';
+    if (tabId === 'list') tabId = 'shared-list';
 
     if (tabId !== 'platform') resetPlatformFilterControls();
     toggleSelectVisibility('providerFilter', false);
@@ -488,6 +491,8 @@ function renderSection(tabId, routeContext = null) {
         );
     } else if (tabId === 'profile') {
         loadProfile(routeContext);
+    } else if (tabId === 'shared-list' && typeof loadSharedList === 'function') {
+        loadSharedList(routeContext);
     }
 }
 
