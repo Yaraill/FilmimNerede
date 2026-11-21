@@ -22,3 +22,6 @@ node_modules/
 .env
 .env.*
 !.env.example
+# Generated IMDb ratings dataset index
+data/imdb-ratings.bin.gz
+data/imdb-ratings.bin.gz.tmp

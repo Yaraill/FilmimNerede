@@ -23,6 +23,51 @@ function normalizeImdbRating(value) {
     return numeric.toFixed(1);
 }
 
+function buildImdbRatingElement(imdbId, displayRatingText, state = 'ready') {
+    const link = document.createElement('a');
+    link.href = `https://www.imdb.com/title/${imdbId}/`;
+    link.target = '_blank';
+    link.rel = 'noopener noreferrer';
+    link.style.cssText = 'text-decoration:none;color:inherit;';
+    link.dataset.imdbState = state;
+    if (state === 'loading') link.setAttribute('aria-busy', 'true');
+
+    const badge = document.createElement('span');
+    badge.className = 'imdb-badge';
+    badge.textContent = 'IMDb';
+    link.append(badge, document.createTextNode(' ' + displayRatingText));
+    return link;
+}
+
+function syncDetailsMetaSeparators(metaContainer) {
+    const isVisibleSection = element => Boolean(
+        element &&
+        !element.hasAttribute('data-meta-sep') &&
+        !element.hidden &&
+        element.style.display !== 'none' &&
+        element.textContent.trim()
+    );
+
+    const children = Array.from(metaContainer.children);
+    let hasVisibleBefore = false;
+    for (let i = 0; i < children.length; i += 1) {
+        const child = children[i];
+        if (child.hasAttribute('data-meta-sep')) {
+            const hasVisibleAfter = children.slice(i + 1).some(isVisibleSection);
+            const visible = hasVisibleBefore && hasVisibleAfter;
+            child.hidden = !visible;
+            child.style.display = visible ? '' : 'none';
+            if (visible) {
+                hasVisibleBefore = false;
+            }
+            continue;
+        }
+        if (isVisibleSection(child)) {
+            hasVisibleBefore = true;
+        }
+    }
+}
+
 const MOVIE_DETAIL_CACHE_TTL_MS = 2000;
 const MOVIE_DETAIL_CACHE_MAX_ENTRIES = 50;
 const MOVIE_DETAIL_APPEND_PARAM = 'videos,credits,recommendations,external_ids';
@@ -175,7 +220,7 @@ async function fetchExtendedMediaDetail(mediaType, id, signal) {
             sharedSignal ? { signal: sharedSignal } : undefined
         );
         const data = await res.json();
-        if (res.ok && data && data.status_code !== 34) {
+        if (res.ok && normalizeTmdbId(data?.id) === safeId && data.status_code !== 34) {
             if (safeType === 'tv') {
                 data.title = data.name || data.title;
             }
@@ -273,6 +318,68 @@ function openDetails(movieId, mediaType = null) {
     );
 }
 
+function clearDetailsModalActions(modal) {
+    modal?.querySelectorAll('.details-left .btn-watchlist, .details-left [id^="rate-menu-"]').forEach(control => {
+        if (control.closest('#modal-providers')) return;
+        const wrapper = control.parentElement;
+        const isActionWrapper = wrapper?.tagName === 'DIV' &&
+            wrapper.style.position === 'relative' &&
+            !wrapper.matches('.details-left') &&
+            !wrapper.querySelector('#modal-providers');
+        (isActionWrapper ? wrapper : control).remove();
+    });
+}
+
+function resetDetailsModalView(modal) {
+    if (!modal) return;
+
+    const title = modal.querySelector('#details-title');
+    if (title) title.textContent = 'Yapım detayları yükleniyor...';
+    const overview = modal.querySelector('#details-overview');
+    if (overview) overview.textContent = '';
+    modal.querySelector('#details-meta')?.replaceChildren();
+
+    const poster = modal.querySelector('#details-poster');
+    if (poster) {
+        poster.onload = null;
+        poster.onerror = null;
+        poster.removeAttribute('src');
+        poster.alt = '';
+        poster.style.visibility = 'hidden';
+    }
+
+    const backdrop = modal.querySelector('#details-backdrop');
+    if (backdrop) {
+        backdrop.style.backgroundImage = '';
+        backdrop.style.display = 'block';
+    }
+    const ambilight = modal.querySelector('#ambilight-bg');
+    if (ambilight) ambilight.style.backgroundImage = '';
+    document.documentElement.style.removeProperty('--primary-color');
+    document.documentElement.style.removeProperty('--accent-color');
+
+    const dateBadge = modal.querySelector('#details-date-badge');
+    if (dateBadge) {
+        dateBadge.textContent = '';
+        dateBadge.style.display = 'none';
+    }
+
+    const providers = modal.querySelector('#modal-providers');
+    if (providers) providers.textContent = 'Platformlar aranıyor...';
+    modal.querySelector('#details-cast')?.replaceChildren();
+    modal.querySelector('#details-recommendations')?.replaceChildren();
+
+    const video = modal.querySelector('#video-bg-container');
+    if (video) {
+        video.innerHTML = '';
+        video.style.opacity = '0';
+    }
+
+    modal.querySelectorAll('#collection-container, #tv-guide-container, .btn-calendar-modal')
+        .forEach(element => element.remove());
+    clearDetailsModalActions(modal);
+}
+
 async function renderMovie(
     movieId,
     routeContext,
@@ -296,11 +403,11 @@ async function renderMovie(
         document.getElementById(
             'details-modal'
         );
-    modal?.querySelector('.btn-calendar-modal')?.remove();
+    if (!isRouteContextCurrent(routeContext, 'movie', movieId)) return;
+
+    resetDetailsModalView(modal);
+    const metaContainer = document.getElementById('details-meta');
     const detailsTitle = document.getElementById('details-title');
-    if (detailsTitle) {
-        detailsTitle.textContent = 'Yapım detayları yükleniyor...';
-    }
     if (modal) {
         if (window.ModalManager) {
             window.ModalManager.openModal(modal);
@@ -310,260 +417,132 @@ async function renderMovie(
             modal.removeAttribute('aria-hidden');
             document.body.style.overflow = "hidden";
         }
+        modal.scrollTo(0, 0);
+        const detailsContent = modal.querySelector('.details-content');
+        if (detailsContent) detailsContent.scrollTop = 0;
     }
     window.currentMovieId = movieId;
-    window.currentMediaType = requestedMediaType || null;
-
-    // Önceki detaydan kalan IMDb ID'nin
-    // yeni yapımın episode linklerine sızmasını önle.
+    window.currentMediaType = requestedMediaType;
     window.currentImdbId = null;
 
     try {
-    let data;
-    let extendedData = null;
-    let verifiedFromPrimaryFetch = false;
-    try {
-        if (requestedMediaType === 'tv' || requestedMediaType === 'movie') {
-            const result = await fetchExtendedMediaDetail(
-                requestedMediaType,
-                movieId,
-                routeContext?.signal
-            );
-            data = result.data;
-            if (result.ok && data) {
-                verifiedFromPrimaryFetch = true;
-                extendedData = data;
-            }
-        } else {
-            let result = await fetchExtendedMediaDetail(
-                'movie',
-                movieId,
-                routeContext?.signal
-            );
-            data = result.data;
-            if (!result.ok) {
-                result = await fetchExtendedMediaDetail(
-                    'tv',
-                    movieId,
-                    routeContext?.signal
-                );
-                data = result.data;
-                if (result.ok && data) {
-                    verifiedFromPrimaryFetch = true;
-                    extendedData = data;
-                }
-            } else if (data) {
-                verifiedFromPrimaryFetch = true;
-                extendedData = data;
-            }
-        }
-        
-        if (routeContext && routeContext.generation !== routeGeneration) {
-            return; 
-        }
-        
-        const fetchedId =
-            normalizeTmdbId(data?.id);
-
-        if (fetchedId === movieId) {
-            data.id = movieId;
-
-            data.media_type =
-                normalizeMediaType(
-                    data.media_type,
-                    requestedMediaType
-                ) ||
-                (
-                    data.first_air_date ||
-                    (
-                        data.name &&
-                        !data.title
-                    )
-                        ? 'tv'
-                        : 'movie'
-                );
-
-            if (typeof setCachedMedia === 'function') {
-                setCachedMedia(data, data.media_type);
-            } else {
-                window.movieCache[movieId] = data;
-            }
-        }
-    } catch(e) {
-        if (e.name === 'AbortError') return;
-        console.error(e);
+    let extendedData = requestedMediaType
+        ? getCachedExtendedMediaDetail(requestedMediaType, movieId)
+        : null;
+    let cachedBasicItem = null;
+    if (!extendedData && requestedMediaType) {
+        const cached = getCachedMedia(movieId, requestedMediaType);
+        if (cached?.id === movieId) cachedBasicItem = cached;
     }
-    
-    if (!isRouteContextCurrent(routeContext, "movie", movieId)) return;
-    
-    const item =
-        typeof getCachedMedia === 'function'
-            ? getCachedMedia(movieId, requestedMediaType)
-            : window.movieCache[movieId];
 
-    if (
-        !item ||
-        typeof item !== 'object'
-    ) {
-        if (detailsTitle) {
-            detailsTitle.textContent = 'Yapım detayları yüklenemedi';
+    const cacheExtendedDetail = (result, mediaType, basicItem = null) => {
+        const data = result?.data;
+        if (!result?.ok || normalizeTmdbId(data?.id) !== movieId ||
+            !isRouteContextCurrent(routeContext, 'movie', movieId)) return null;
+
+        data.id = movieId;
+        data.media_type = mediaType;
+        const cached = basicItem ? { ...basicItem, ...data } : data;
+        setCachedMedia(cached, mediaType);
+        return data;
+    };
+
+    const handleDetailError = error => {
+        if (error.name !== 'AbortError' && isRouteContextCurrent(routeContext, 'movie', movieId)) {
+            console.error(error);
         }
-        const overviewEl = document.getElementById('details-overview');
-        if (overviewEl) {
-            overviewEl.textContent = 'Bağlantı hatası nedeniyle yapım bilgileri alınamadı. Lütfen daha sonra tekrar deneyin.';
+        return {};
+    };
+
+    let fullDataPromise;
+    if (extendedData) {
+        cacheExtendedDetail({ ok: true, data: extendedData }, requestedMediaType);
+    } else if (cachedBasicItem) {
+        const backgroundDetailPromise = fetchExtendedMediaDetail(requestedMediaType, movieId, routeContext?.signal);
+        fullDataPromise = backgroundDetailPromise
+            .then(result => cacheExtendedDetail(result, requestedMediaType, cachedBasicItem) || {})
+            .catch(handleDetailError);
+    } else {
+        try {
+            let mediaType = requestedMediaType || 'movie';
+            let result = await fetchExtendedMediaDetail(mediaType, movieId, routeContext?.signal);
+            if (!isRouteContextCurrent(routeContext, 'movie', movieId)) return;
+            if (!requestedMediaType && !result.ok) {
+                mediaType = 'tv';
+                result = await fetchExtendedMediaDetail(mediaType, movieId, routeContext?.signal);
+            }
+            extendedData = cacheExtendedDetail(result, mediaType);
+        } catch (error) {
+            if (error.name === 'AbortError') return;
+            handleDetailError(error);
+        }
+    }
+
+    if (!isRouteContextCurrent(routeContext, 'movie', movieId)) return;
+
+    const item = extendedData || cachedBasicItem || getCachedMedia(movieId, requestedMediaType);
+    if (item?.id !== movieId) {
+        if (detailsTitle) detailsTitle.textContent = 'Yapım detayları yüklenemedi';
+        const overview = document.getElementById('details-overview');
+        if (overview) {
+            overview.textContent = 'Bağlantı hatası nedeniyle yapım bilgileri alınamadı. Lütfen daha sonra tekrar deneyin.';
         }
         return;
     }
 
-    item.id = movieId;
+    item.media_type = requestedMediaType || inferItemMediaType(item);
 
-    item.media_type =
-        normalizeMediaType(
-            item.media_type,
-            requestedMediaType
-        ) ||
-        (
-            item.first_air_date ||
-            (
-                item.name &&
-                !item.title
-            )
-                ? 'tv'
-                : 'movie'
-        );
+    // Verify legacy cache entries when neither detail endpoint provided a result.
+    if (!extendedData && !requestedMediaType) {
+        try {
+            const response = await fetch(`${BASE_URL}/${item.media_type}/${item.id}?language=tr-TR`, {
+                signal: routeContext?.signal
+            });
+            const verification = await response.json();
+            if (!isRouteContextCurrent(routeContext, 'movie', movieId)) return;
+            if (verification.status_code === 34) {
+                item.media_type = item.media_type === 'movie' ? 'tv' : 'movie';
+                setCachedMedia(item, item.media_type);
+            }
+        } catch (error) {
+            if (error.name === 'AbortError') return;
+        }
+    }
 
+    if (!isRouteContextCurrent(routeContext, 'movie', movieId)) return;
     window.currentMediaType = item.media_type;
 
-    // Quick API validation only for legacy unverified items that might have wrong media_type
-    if (!verifiedFromPrimaryFetch && !requestedMediaType) {
-        try {
-            let verifyRes = await fetch(`${BASE_URL}/${item.media_type}/${item.id}?language=tr-TR`, { signal: routeContext?.signal });
-            let verifyData = await verifyRes.json();
-            if (verifyData.status_code === 34) {
-                item.media_type = item.media_type === "movie" ? "tv" : "movie";
-                window.currentMediaType = item.media_type;
-                if (typeof setCachedMedia === 'function') {
-                    setCachedMedia(item, item.media_type);
-                } else if (window.movieCache[movieId]) {
-                    window.movieCache[movieId].media_type = item.media_type;
-                }
-            }
-        } catch(e) {
-            if (e.name === 'AbortError') return;
-        }
-    }
+    fullDataPromise ??= extendedData
+        ? Promise.resolve(extendedData)
+        : fetchExtendedMediaDetail(item.media_type, movieId, routeContext?.signal)
+            .then(result => cacheExtendedDetail(result, item.media_type, item) || {})
+            .catch(handleDetailError);
 
-    if (!isRouteContextCurrent(routeContext, "movie", movieId)) return;
+    const detailTitle = String(item.title || item.name || 'Bilinmiyor');
+    detailsTitle.textContent = detailTitle;
 
-    const modal = document.getElementById('details-modal');
-    
-    // Add to recently viewed
-    let recent = [];
+    const overview = document.getElementById('details-overview');
+    overview.textContent = item.overview || 'Bu yapım için konu özeti bulunmuyor.';
 
-    try {
-        const parsedRecent =
-            JSON.parse(
-                localStorage.getItem(
-                    'recentlyViewed'
-                ) ||
-                '[]'
-            );
+    const initialPosterPath = item.poster_path;
+    const initialBackdropPath = item.backdrop_path;
+    const posterImgElem = document.getElementById('details-poster');
+    const backdropEl = document.getElementById('details-backdrop');
+    const ambilightEl = document.getElementById('ambilight-bg');
 
-        if (
-            Array.isArray(
-                parsedRecent
-            )
-        ) {
-            recent = parsedRecent;
-        }
-    } catch (error) {
-        console.warn(
-            'Recently viewed okunamadı:',
-            error
-        );
-    }
+    posterImgElem.crossOrigin = 'Anonymous';
+    posterImgElem.alt = detailTitle;
 
-    recent =
-        recent.filter(
-            entry =>
-                !(
-                    normalizeTmdbId(
-                        entry?.id
-                    ) === item.id &&
-                    inferItemMediaType(
-                        entry,
-                        item.media_type
-                    ) === item.media_type
-                )
-        );
-
-    recent.unshift(item);
-
-    if (recent.length > 10) {
-        recent.pop();
-    }
-
-    localStorage.setItem(
-        'recentlyViewed',
-        JSON.stringify(recent)
-    );
-    renderRecentlyViewed(routeContext);
-
-    if (modal) {
-        modal.scrollTo(0, 0);
-        const detailsContent = modal.querySelector('.details-content');
-        if (detailsContent) {
-            detailsContent.scrollTop = 0;
-        }
-    }
-    
-    
-    const detailTitle =
-        String(
-            item.title ||
-            item.name ||
-            'Bilinmiyor'
-        );
-
-    document
-        .getElementById('details-title')
-        .textContent =
-        detailTitle;
-
-    document
-        .getElementById('details-overview')
-        .textContent =
-        item.overview ||
-        'Bu yapım için konu özeti bulunmuyor.';
-
-    const posterUrl =
-        getSafeTmdbImageUrl(
-            item.poster_path,
-            IMAGE_BASE,
-            'assets/placeholder.svg'
-        );
-
-    const posterImgElem =
-        document.getElementById(
-            'details-poster'
-        );
-
-    posterImgElem.crossOrigin =
-        'Anonymous';
-
-    posterImgElem.alt =
-        detailTitle;
-    
     // Dynamic Theme (ColorThief)
     posterImgElem.onload = function() {
-        if (!isRouteContextCurrent(routeContext, "movie", movieId)) return;
+        if (!isRouteContextCurrent(routeContext, 'movie', movieId)) return;
         try {
             if (typeof ColorThief !== 'undefined') {
                 const colorThief = new ColorThief();
                 const color = colorThief.getColor(posterImgElem);
                 if (color) {
                     document.documentElement.style.setProperty('--primary-color', `rgb(${color[0]}, ${color[1]}, ${color[2]})`);
-                    
+
                     // Lighter accent
                     const accentR = Math.min(255, color[0] + 50);
                     const accentG = Math.min(255, color[1] + 50);
@@ -575,202 +554,165 @@ async function renderMovie(
             console.log("ColorThief couldn't extract color:", e);
         }
     };
-    
-    // Cache buster to force CORS reload if already cached without CORS
-    posterImgElem.src = posterUrl.includes('?') ? posterUrl + '&cb=' + new Date().getTime() : posterUrl + '?cb=' + new Date().getTime();
-    
-    const backdropUrl =
-        getSafeTmdbImageUrl(
-            item.backdrop_path,
-            BACKDROP_BASE,
-            posterUrl
-        );
 
-    const detailsBackdrop =
-        document.getElementById(
-            'details-backdrop'
-        );
+    const showPoster = posterUrl => {
+        posterImgElem.style.visibility = '';
+        // Force a CORS reload if the card image was cached without CORS.
+        const separator = posterUrl.includes('?') ? '&' : '?';
+        posterImgElem.src = `${posterUrl}${separator}cb=${Date.now()}`;
+    };
 
-    if (detailsBackdrop) {
-        detailsBackdrop.style.backgroundImage =
-            `url("${backdropUrl}")`;
-    }
+    const showBackdrop = (backdropPath, posterUrl) => {
+        const backdropUrl = getSafeTmdbImageUrl(backdropPath, BACKDROP_BASE, posterUrl);
+        const background = `url("${backdropUrl}")`;
+        if (backdropEl) backdropEl.style.backgroundImage = background;
+        if (ambilightEl) ambilightEl.style.backgroundImage = background;
+    };
 
-    // Ambilight Injection
-    const ambilightEl =
-        document.getElementById(
-            'ambilight-bg'
-        );
+    let posterUrl = getSafeTmdbImageUrl(initialPosterPath, IMAGE_BASE, 'assets/placeholder.svg');
+    showPoster(posterUrl);
+    showBackdrop(initialBackdropPath, posterUrl);
 
-    if (ambilightEl) {
-        ambilightEl.style.backgroundImage =
-            `url("${backdropUrl}")`;
-    }
-    
-    const rawRating =
-    item.vote_average;
+    const initialImdbIdRaw = item.external_ids?.imdb_id || item.imdb_id;
+    const initialImdbId = isValidImdbId(initialImdbIdRaw) ? initialImdbIdRaw : null;
+    const inlineImdbRating = normalizeImdbRating(item.imdb_rating);
+    const ratingSpan = metaContainer ? document.createElement('span') : null;
 
-    const rating =
-        typeof rawRating === 'number' &&
-        Number.isFinite(rawRating) &&
-        rawRating > 0 &&
-        rawRating <= 10
-            ? rawRating.toFixed(1)
-            : 'N/A';
+    const renderImdbBadge = (imdbId, displayRatingText, state = 'ready') => {
+        if (!ratingSpan) return null;
+        const link = buildImdbRatingElement(imdbId, displayRatingText, state);
+        ratingSpan.replaceChildren(link);
+        ratingSpan.hidden = false;
+        ratingSpan.style.display = '';
+        syncDetailsMetaSeparators(metaContainer);
+        return link;
+    };
 
-    const metaContainer =
-        document.getElementById(
-            'details-meta'
-        );
-
-    if (metaContainer) {
-        const ratingSpan =
-            document.createElement(
-                'span'
-            );
-
-        ratingSpan.id =
-            'rating-span';
-
-        const ratingIcon =
-            document.createElement(
-                'i'
-            );
-
-        ratingIcon.className =
-            'fas fa-star';
-
-        ratingIcon.style.color =
-            '#fbbf24';
-
-        ratingSpan.append(
-            ratingIcon,
-            document.createTextNode(
-                ` ${rating}`
-            )
-        );
-
-        const mainSeparator =
-            document.createElement(
-                'span'
-            );
-
-        mainSeparator.textContent =
-            '|';
-
-        const genresContainer =
-            document.createElement(
-                'div'
-            );
-
-        genresContainer.style.cssText =
-            'display:inline-flex;' +
-            'flex-wrap:wrap;' +
-            'gap:5px;' +
-            'max-width:250px;' +
-            'align-items:center;';
-
-        let renderedGenreCount = 0;
-        const genreIds =
-            Array.isArray(item.genre_ids)
-                ? item.genre_ids
-                : Array.isArray(item.genres)
-                    ? item.genres.map(g => g.id || g)
-                    : [];
-
-        genreIds.forEach(rawGenreId => {
-            const genreId =
-                normalizeTmdbId(
-                    rawGenreId
-                );
-
-            if (!genreId) {
-                return;
-            }
-
-            const genreName =
-                String(
-                    genreMap[genreId] ??
-                    ''
-                ).trim();
-
-            if (!genreName) {
-                return;
-            }
-
-            if (renderedGenreCount > 0) {
-                const separator =
-                    document.createElement(
-                        'span'
-                    );
-
-                separator.style.cssText =
-                    'color:var(--text-muted);' +
-                    'font-size:0.7rem;' +
-                    'display:flex;' +
-                    'align-items:center;' +
-                    'justify-content:center;';
-
-                separator.textContent =
-                    '•';
-
-                genresContainer.appendChild(
-                    separator
-                );
-            }
-
-            const genreBadge =
-                document.createElement(
-                    'span'
-                );
-
-            genreBadge.className =
-                'genre-badge';
-
-            genreBadge.title =
-                'Bu türde ara';
-
-            genreBadge.textContent =
-                genreName;
-
-            genreBadge.addEventListener(
-                'click',
-                () => {
-                    searchByGenre(
-                        genreId
-                    );
-                }
-            );
-
-            genresContainer.appendChild(
-                genreBadge
-            );
-
-            renderedGenreCount++;
-        });
-
-        metaContainer.replaceChildren(
-            ratingSpan,
-            document.createTextNode(' '),
-            mainSeparator,
-            document.createTextNode(' '),
-            genresContainer
-        );
-    }
-    
-    const d = new Date(item.release_date || item.first_air_date || "");
-    const formattedDate = d.toString() !== "Invalid Date" ? d.toLocaleDateString('tr-TR', { day: 'numeric', month: 'long', year: 'numeric' }) : "Bilinmiyor";
-    
-    const dateBadge = document.getElementById('details-date-badge');
-    if (dateBadge) {
-        if (formattedDate !== "Bilinmiyor") {
-            dateBadge.innerText = formattedDate;
-            dateBadge.style.display = "block";
-        } else {
-            dateBadge.style.display = "none";
+    const rememberImdbRating = (imdbId, rating) => {
+        renderImdbBadge(imdbId, rating);
+        try {
+            localStorage.setItem('imdb_' + imdbId, rating);
+        } catch {
+            // The badge remains usable when storage is unavailable.
         }
+    };
+
+    const resolveImdbFallback = async imdbId => {
+        const loadingBadge = renderImdbBadge(imdbId, '…', 'loading');
+        if (!loadingBadge) return;
+
+        let imdbRating = null;
+        try {
+            const response = await fetch(`/.netlify/functions/omdb?i=${imdbId}`, {
+                signal: routeContext?.signal
+            });
+            if (response.ok) {
+                const omdbData = await response.json();
+                if (omdbData?.Response !== 'False') {
+                    imdbRating = normalizeImdbRating(omdbData?.imdbRating);
+                }
+            }
+        } catch (error) {
+            if (error.name === 'AbortError') return;
+        }
+
+        if (!isRouteContextCurrent(routeContext, 'movie', movieId) ||
+            ratingSpan.firstElementChild !== loadingBadge) return;
+
+        if (imdbRating) {
+            rememberImdbRating(imdbId, imdbRating);
+        } else {
+            renderImdbBadge(imdbId, '—', 'empty');
+        }
+    };
+
+    const resolveImdbRating = (imdbId, directRating) => {
+        window.currentImdbId = imdbId;
+        if (directRating) {
+            rememberImdbRating(imdbId, directRating);
+            return;
+        }
+
+        let cachedRating = null;
+        try {
+            cachedRating = normalizeImdbRating(localStorage.getItem('imdb_' + imdbId));
+        } catch {
+            // The fallback can still resolve the rating.
+        }
+
+        if (cachedRating) {
+            renderImdbBadge(imdbId, cachedRating);
+        } else {
+            void resolveImdbFallback(imdbId);
+        }
+    };
+
+    const genresContainer = metaContainer ? document.createElement('div') : null;
+    const renderGenres = media => {
+        let renderedCount = 0;
+        const genres = Array.isArray(media.genres) && media.genres.length
+            ? media.genres
+            : Array.isArray(media.genre_ids) ? media.genre_ids : [];
+
+        for (const genre of genres) {
+            const genreId = normalizeTmdbId(genre?.id ?? genre);
+            if (!genreId) continue;
+            const genreName = String(genreMap[genreId] || genre?.name || '').trim();
+            if (!genreName) continue;
+
+            if (renderedCount > 0) {
+                const separator = document.createElement('span');
+                separator.style.cssText = 'color:var(--text-muted);font-size:0.7rem;margin:0 5px;';
+                separator.textContent = '•';
+                genresContainer.appendChild(separator);
+            }
+
+            const badge = document.createElement('span');
+            badge.className = 'genre-badge';
+            badge.title = 'Bu türde ara';
+            badge.textContent = genreName;
+            badge.addEventListener('click', () => searchByGenre(genreId));
+            genresContainer.appendChild(badge);
+            renderedCount++;
+        }
+
+        genresContainer.hidden = renderedCount === 0;
+        genresContainer.style.display = renderedCount ? '' : 'none';
+        syncDetailsMetaSeparators(metaContainer);
+        return renderedCount;
+    };
+
+    let initialGenreCount = 0;
+    if (metaContainer) {
+        ratingSpan.id = 'rating-span';
+        ratingSpan.hidden = true;
+        ratingSpan.style.display = 'none';
+
+        const mainSeparator = document.createElement('span');
+        mainSeparator.dataset.metaSep = '1';
+        mainSeparator.textContent = '|';
+
+        genresContainer.style.maxWidth = '250px';
+        metaContainer.replaceChildren(ratingSpan, mainSeparator, genresContainer);
+        initialGenreCount = renderGenres(item);
     }
-    
+    if (initialImdbId) resolveImdbRating(initialImdbId, inlineImdbRating);
+
+    const dateBadge = document.getElementById('details-date-badge');
+    const renderDateBadge = date => {
+        if (!dateBadge) return;
+        const parsed = new Date(date || '');
+        const formatted = Number.isNaN(parsed.getTime()) ? '' :
+            parsed.toLocaleDateString('tr-TR', { day: 'numeric', month: 'long', year: 'numeric' });
+        if (dateBadge.textContent !== formatted) dateBadge.textContent = formatted;
+        dateBadge.style.display = formatted ? 'block' : 'none';
+    };
+    const initialReleaseDate = item.release_date || item.first_air_date;
+    renderDateBadge(initialReleaseDate);
+
+    const isUpcoming = releaseDate => Boolean(releaseDate && new Date(releaseDate) > new Date());
+    const initiallyUpcoming = isUpcoming(item.release_date);
+    renderDetailsModalActions(modal, item, initiallyUpcoming);
 
     const provContainer =
     document.getElementById(
@@ -947,43 +889,103 @@ async function renderMovie(
                     "<span style='color:var(--text-muted); font-size:0.9rem;'>Türkiye'de dijital yayını bulunamadı</span>";
             }
         }).catch(err => {
-            if (err.name === 'AbortError') return;
+            if (err.name === 'AbortError' || !isRouteContextCurrent(routeContext, 'movie', movieId)) return;
             const provContainer = document.getElementById('modal-providers');
             if(provContainer) provContainer.innerHTML = "<span style='color:var(--text-muted); font-size:0.9rem;'>Platform bilgisi alınamadı</span>";
         });
 
-    // Full Fetch for Premium Features
+    // Add to recently viewed
+    let recent = [];
+
+    try {
+        const parsedRecent =
+            JSON.parse(
+                localStorage.getItem(
+                    'recentlyViewed'
+                ) ||
+                '[]'
+            );
+
+        if (
+            Array.isArray(
+                parsedRecent
+            )
+        ) {
+            recent = parsedRecent;
+        }
+    } catch (error) {
+        console.warn(
+            'Recently viewed okunamadı:',
+            error
+        );
+    }
+
+    recent =
+        recent.filter(
+            entry =>
+                !(
+                    normalizeTmdbId(
+                        entry?.id
+                    ) === item.id &&
+                    inferItemMediaType(
+                        entry,
+                        item.media_type
+                    ) === item.media_type
+                )
+        );
+
+    recent.unshift(item);
+
+    if (recent.length > 10) {
+        recent.pop();
+    }
+
+    localStorage.setItem(
+        'recentlyViewed',
+        JSON.stringify(recent)
+    );
+    renderRecentlyViewed(routeContext);
+
     const castContainer = document.getElementById('details-cast');
     const recContainer = document.getElementById('details-recommendations');
-    const rightPanel = document.querySelector('.details-right');
     const videoBgContainer = document.getElementById('video-bg-container');
-    const backdropEl = document.getElementById('details-backdrop');
-    
-    // Clear old dynamic elements
-    const oldCol = document.getElementById('collection-container');
-    if(oldCol) oldCol.remove();
-    const oldTv = document.getElementById('tv-guide-container');
-    if(oldTv) oldTv.remove();
-    
-    if(videoBgContainer) {
-        videoBgContainer.innerHTML = "";
-        videoBgContainer.style.opacity = "0";
-    }
-    if(backdropEl) backdropEl.style.display = "block";
 
     castContainer.innerHTML = "<div style='color:#ccc'>Oyuncular yükleniyor...</div>";
-    if(recContainer) recContainer.innerHTML = "<div style='color:#ccc'>Öneriler yükleniyor...</div>";
-
-    const fullDataPromise = extendedData
-        ? Promise.resolve(extendedData)
-        : fetchExtendedMediaDetail(item.media_type, item.id, routeContext?.signal)
-            .then(result => (result.ok && result.data ? result.data : (result.data || {})));
+    if (recContainer) recContainer.innerHTML = "<div style='color:#ccc'>Öneriler yükleniyor...</div>";
 
     fullDataPromise
         .then(async fullData => {
             if (!fullData || typeof fullData !== 'object') return;
             if (!isRouteContextCurrent(routeContext, "movie", movieId)) return;
-            modal?.querySelectorAll('.btn-calendar-modal').forEach(el => el.remove());
+            const fullTitle = fullData.title || fullData.name;
+            if (fullTitle && detailsTitle.textContent !== fullTitle) {
+                detailsTitle.textContent = fullTitle;
+                posterImgElem.alt = fullTitle;
+            }
+
+            const posterChanged = isValidTmdbImagePath(fullData.poster_path) &&
+                fullData.poster_path !== initialPosterPath;
+            if (posterChanged) {
+                posterUrl = getSafeTmdbImageUrl(fullData.poster_path, IMAGE_BASE, posterUrl);
+                showPoster(posterUrl);
+            }
+            if ((fullData.backdrop_path && fullData.backdrop_path !== initialBackdropPath) ||
+                (!initialBackdropPath && posterChanged)) {
+                showBackdrop(fullData.backdrop_path || initialBackdropPath, posterUrl);
+            }
+
+            const fullReleaseDate = fullData.release_date || fullData.first_air_date;
+            if (fullReleaseDate && fullReleaseDate !== initialReleaseDate) {
+                renderDateBadge(fullReleaseDate);
+            }
+            const updatedUpcoming = isUpcoming(fullData.release_date || item.release_date);
+            if (updatedUpcoming !== initiallyUpcoming) {
+                clearDetailsModalActions(modal);
+                renderDetailsModalActions(modal, item, updatedUpcoming);
+            }
+
+            if (genresContainer && initialGenreCount === 0) renderGenres(fullData);
+
             if (item.media_type === 'movie' &&
                 typeof fullData.release_date === 'string' &&
                 fullData.release_date >= new Date().toLocaleDateString('sv-SE')) {
@@ -999,58 +1001,16 @@ async function renderMovie(
                     `);
                 }
             }
-            if (fullData.overview) {
-                document.getElementById('details-overview').innerText = fullData.overview;
-                item.overview = fullData.overview;
-                
-                let storedRecent = [];
-
-                try {
-                    const parsedRecent =
-                        JSON.parse(
-                            localStorage.getItem(
-                                'recentlyViewed'
-                            ) ||
-                            '[]'
-                        );
-
-                    if (
-                        Array.isArray(
-                            parsedRecent
-                        )
-                    ) {
-                        storedRecent =
-                            parsedRecent;
-                    }
-                } catch (error) {
-                    console.warn(
-                        'Recently viewed okunamadı:',
-                        error
-                    );
-                }
-
-                const recentIndex =
-                    storedRecent.findIndex(
-                        entry =>
-                            normalizeTmdbId(
-                                entry?.id
-                            ) === item.id &&
-                            inferItemMediaType(
-                                entry,
-                                item.media_type
-                            ) === item.media_type
-                    );
-
-                if (recentIndex > -1) {
-                    storedRecent[recentIndex].overview =
-                        fullData.overview;
-
-                    localStorage.setItem(
-                        'recentlyViewed',
-                        JSON.stringify(
-                            storedRecent
-                        )
-                    );
+            if (fullData.overview && fullData.overview !== overview.textContent) {
+                overview.textContent = fullData.overview;
+                const storedRecent = safeReadStorage('recentlyViewed', []);
+                const recentEntry = storedRecent.find(entry =>
+                    normalizeTmdbId(entry?.id) === item.id &&
+                    inferItemMediaType(entry, item.media_type) === item.media_type
+                );
+                if (recentEntry) {
+                    recentEntry.overview = fullData.overview;
+                    safeWriteStorage('recentlyViewed', storedRecent);
                 }
             }
 
@@ -1084,11 +1044,6 @@ async function renderMovie(
                     : null;
 
             if (runtime !== null) {
-                const metaContainer =
-                    document.getElementById(
-                        'details-meta'
-                    );
-
                 if (
                     metaContainer &&
                     !metaContainer.querySelector(
@@ -1100,6 +1055,7 @@ async function renderMovie(
                             'span'
                         );
 
+                    separator.dataset.metaSep = '1';
                     separator.textContent =
                         '|';
 
@@ -1137,177 +1093,17 @@ async function renderMovie(
                     runtimeSpan.textContent =
                         runtimeText;
 
-                    metaContainer.append(
-                        document.createTextNode(' '),
-                        separator,
-                        document.createTextNode(' '),
-                        runtimeSpan
-                    );
+                    metaContainer.append(separator, runtimeSpan);
+                    syncDetailsMetaSeparators(metaContainer);
                 }
             }
 
-            // IMDb Badge
-const rawImdbId =
-    fullData.external_ids
-        ?.imdb_id;
-
-const imdbId =
-    isValidImdbId(rawImdbId)
-        ? rawImdbId
-        : null;
-
-if (imdbId) {
-    window.currentImdbId =
-        imdbId;
-
-    const renderImdbBadge =
-        ratingValue => {
-            const normalizedRating =
-                normalizeImdbRating(
-                    ratingValue
-                );
-
-            if (!normalizedRating) {
-                return false;
+            const fullImdbIdRaw = fullData.external_ids?.imdb_id || fullData.imdb_id;
+            const imdbId = isValidImdbId(fullImdbIdRaw) ? fullImdbIdRaw : initialImdbId;
+            const directRating = normalizeImdbRating(fullData.imdb_rating);
+            if (imdbId && (imdbId !== initialImdbId || (directRating && directRating !== inlineImdbRating))) {
+                resolveImdbRating(imdbId, directRating);
             }
-
-            const ratingSpan =
-                document.getElementById(
-                    'rating-span'
-                );
-
-            if (!ratingSpan) {
-                return false;
-            }
-
-            const link =
-                document.createElement(
-                    'a'
-                );
-
-            link.href =
-                `https://www.imdb.com/title/${imdbId}/`;
-
-            link.target =
-                '_blank';
-
-            link.rel =
-                'noopener noreferrer';
-
-            link.style.cssText =
-                'text-decoration:none;' +
-                'color:inherit;';
-
-            const badge =
-                document.createElement(
-                    'span'
-                );
-
-            badge.className =
-                'imdb-badge';
-
-            badge.textContent =
-                'IMDb';
-
-            link.append(
-                badge,
-                document.createTextNode(
-                    ` ${normalizedRating}`
-                )
-            );
-
-            ratingSpan.replaceChildren(
-                link
-            );
-
-            return true;
-        };
-
-    const cachedImdb =
-        localStorage.getItem(
-            'imdb_' + imdbId
-        );
-
-    const validCachedImdb =
-        normalizeImdbRating(
-            cachedImdb
-        );
-
-    if (validCachedImdb) {
-        renderImdbBadge(
-            validCachedImdb
-        );
-    } else {
-    const params =
-        new URLSearchParams();
-
-    params.set(
-        'i',
-        imdbId
-    );
-
-    fetch(
-        `/.netlify/functions/omdb?${params.toString()}`,
-        {
-            signal:
-                routeContext
-                    ?.signal
-        }
-    )
-        .then(response => {
-            if (!response.ok) {
-                throw new Error(
-                    'OMDb proxy request failed'
-                );
-            }
-
-            return response.json();
-        })
-        .then(omdbData => {
-            if (
-                !isRouteContextCurrent(
-                    routeContext,
-                    'movie',
-                    movieId
-                )
-            ) {
-                return;
-            }
-
-            const imdbRating =
-                normalizeImdbRating(
-                    omdbData
-                        ?.imdbRating
-                );
-
-            if (!imdbRating) {
-                return;
-            }
-
-            renderImdbBadge(
-                imdbRating
-            );
-
-            localStorage.setItem(
-                'imdb_' + imdbId,
-                imdbRating
-            );
-        })
-        .catch(error => {
-            if (
-                error.name ===
-                'AbortError'
-            ) {
-                return;
-            }
-
-            console.warn(
-                'IMDb puanı alınamadı:',
-                error
-            );
-        });
-}
-}
 
             // Video Background (Only PC)
             const backgroundVideos =
@@ -1558,20 +1354,14 @@ if (imdbId) {
                         directorLink
                     );
 
-                    const metaContainer =
-                        document.getElementById(
-                            'details-meta'
-                        );
-
                     if (metaContainer) {
-                        metaContainer.appendChild(
-                            directorBadge
-                        );
+                        metaContainer.appendChild(directorBadge);
+                        syncDetailsMetaSeparators(metaContainer);
                     }
 
                     const directorBackdrop =
                         getSafeTmdbImageUrl(
-                            item.backdrop_path,
+                            fullData.backdrop_path || initialBackdropPath,
                             IMAGE_BASE,
                             null
                         );
@@ -2353,12 +2143,20 @@ if (imdbId) {
                 }
             }
         }).catch(err => {
-            if (err.name === 'AbortError') return;
+            if (err.name === 'AbortError' || !isRouteContextCurrent(routeContext, 'movie', movieId)) return;
             console.error("Full fetch error", err);
             castContainer.innerHTML = "<div style='color:red'>Veriler çekilemedi.</div>";
         });
-        
-    // Modal Actions (Watchlist, Rate, Trailer, Share)
+    } catch (error) {
+        if (error.name === 'AbortError') return;
+        console.error(error);
+    }
+}
+
+function renderDetailsModalActions(modal, item, isUpcoming) {
+    const actions = modal?.querySelector('.details-left');
+    if (!actions) return;
+
     let watchlist = [];
 
     try {
@@ -2417,12 +2215,6 @@ if (imdbId) {
 
     const wlBtnHtml =
         `<button id="modal-wl-btn" data-media-id="${item.id}" data-media-type="${safeActionMediaType}" onclick="toggleWatchlist(this, ${item.id}, '${safeActionMediaType}')" class="btn-watchlist ${wlClass}" aria-label="${wlAriaLabel}" aria-pressed="${wlAriaPressed}"><i class="fas fa-heart" aria-hidden="true"></i> ${wlText}</button>`;
-
-    const isUpcoming =
-        item.release_date &&
-        new Date(
-            item.release_date
-        ) > new Date();
 
     let rateBtnHtml = '';
 
@@ -2524,35 +2316,12 @@ if (imdbId) {
         `<button onclick="shareMovie(${item.id}, '${safeActionMediaType}')" class="btn-watchlist inactive" style="margin-top: 10px; background:rgba(255,255,255,0.05);"><i class="fas fa-share-alt"></i> Paylaş</button>`;
 
     
-    const actionsDiv = document.querySelector('.details-left');
-    if (actionsDiv) {
-        // Clear previous buttons
-        const oldBtns = actionsDiv.querySelectorAll('.btn-watchlist, [id^="rate-menu-"]');
-        oldBtns.forEach(b => { if(!b.closest('#modal-providers')) b.parentElement && b.parentElement.tagName === 'DIV' && b.parentElement.style.position === 'relative' ? b.parentElement.remove() : b.remove() });
-        
-        const combinedHtml = wlBtnHtml + rateBtnHtml + trailerBtnHtml + shareBtnHtml;
-        
-        const providersDiv = document.getElementById('modal-providers');
-        if (providersDiv) {
-            providersDiv.insertAdjacentHTML('beforebegin', combinedHtml);
-        } else {
-            actionsDiv.insertAdjacentHTML('beforeend', combinedHtml);
-        }
-    }
-
-    if (!isRouteContextCurrent(routeContext, "movie", movieId)) return;
-
-    if (modal && !window.ModalManager) {
-        modal.style.display = 'flex';
-        modal.classList.add('active');
-        modal.removeAttribute('aria-hidden');
-        document.body.style.overflow = "hidden";
-    }
-    
-    // History API handled centrally
-    } catch (e) {
-        if (e.name === 'AbortError') return;
-        console.error(e);
+    const combinedHtml = wlBtnHtml + rateBtnHtml + trailerBtnHtml + shareBtnHtml;
+    const providers = actions.querySelector('#modal-providers');
+    if (providers) {
+        providers.insertAdjacentHTML('beforebegin', combinedHtml);
+    } else {
+        actions.insertAdjacentHTML('beforeend', combinedHtml);
     }
 }
 

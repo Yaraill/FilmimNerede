@@ -1,3 +1,47 @@
+let imaxMapLoadPromise = null;
+
+async function loadImaxMap() {
+    const container = document.getElementById('imax-map-container');
+    if (!container || container.dataset.loaded === 'true') return;
+    if (imaxMapLoadPromise) return imaxMapLoadPromise;
+
+    imaxMapLoadPromise = (async () => {
+        try {
+            const response = await fetch('./turkey-inline.svg');
+            if (!response.ok) throw new Error(`HTTP ${response.status}`);
+
+            const svgText = await response.text();
+            const doc = new DOMParser().parseFromString(svgText, 'image/svg+xml');
+            const svgEl = doc?.documentElement;
+            if (!svgEl || svgEl.tagName.toLowerCase() !== 'svg' || doc.querySelector('parsererror')) {
+                throw new Error('Geçersiz SVG içeriği');
+            }
+
+            svgEl.querySelectorAll('script, foreignObject').forEach(node => node.remove());
+            for (const node of [svgEl, ...svgEl.querySelectorAll('*')]) {
+                for (const attr of [...node.attributes]) {
+                    if (attr.name.toLowerCase().startsWith('on')) {
+                        node.removeAttribute(attr.name);
+                    }
+                }
+            }
+
+            svgEl.classList.add('turkey-svg-obj');
+            svgEl.setAttribute('aria-hidden', 'true');
+            const imported = document.importNode(svgEl, true);
+            container.replaceChildren(imported);
+            container.dataset.loaded = 'true';
+        } catch (err) {
+            imaxMapLoadPromise = null;
+            console.warn('IMAX haritası yüklenemedi:', err);
+            if (container.dataset.loaded !== 'true') {
+                container.textContent = 'Harita yüklenemedi.';
+            }
+        }
+    })();
+    return imaxMapLoadPromise;
+}
+
 function surpriseMe() {
     const modal = document.getElementById('random-modal');
     if (modal) {
@@ -403,7 +447,7 @@ async function startNewGame() {
                     Array.isArray(castData?.cast) &&
                     castData.cast.length > 0
                 ) {
-                    castName = String(castData.cast[0]?.name || '').trim() || 'Bilinmiyor';
+                    castName = String(castData.cast[0]?.name || '').trim();
                 }
             }
         } catch (clueErr) {
@@ -417,15 +461,11 @@ async function startNewGame() {
                 `Oyuncu: ${castName}`
             );
         } else {
-            setGameIconText(
-                'clue-2',
-                'fas fa-star',
-                `Puan: ${
-                    currentGameMovie
-                        .vote_average ??
-                    'N/A'
-                }`
-            );
+            const genreIds = Array.isArray(currentGameMovie.genre_ids) ? currentGameMovie.genre_ids : [];
+            const genreName = genreIds
+                .map(genreId => genreMap[normalizeTmdbId(genreId)])
+                .find(Boolean);
+            setGameIconText('clue-2', 'fas fa-film', `Tür: ${genreName || 'Film'}`);
         }
 
         // Seçenekleri ekrana bas

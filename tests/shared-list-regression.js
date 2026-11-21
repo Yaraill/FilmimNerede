@@ -97,7 +97,7 @@ function testQueryHelpers() {
 
     const source = [{
         id: 550, media_type: 'movie', title: 'Dövüş Kulübü', release_date: '1999-10-15',
-        poster_path: '/invalid"poster.jpg', vote_average: Infinity, overview: '🎬'.repeat(1000),
+        poster_path: '/invalid"poster.jpg', vote_average: Infinity, imdb_rating: '8.8', overview: '🎬'.repeat(1000),
         genres: [{ id: 18 }, { id: 18 }, { id: 0 }]
     }];
     const saved = saveSharedListRecord({ title: ' ', items: [...source, ...source] });
@@ -106,6 +106,7 @@ function testQueryHelpers() {
     assert.equal(saved.items.length, 1);
     assert.equal(saved.items[0].poster_path, null);
     assert.equal(saved.items[0].vote_average, null);
+    assert.equal(saved.items[0].imdb_rating, '8.8');
     assert.equal(saved.items[0].year, '1999');
     assert.ok(saved.items[0].overview.length <= 420);
     assert.match(saved.items[0].overview, /…$/u);
@@ -434,7 +435,7 @@ async function testBuilder(page, queries) {
     assert.ok(queries.includes('Matrix'), 'Typing should trigger the debounced search');
     assert.equal(await page.$$('#share-list-search-results button').then(buttons => buttons.length), 3);
     assert.equal(await page.$eval(movieResult + ' .share-list-item-label', el => el.textContent), maliciousTitle + ' (1999)');
-    assert.match(await page.$eval(movieResult + ' .share-list-result-meta', el => el.textContent), /^Film • 1999 • ★ 8\.5$/);
+    assert.match(await page.$eval(movieResult + ' .share-list-result-meta', el => el.textContent), /^Film • 1999$/);
     const thumb = await page.$eval(movieResult, el => Array.from(el.querySelectorAll('img'), img =>
         [img.className, new URL(img.src).pathname, img.getAttribute('alt'), img.loading]
     ));
@@ -444,16 +445,20 @@ async function testBuilder(page, queries) {
     await page.hover(movieResult);
     assert.equal(await page.$eval(previewCard + ' h3', el => el.textContent), maliciousTitle + ' (1999)');
     assert.equal(await page.$(previewCard + ' h3 img'), null);
-    assert.equal(await page.$eval(previewCard + ' .share-list-preview-rating', el => el.textContent), '★ 8.5/10');
+    assert.equal(await page.$(previewCard + ' .share-list-preview-rating'), null);
     assert.equal(await page.$eval(previewCard + ' .share-list-preview-year', el => el.textContent), '1999');
     assert.equal(await page.$eval(previewCard + ' .share-list-preview-overview', el => el.textContent), 'Paylaşılan film özeti.');
     assert.equal(await page.$eval(previewCard + ' .share-list-preview-poster', el => new URL(el.src).pathname), '/t/p/w185/poster.jpg');
     await page.focus(tvResult);
     assert.equal(await page.$eval(previewCard + ' h3', el => el.textContent), 'Breaking Bad (2008)');
-    assert.equal(await page.$eval(previewCard + ' .share-list-preview-rating', el => el.textContent), '★ 8.5/10');
+    assert.equal(await page.$(previewCard + ' .share-list-preview-rating'), null);
     assert.equal(await page.$eval(previewCard + ' .share-list-preview-overview', el => el.textContent), 'Paylaşılan dizi özeti.');
     await page.waitForFunction(selector => document.querySelector(selector)?.textContent === 'Dram', {},
         previewCard + ' .share-list-preview-genres');
+    await page.evaluate(() => {
+        renderShareListPreview({ id: 603, media_type: 'movie', title: 'Matrix', vote_average: 8.5, imdb_rating: '8.8' });
+    });
+    assert.equal(await page.$eval(previewCard + ' .share-list-preview-rating', el => el.textContent), 'IMDb 8.8');
 
     await page.focus('#share-list-search-input');
     await page.keyboard.press('Enter');

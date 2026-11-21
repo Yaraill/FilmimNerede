@@ -4,13 +4,28 @@ const fs =
 const path =
     require('path');
 
+const http = require('http');
+const os = require('os');
+const zlib = require('zlib');
+
 const {
     handler,
-    _resetRateLimit
+    _resetRateLimit,
+    _resetIndexCache,
+    _setIndexPathForTests,
+    _setIndexBufferForTests
 } =
     require(
         '../netlify/functions/omdb'
     );
+
+const {
+    encodeRatingsBinary,
+    lookupImdbRatingInBuffer,
+    parseRatingsTsvToBinaryBuffer,
+    validateIndexBuffer
+} = require('../netlify/functions/lib/imdb-ratings-index');
+const { buildImdbRatingsIndex } = require('../scripts/update-imdb-ratings');
 
 const ROOT_DIR =
     path.resolve(
@@ -235,6 +250,205 @@ function scanBrowserSourcesForOmdbSecrets() {
     };
 }
 
+const RATINGS_TSV = [
+    'tconst\taverageRating\tnumVotes',
+    'tt4294967295\t10.0\t300',
+    'tt0000001\t8.0\t100',
+    'tt1234567\t8.4\t200',
+    'tt1234567\t7.1\t200',
+    'tt1234567\t11.0\t200',
+    'tt0000002\t7.2\t9',
+    'tt0000003\t\\N\t200',
+    'tt0000004\t8.4\t-1',
+    'tt0000005\t0.0\t200',
+    'tt0000006\t8.4\tNaN',
+    'tt0000007\t8.4\t0',
+    'tt0000008\t8.4\t\\N',
+    'tt0000009\t8.4\t200\textra',
+    'tt9999999999\t9.0\t200'
+].join('\r\n');
+
+const PUBLIC_RATINGS_CACHE = 'public, max-age=3600, s-maxage=86400';
+const DURABLE_RATINGS_CACHE = 'public, s-maxage=604800, durable';
+
+function testIndexCodec() {
+    const generatedAtSec = 1_700_000_000;
+    const buffer = parseRatingsTsvToBinaryBuffer(RATINGS_TSV, { minVotes: 100, generatedAtSec });
+    assert(validateIndexBuffer(buffer), 'TSV should encode to a valid binary index');
+    assert(buffer.toString('ascii', 0, 4) === 'FNR1', 'Unexpected index magic');
+    assert(buffer.readUInt16LE(4) === 1 && buffer.readUInt16LE(6) === 5, 'Unexpected record format');
+    assert(buffer.readUInt32LE(8) === 3 && buffer.length === 31, 'Filtered index should have three records');
+    assert(buffer.readUInt32LE(12) === generatedAtSec, 'Unexpected index timestamp');
+    assert(lookupImdbRatingInBuffer(buffer, 'tt0000001') === '8.0', 'First record should retain one decimal');
+    assert(lookupImdbRatingInBuffer(buffer, 'tt1234567') === '8.4', 'Middle record should retain highest rating');
+    assert(lookupImdbRatingInBuffer(buffer, 'tt4294967295') === '10.0', 'Last record should support max uint32 ID');
+    assert(lookupImdbRatingInBuffer(buffer, 'tt0000002') === null, 'Minimum vote filter should exclude low votes');
+    assert(lookupImdbRatingInBuffer(buffer, 'tt1234568') === null, 'Absent ID should return null');
+    assert(lookupImdbRatingInBuffer(buffer, 'tt0000000') === null, 'Zero is not a valid IMDb ID');
+    assert(lookupImdbRatingInBuffer(buffer, 'tt9999999999') === null, 'Overflowing IMDb ID should return null');
+
+    const unfiltered = parseRatingsTsvToBinaryBuffer(RATINGS_TSV);
+    assert(unfiltered.readUInt32LE(8) === 4, 'Default vote filter should still skip malformed rows');
+    assert(lookupImdbRatingInBuffer(unfiltered, 'tt0000002') === '7.2', 'Default filter should allow positive votes');
+
+    const objectBuffer = encodeRatingsBinary([
+        { idNum: 2, ratingTenths: 91 },
+        { idNum: 1, ratingTenths: 80 },
+        { idNum: 2, ratingTenths: 85 }
+    ], generatedAtSec);
+    const typedBuffer = encodeRatingsBinary({
+        idNums: Uint32Array.of(2, 1, 2, 3),
+        ratingTenths: Uint8Array.of(91, 80, 85, 90),
+        length: 3
+    }, generatedAtSec);
+    assert(objectBuffer.equals(typedBuffer), 'Object and typed entries should encode identically');
+    assert(lookupImdbRatingInBuffer(typedBuffer, 'tt0000002') === '9.1', 'Duplicate should retain highest rating');
+    assert(lookupImdbRatingInBuffer(typedBuffer, 'tt0000003') === null, 'Unused typed capacity should be ignored');
+
+    const invalidMagic = Buffer.from(buffer);
+    invalidMagic[0] |= 0x80;
+    for (const invalid of [null, invalidMagic, buffer.subarray(0, 15), buffer.subarray(0, 30)]) {
+        assert(!validateIndexBuffer(invalid), 'Invalid index header or length should be rejected');
+        assert(lookupImdbRatingInBuffer(invalid, 'tt0000001') === null, 'Invalid index should return null');
+    }
+    return buffer;
+}
+
+function requestRating(imdbId) {
+    return handler({
+        httpMethod: 'GET',
+        queryStringParameters: { i: imdbId },
+        headers: { 'X-Nf-Client-Connection-Ip': '192.0.2.30' }
+    });
+}
+
+function assertPublicRatingsCache(response) {
+    assert(response.headers['Cache-Control'] === PUBLIC_RATINGS_CACHE, 'Unexpected public ratings cache header');
+    assert(response.headers['Netlify-CDN-Cache-Control'] === DURABLE_RATINGS_CACHE, 'Durable CDN header is missing');
+}
+
+async function testLocalIndex(buffer) {
+    _resetRateLimit({ now: () => 0 });
+    _setIndexBufferForTests(buffer);
+    delete process.env.OMDB_API_KEY;
+    let fetchCalls = 0;
+    global.fetch = async () => {
+        fetchCalls += 1;
+        throw new Error('Local index hits should never call OMDb');
+    };
+
+    let response = await requestRating('tt1234567');
+    const body = parseBody(response);
+    assert(response.statusCode === 200 && body.Response === 'True', 'Local hit should succeed without an API key');
+    assert(body.imdbID === 'tt1234567' && body.imdbRating === '8.4', 'Incorrect local IMDb ID or rating');
+    assert(body.source === 'imdb-dataset', 'Local hit should report imdb-dataset source');
+    assertPublicRatingsCache(response);
+
+    for (let request = 1; request < 30; request += 1) {
+        response = await requestRating('tt1234567');
+        assert(response.statusCode === 200, 'The first 30 local hits should be allowed');
+    }
+    response = await requestRating('tt1234567');
+    assert(response.statusCode === 429 && response.headers['Retry-After'] === '60', 'Local hits should be rate limited');
+    assert(response.headers['Cache-Control'] === 'no-store', 'Rate-limited local hits should not be cached');
+    assert(fetchCalls === 0, 'Local hits should bypass upstream');
+
+    _resetRateLimit();
+    process.env.OMDB_API_KEY = 'server-test-secret';
+    global.fetch = async () => createUpstreamResponse({ Response: 'True', imdbRating: '7.6' });
+    response = await requestRating('tt1234568');
+    assert(response.statusCode === 200 && parseBody(response).imdbRating === '7.6', 'A local miss should reach OMDb');
+    assertPublicRatingsCache(response);
+
+    global.fetch = async () => createUpstreamResponse({ Response: 'False', Error: 'Movie not found!' });
+    response = await requestRating('tt1234568');
+    assert(response.statusCode === 200 && parseBody(response).Response === 'False', 'OMDb miss should retain payload');
+    assert(response.headers['Cache-Control'] === 'no-store', 'OMDb miss should use no-store');
+    assert(!('Netlify-CDN-Cache-Control' in response.headers), 'OMDb miss must omit the CDN cache header');
+}
+
+async function testIndexUpdater() {
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'filmimnerede-ratings-'));
+    const outputPath = path.join(directory, 'imdb-ratings.bin.gz');
+    const tmpPath = `${outputPath}.tmp`;
+    const brokenPath = path.join(directory, 'broken.bin.gz');
+    const server = http.createServer((request, response) => {
+        response.setHeader('Connection', 'close');
+        switch (request.url) {
+            case '/redirect':
+                response.writeHead(302, { Location: '/ratings' }).end();
+                break;
+            case '/ratings':
+                response.end(zlib.gzipSync(RATINGS_TSV));
+                break;
+            case '/corrupt':
+                response.end('not gzip');
+                break;
+            case '/empty':
+                response.end(zlib.gzipSync('tconst\taverageRating\tnumVotes\n'));
+                break;
+            default:
+                response.writeHead(500).end();
+        }
+    });
+
+    try {
+        _resetIndexCache();
+        _resetRateLimit();
+        _setIndexPathForTests(outputPath);
+        global.fetch = async () => createUpstreamResponse({ Response: 'True', imdbRating: '7.6' });
+        let response = await requestRating('tt1234567');
+        assert(response.statusCode === 200 && parseBody(response).imdbRating === '7.6', 'Missing index should reach OMDb');
+
+        _setIndexPathForTests(brokenPath);
+        for (const bytes of ['not gzip', zlib.gzipSync('missing binary header')]) {
+            fs.writeFileSync(brokenPath, bytes);
+            response = await requestRating('tt1234567');
+            assert(response.statusCode === 200 && parseBody(response).imdbRating === '7.6', 'Broken index should reach OMDb');
+        }
+
+        await new Promise((resolve, reject) => {
+            server.once('error', reject);
+            server.listen(0, '127.0.0.1', resolve);
+        });
+        const baseUrl = `http://127.0.0.1:${server.address().port}`;
+        const result = await buildImdbRatingsIndex({ url: `${baseUrl}/redirect`, outputPath, minVotes: 100 });
+        assert(result.ok && result.count === 3, 'Updater should follow a 302 and write three valid ratings');
+        assert(!fs.existsSync(tmpPath), 'Successful update should leave no temporary file');
+        const savedIndex = fs.readFileSync(outputPath);
+
+        _setIndexPathForTests(outputPath);
+        delete process.env.OMDB_API_KEY;
+        response = await requestRating('tt4294967295');
+        const body = parseBody(response);
+        assert(response.statusCode === 200 && body.source === 'imdb-dataset' && body.imdbRating === '10.0',
+            'OMDb handler should read the index produced by the updater');
+
+        for (const route of ['/corrupt', '/http-error', '/empty']) {
+            fs.writeFileSync(tmpPath, 'old partial update');
+            const stale = await buildImdbRatingsIndex({ url: baseUrl + route, outputPath, allowStale: true });
+            assert(!stale.ok && stale.staleUsed && stale.error instanceof Error, `Expected stale fallback for ${route}`);
+            assert(fs.readFileSync(outputPath).equals(savedIndex), `Failed update modified existing index for ${route}`);
+            assert(!fs.existsSync(tmpPath), `Temporary file was left after ${route}`);
+        }
+
+        const missing = await buildImdbRatingsIndex({
+            url: `${baseUrl}/http-error`,
+            outputPath: brokenPath + '.missing',
+            allowStale: true
+        });
+        assert(!missing.ok && !missing.staleUsed, 'Stale fallback should report when no prior index exists');
+    } finally {
+        if (server.listening) {
+            await new Promise(resolve => server.close(resolve));
+        }
+        for (const file of [tmpPath, outputPath, brokenPath, brokenPath + '.missing', brokenPath + '.missing.tmp']) {
+            fs.rmSync(file, { force: true });
+        }
+        fs.rmdirSync(directory);
+    }
+}
+
 async function runTest() {
     const originalFetch =
         global.fetch;
@@ -247,6 +461,8 @@ async function runTest() {
         global.setTimeout;
 
     try {
+        _setIndexBufferForTests(null);
+
         // -------------------------------------------------
         // Browser/client current-tree secret scan
         // -------------------------------------------------
@@ -921,6 +1137,9 @@ async function runTest() {
         response = await handler(rateLimitEvent);
         assert(response.statusCode === 200, 'Requests should be allowed when the fixed window expires');
 
+        await testLocalIndex(testIndexCodec());
+        await testIndexUpdater();
+
         console.log(
             `[INFO] browser source files scanned: ${browserScan.files.length}`
         );
@@ -929,6 +1148,7 @@ async function runTest() {
             '[PASS] OMDb proxy regression tests passed'
         );
     } finally {
+        _resetIndexCache();
         _resetRateLimit();
         global.fetch =
             originalFetch;

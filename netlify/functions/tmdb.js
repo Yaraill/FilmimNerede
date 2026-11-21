@@ -1,5 +1,6 @@
 const dns = require('dns');
 const https = require('https');
+const { lookupImdbRating, _resetIndexCache, _setIndexPathForTests, _setIndexBufferForTests } = require('./lib/imdb-ratings-index');
 
 const TMDB_API_HOST = 'api.themoviedb.org';
 const TMDB_IMAGE_HOST = 'image.tmdb.org';
@@ -10,6 +11,8 @@ const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
 
 const ALLOWED_IMAGE_PATH_PATTERN =
     /^\/t\/p\/(?:original|w45|w92|w154|w185|w300|w342|w500|w780|w1280|h632)\/[A-Za-z0-9._-]+$/;
+
+const ENRICHABLE_DETAIL_PATH_PATTERN = /^\/3\/(?:movie|tv)\/\d+(?:\?|$)/;
 
 const ALLOWED_API_PATH_PREFIXES = [
     '/3/movie/',
@@ -27,6 +30,84 @@ const IPV4_PATTERN =
     /^(?:\d{1,3}\.){3}\d{1,3}$/;
 
 const dohIpCache = new Map();
+
+// İstek sınırı tek bir fonksiyon örneğinde geçerli olan en iyi çaba korumasıdır.
+const MAX_RATE_LIMIT_CLIENTS = 5000;
+const DEFAULT_RATE_LIMIT = {
+    windowMs: 60_000,
+    now: Date.now,
+    limits: { api: 120, image: 300, probe: 30 }
+};
+const clientWindows = new Map();
+let rateLimit = createDefaultRateLimit();
+
+function createDefaultRateLimit(options = {}) {
+    return {
+        ...DEFAULT_RATE_LIMIT,
+        ...options,
+        limits: { ...DEFAULT_RATE_LIMIT.limits, ...options?.limits }
+    };
+}
+
+function _resetRateLimit(options = {}) {
+    clientWindows.clear();
+    rateLimit = createDefaultRateLimit(options);
+}
+
+function getClientKey(headers) {
+    const normalizedHeaders = Object.fromEntries(
+        Object.entries(headers ?? {}).map(([name, value]) => [name.toLowerCase(), value])
+    );
+
+    return normalizedHeaders['x-nf-client-connection-ip']?.trim() ||
+        normalizedHeaders['x-forwarded-for']?.split(',', 1)[0]?.trim() ||
+        'unknown';
+}
+
+function getRateLimitBucket(queryParams) {
+    if (queryParams?.probe === '1') {
+        return 'probe';
+    }
+    return typeof queryParams?.target === 'string' && queryParams.target.trim().toLowerCase() === 'image'
+        ? 'image'
+        : 'api';
+}
+
+function recordRequest(bucket, clientKey) {
+    const now = rateLimit.now();
+    const key = `${bucket}:${clientKey}`;
+    const limit = rateLimit.limits[bucket];
+    let window = clientWindows.get(key);
+
+    if (window && window.expiresAt <= now) {
+        clientWindows.delete(key);
+        window = undefined;
+    }
+
+    if (!window) {
+        if (clientWindows.size >= MAX_RATE_LIMIT_CLIENTS) {
+            for (const [entryKey, entry] of clientWindows) {
+                if (entry.expiresAt <= now) {
+                    clientWindows.delete(entryKey);
+                }
+            }
+            if (clientWindows.size >= MAX_RATE_LIMIT_CLIENTS) {
+                // Map sırası pencerenin açılış sırasını korur.
+                clientWindows.delete(clientWindows.keys().next().value);
+            }
+        }
+
+        window = { count: 0, expiresAt: now + rateLimit.windowMs };
+        clientWindows.set(key, window);
+    }
+
+    if (window.count >= limit) {
+        return Math.max(1, Math.ceil((window.expiresAt - now) / 1000));
+    }
+
+    window.count += 1;
+    return 0;
+}
 
 function jsonResponse(statusCode, payload, extraHeaders = {}) {
     return {
@@ -379,6 +460,34 @@ async function fetchUpstreamWithFallback(targetSpec, options = {}) {
     );
 }
 
+function enrichDetailBodyWithImdbRating(bodyText, upstreamPath) {
+    if (typeof bodyText !== 'string' || !bodyText ||
+        typeof upstreamPath !== 'string' || !ENRICHABLE_DETAIL_PATH_PATTERN.test(upstreamPath)) {
+        return bodyText;
+    }
+
+    try {
+        const payload = JSON.parse(bodyText);
+        if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
+            return bodyText;
+        }
+
+        const imdbId = typeof payload.external_ids?.imdb_id === 'string'
+            ? payload.external_ids.imdb_id
+            : payload.imdb_id;
+        const localRating = lookupImdbRating(imdbId);
+        if (!localRating) {
+            return bodyText;
+        }
+
+        payload.imdb_rating = localRating;
+        payload.imdb_rating_source = 'imdb-dataset';
+        return JSON.stringify(payload);
+    } catch {
+        return bodyText;
+    }
+}
+
 async function handler(event = {}, deps = {}) {
     const queryParams = event.queryStringParameters || {};
     const errorHeaders =
@@ -388,6 +497,16 @@ async function handler(event = {}, deps = {}) {
     const method = String(event.httpMethod || '').toUpperCase();
     if (method !== 'GET') {
         return jsonResponse(405, { error: 'Method Not Allowed' }, { Allow: 'GET', ...errorHeaders });
+    }
+
+    const bucket = getRateLimitBucket(queryParams);
+    const retryAfter = recordRequest(bucket, getClientKey(event.headers));
+    if (retryAfter > 0) {
+        return jsonResponse(
+            429,
+            { error: 'Çok fazla istek. Lütfen biraz sonra tekrar deneyin.' },
+            { 'Retry-After': String(retryAfter), 'Cache-Control': 'no-store' }
+        );
     }
 
     if (queryParams.probe === '1') {
@@ -454,10 +573,15 @@ async function handler(event = {}, deps = {}) {
             responseHeaders['Netlify-CDN-Cache-Control'] = 'public, s-maxage=600, durable';
         }
 
+        const rawBody = upstream.bodyBuffer.toString('utf8');
+        const body = upstream.statusCode >= 200 && upstream.statusCode < 300
+            ? enrichDetailBodyWithImdbRating(rawBody, validation.upstreamPath)
+            : rawBody;
+
         return {
             statusCode: upstream.statusCode,
             headers: responseHeaders,
-            body: upstream.bodyBuffer.toString('utf8')
+            body
         };
     } catch (error) {
         if (error?.name === 'AbortError') {
@@ -476,5 +600,10 @@ module.exports = {
     isValidPublicIpv4,
     resolveUpstreamIpViaDoh,
     shouldUseDohFallback,
+    enrichDetailBodyWithImdbRating,
+    _resetIndexCache,
+    _setIndexPathForTests,
+    _setIndexBufferForTests,
+    _resetRateLimit,
     _resetDohCache: () => dohIpCache.clear()
 };

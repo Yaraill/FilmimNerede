@@ -1894,10 +1894,24 @@ function compactShareItemText(value, limit) {
     return text.slice(0, limit - 1).replace(/[\uD800-\uDBFF]$/u, '').trimEnd() + '…';
 }
 
+function normalizeShareItemImdbRating(value) {
+    if (typeof normalizeImdbRating === 'function') {
+        return normalizeImdbRating(value);
+    }
+    let numeric = null;
+    if (typeof value === 'number') {
+        numeric = value;
+    } else if (typeof value === 'string' && /^(?:10(?:\.0+)?|[0-9](?:\.\d+)?)$/.test(value.trim())) {
+        numeric = Number(value.trim());
+    }
+    return Number.isFinite(numeric) && numeric > 0 && numeric <= 10 ? numeric.toFixed(1) : null;
+}
+
 function normalizeShareListItemSnapshot(item) {
     const token = encodeSharedListItemToken(item);
     if (!token) return null;
     const poster = item.poster_path;
+    const imdbRating = normalizeShareItemImdbRating(item.imdb_rating);
     return {
         id: Number(token.slice(1)),
         media_type: token[0] === 'm' ? 'movie' : 'tv',
@@ -1909,6 +1923,7 @@ function normalizeShareListItemSnapshot(item) {
         first_air_date: compactShareItemText(item.first_air_date, 10),
         year: extractShareItemYear(item),
         vote_average: getShareItemRating(item),
+        ...(imdbRating ? { imdb_rating: imdbRating } : {}),
         overview: compactShareItemText(item.overview, 420),
         genre_ids: getShareItemGenreIds(item).slice(0, 12)
     };
@@ -2632,10 +2647,12 @@ function renderShareListPreview(item) {
     const header = createShareListElement('div', 'share-list-preview-header');
     const meta = createShareListElement('div', 'share-list-preview-meta');
     const year = extractShareItemYear(item);
-    const rating = getShareItemRating(item);
+    const imdbRating = normalizeShareItemImdbRating(item.imdb_rating);
     meta.append(createShareListElement('span', 'share-list-preview-type', getShareItemTypeLabel(item)));
     if (year) meta.append(createShareListElement('span', 'share-list-preview-year', year));
-    if (rating) meta.append(createShareListElement('span', 'share-list-preview-rating', `★ ${rating.toFixed(1)}/10`));
+    if (imdbRating) {
+        meta.append(createShareListElement('span', 'share-list-preview-rating', 'IMDb ' + imdbRating));
+    }
     header.append(createShareListElement('h3', '', formatShareItemLabel(item)), meta);
     card.append(header);
 
@@ -2754,9 +2771,7 @@ function createShareListChoice(item, isLibrary) {
         const thumbnail = createShareListPoster(item, 'w92', 'share-list-thumb');
         if (thumbnail) button.append(thumbnail);
         const body = createShareListElement('span', 'share-list-result-body');
-        const rating = getShareItemRating(item);
-        const meta = [type, extractShareItemYear(item), rating ? `★ ${rating.toFixed(1)}` : '']
-            .filter(Boolean).join(' • ');
+        const meta = [type, extractShareItemYear(item)].filter(Boolean).join(' • ');
         body.append(label, createShareListElement('span', 'share-list-result-meta', meta));
         const overview = compactShareItemText(item.overview, 160);
         if (overview) body.append(createShareListElement('span', 'share-list-result-overview', overview));

@@ -1,4 +1,14 @@
-// İstek sınırı tek bir fonksiyon örneğinde geçerli olan en iyi çaba korumasıdır.
+const {
+    lookupImdbRating,
+    _resetIndexCache,
+    _setIndexPathForTests,
+    _setIndexBufferForTests
+} = require('./lib/imdb-ratings-index');
+
+exports._resetIndexCache = _resetIndexCache;
+exports._setIndexPathForTests = _setIndexPathForTests;
+exports._setIndexBufferForTests = _setIndexBufferForTests;
+
 const OMDB_BASE_URL =
     'https://www.omdbapi.com/';
 
@@ -8,6 +18,12 @@ const OMDB_TIMEOUT_MS =
 const IMDB_ID_PATTERN =
     /^tt\d{7,10}$/;
 
+const RATINGS_CACHE_HEADERS = {
+    'Cache-Control': 'public, max-age=3600, s-maxage=86400',
+    'Netlify-CDN-Cache-Control': 'public, s-maxage=604800, durable'
+};
+
+// İstek sınırı tek bir fonksiyon örneğinde geçerli olan en iyi çaba korumasıdır.
 const MAX_RATE_LIMIT_CLIENTS = 5000;
 const DEFAULT_RATE_LIMIT = {
     limit: 30,
@@ -145,6 +161,20 @@ exports.handler =
             );
         }
 
+        const localRating = lookupImdbRating(imdbId);
+        if (localRating) {
+            return jsonResponse(
+                200,
+                {
+                    Response: 'True',
+                    imdbID: imdbId,
+                    imdbRating: localRating,
+                    source: 'imdb-dataset'
+                },
+                RATINGS_CACHE_HEADERS
+            );
+        }
+
         const rawApiKey =
             process.env
                 .OMDB_API_KEY;
@@ -255,17 +285,15 @@ exports.handler =
             // Response:false application-level
             // response olarak aynen korunur; ancak
             // başarısız/kota yanıtları CDN/tarayıcıda önbelleklenmez.
-            const cacheControl =
+            const cacheHeaders =
                 data?.Response === 'True'
-                    ? 'public, max-age=3600, s-maxage=86400'
-                    : 'no-store';
+                    ? RATINGS_CACHE_HEADERS
+                    : { 'Cache-Control': 'no-store' };
 
             return jsonResponse(
                 200,
                 data,
-                {
-                    'Cache-Control': cacheControl
-                }
+                cacheHeaders
             );
         } catch (error) {
             if (

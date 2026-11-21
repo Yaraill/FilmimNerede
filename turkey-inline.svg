@@ -263,7 +263,7 @@
     .imax-pin .pin-label text {
       letter-spacing: 0.3px;
     }
-    path:hover {
+    .turkey-svg path:hover {
       fill: #3a3a52;
       transition: fill 0.2s ease;
     }
@@ -351,6 +351,14 @@
       <g class="pin-label">
         <rect x="272.6" y="197.6" width="171.6" height="18" rx="4" fill="rgba(0,0,0,0.85)" stroke="#e50914" stroke-width="0.5"/>
         <text x="358.4" y="206.6" text-anchor="middle" dominant-baseline="middle" fill="white" font-family="Inter, Arial, sans-serif" font-size="7" font-weight="600">Adana - Paribu Cineverse M1 Adana IMAX</text>
+      </g>
+    </g>
+    <g class="imax-pin">
+      <circle cx="252.5" cy="122.0" r="5" fill="rgba(229,9,20,0.3)" class="pin-glow"/>
+      <circle cx="252.5" cy="122.0" r="2.5" fill="#e50914" class="pin-core"/>
+      <g class="pin-label">
+        <rect x="167.5" y="97.0" width="170.0" height="18" rx="4" fill="rgba(0,0,0,0.85)" stroke="#e50914" stroke-width="0.5"/>
+        <text x="252.5" y="106.0" text-anchor="middle" dominant-baseline="middle" fill="white" font-family="Inter, Arial, sans-serif" font-size="7" font-weight="600">Ankara - Paribu Cineverse Panora IMAX</text>
       </g>
     </g>
   </g>

@@ -1,4 +1,4 @@
-const CACHE_NAME = 'filmimnerede-v116';
+const CACHE_NAME = 'filmimnerede-v119';
 const ASSETS_TO_CACHE = [
   '/',
   '/index.html',
@@ -11,12 +11,13 @@ const ASSETS_TO_CACHE = [
   '/js/runtime/providers.js?v=6',
   '/js/runtime/platform.js?v=13',
   '/js/runtime/search.js?v=7',
-  '/js/runtime/movie.js?v=13',
+  '/js/runtime/movie.js?v=15',
   '/js/runtime/actor.js?v=13',
   '/js/runtime/home.js?v=14',
-  '/js/runtime/profile.js?v=17',
-  '/js/runtime/misc.js?v=12',
-  '/app.js?v=78',
+  '/js/runtime/profile.js?v=18',
+  '/js/runtime/misc.js?v=14',
+  '/app.js?v=79',
+  '/turkey-inline.svg',
   '/assets/icons/icon-192.png',
   '/assets/icons/icon-512.png',
   '/assets/icons/icon-maskable-192.png',

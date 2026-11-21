@@ -493,6 +493,8 @@ function renderSection(tabId, routeContext = null) {
         loadProfile(routeContext);
     } else if (tabId === 'shared-list' && typeof loadSharedList === 'function') {
         loadSharedList(routeContext);
+    } else if (tabId === 'imax' && typeof loadImaxMap === 'function') {
+        loadImaxMap();
     }
 }
 

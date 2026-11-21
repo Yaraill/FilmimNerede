@@ -6,6 +6,7 @@ const puppeteer = require('puppeteer');
 const { toTmdbApiUrl } = require('./helpers/tmdb-proxy-shim');
 
 const tmdbFunction = require('../netlify/functions/tmdb');
+const { parseRatingsTsvToBinaryBuffer } = require('../netlify/functions/lib/imdb-ratings-index');
 
 const ROOT_DIR = path.resolve(__dirname, '..');
 
@@ -151,8 +152,22 @@ function createMockTmdbApiPayload(upstreamPath) {
 }
 
 async function runHandlerUnitTests() {
+    tmdbFunction._setIndexBufferForTests(null);
+    tmdbFunction._resetRateLimit();
     console.log('1) Running netlify/functions/tmdb.js unit & security tests...');
 
+    try {
+        await runExistingHandlerChecks();
+        await runImdbEnrichmentUnitTests();
+        await runRateLimitUnitTests();
+        console.log('✓ Unit & handler tests passed.');
+    } finally {
+        tmdbFunction._resetIndexCache();
+        tmdbFunction._resetRateLimit();
+    }
+}
+
+async function runExistingHandlerChecks() {
     const securityContext = vm.createContext({ URL });
     vm.runInContext(
         fs.readFileSync(path.join(ROOT_DIR, 'js/runtime/security.js'), 'utf8'),
@@ -480,8 +495,195 @@ async function runHandlerUnitTests() {
     const resolved2 = await tmdbFunction.resolveUpstreamIpViaDoh('api.themoviedb.org', dohMockFetch);
     assert(resolved1 === '3.160.57.74' && resolved2 === '3.160.57.74', 'DoH genel IP döndürmeli');
     assert(dohFetchCount === 1, 'İkinci DoH çağrısı bellek içi önbellekten dönmeli');
+}
 
-    console.log('✓ Unit & handler tests passed.');
+async function runImdbEnrichmentUnitTests() {
+    const index = parseRatingsTsvToBinaryBuffer(
+        'tconst\taverageRating\tnumVotes\ntt0137523\t8.8\t1000\ntt0903747\t9.5\t1000\n'
+    );
+    const requestApi = (upstreamPath, body, statusCode = 200) => tmdbFunction.handler({
+        httpMethod: 'GET',
+        queryStringParameters: { target: 'api', path: upstreamPath }
+    }, {
+        lookupImpl: async () => [{ address: '3.160.57.74', family: 4 }],
+        fetchImpl: async () => ({
+            status: statusCode,
+            headers: { get: () => 'application/json' },
+            arrayBuffer: async () => Buffer.from(body)
+        })
+    });
+
+    tmdbFunction._setIndexBufferForTests(index);
+    try {
+        const moviePath = '/3/movie/550?language=tr-TR&append_to_response=videos,credits,recommendations,external_ids';
+        const movieBody = '{ "id": 550, "external_ids": { "imdb_id": "tt0137523" } }';
+        const movieResponse = await requestApi(moviePath, movieBody);
+        const movie = JSON.parse(movieResponse.body);
+        assert(movieResponse.statusCode === 200 && movie.id === 550, 'Film detay yanıtı korunmalı');
+        assert(movie.imdb_rating === '8.8' && movie.imdb_rating_source === 'imdb-dataset',
+            'Film detayına yerel IMDb puanı ve kaynak eklenmeli');
+
+        const tvResponse = await requestApi(
+            '/3/tv/1396?append_to_response=external_ids',
+            '{"id":1396,"imdb_id":"tt0137523","external_ids":{"imdb_id":"tt0903747"}}'
+        );
+        const tv = JSON.parse(tvResponse.body);
+        assert(tvResponse.statusCode === 200 && tv.imdb_rating === '9.5' && tv.imdb_rating_source === 'imdb-dataset',
+            'Dizi detayında external_ids.imdb_id öncelikli olmalı');
+
+        const topLevelResponse = await requestApi('/3/movie/550', '{"imdb_id":"tt0137523"}');
+        assert(topLevelResponse.statusCode === 200 && JSON.parse(topLevelResponse.body).imdb_rating === '8.8',
+            'Üst düzey imdb_id kullanılarak IMDb puanı bulunabilmeli');
+
+        const passthroughBody = '{ "imdb_id": "tt0137523", "imdb_rating": "7.0" }\n';
+        for (const upstreamPath of [
+            '/3/movie/popular',
+            '/3/search/multi?query=test',
+            '/3/discover/movie',
+            '/3/movie/550/credits',
+            '/3/movie/550/watch/providers',
+            '/3/collection/10'
+        ]) {
+            const response = await requestApi(upstreamPath, passthroughBody);
+            assert(response.statusCode === 200 && response.body === passthroughBody,
+                'Detay dışı yanıtın özgün gövdesi ve puanı korunmalı: ' + upstreamPath);
+        }
+
+        for (const [body, statusCode] of [
+            ['{ "imdb_id": "tt9999999" }', 200],
+            ['{broken', 200],
+            [' null ', 200],
+            [' [{"imdb_id":"tt0137523"}] ', 200],
+            [movieBody, 404]
+        ]) {
+            const response = await requestApi(moviePath, body, statusCode);
+            assert(response.statusCode === statusCode && response.body === body,
+                'IMDb puanı eklenemediğinde özgün durum kodu ve gövde korunmalı: ' + statusCode + ', ' + body);
+        }
+    } finally {
+        tmdbFunction._setIndexBufferForTests(null);
+    }
+}
+
+async function runRateLimitUnitTests() {
+    let now = 0;
+    tmdbFunction._resetRateLimit({ now: () => now });
+
+    let lookupCalls = 0;
+    let fetchCalls = 0;
+    const deps = {
+        lookupImpl: async () => {
+            lookupCalls += 1;
+            return [{ address: '3.160.57.74', family: 4 }];
+        },
+        fetchImpl: async url => {
+            fetchCalls += 1;
+            const isImage = new URL(url).hostname === 'image.tmdb.org';
+            return {
+                status: 200,
+                headers: { get: () => isImage ? 'image/png' : 'application/json' },
+                arrayBuffer: async () => isImage ? VALID_1X1_PNG : Buffer.from('{}')
+            };
+        }
+    };
+
+    const clientHeaders = { 'X-Nf-Client-Connection-Ip': '203.0.113.10' };
+    const apiQuery = { path: '/3/movie/550' };
+    const imageQuery = { target: '  ImAgE  ', path: '/t/p/w500/poster.png' };
+    const probeQuery = { probe: '1', target: 'image' };
+    const sendRequest = (queryStringParameters, headers = clientHeaders, httpMethod = 'GET') =>
+        tmdbFunction.handler({ httpMethod, queryStringParameters, headers }, deps);
+
+    for (let request = 1; request <= 120; request += 1) {
+        const response = await sendRequest(apiQuery);
+        assert(response.statusCode === 200, `API isteği ${request} için 200 dönmeli`);
+    }
+
+    now = 1_250;
+    const limitedApi = await sendRequest(apiQuery);
+    assert(limitedApi.statusCode === 429, '121. API isteği 429 dönmeli');
+    assert(limitedApi.headers['Retry-After'] === '59', 'Retry-After kalan süreyi 59 saniyeye yuvarlamalı');
+    assert(limitedApi.headers['Cache-Control'] === 'no-store', '429 yanıtı önbelleklenmemeli');
+    assert(
+        JSON.parse(limitedApi.body).error === 'Çok fazla istek. Lütfen biraz sonra tekrar deneyin.',
+        '429 yanıtı beklenen Türkçe hata mesajını içermeli'
+    );
+    assert(lookupCalls === 120 && fetchCalls === 120, '429 isteği DNS veya upstream çağrısı yapmamalı');
+    assert((await sendRequest({ target: 'other' })).statusCode === 429, 'Kota, hedef ve yol doğrulamasından önce uygulanmalı');
+
+    for (let request = 1; request <= 300; request += 1) {
+        const response = await sendRequest(imageQuery);
+        assert(response.statusCode === 200, `API kotası doluyken görsel isteği ${request} için 200 dönmeli`);
+    }
+    assert((await sendRequest(imageQuery)).statusCode === 429, '301. görsel isteği 429 dönmeli');
+
+    for (let request = 1; request <= 30; request += 1) {
+        const response = await sendRequest(probeQuery);
+        assert(response.statusCode === 200, `API ve görsel kotaları doluyken probe isteği ${request} için 200 dönmeli`);
+    }
+    assert((await sendRequest({ probe: '1' })).statusCode === 429, '31. probe isteği 429 dönmeli');
+
+    now = 0;
+    tmdbFunction._resetRateLimit({ now: () => now, limits: { api: 1 } });
+    const netlifyHeaders = {
+        'X-Nf-Client-Connection-Ip': ' 203.0.113.10 ',
+        'X-Forwarded-For': '192.0.2.10'
+    };
+    assert((await sendRequest(apiQuery, netlifyHeaders, 'POST')).statusCode === 405, 'POST isteği 405 dönmeli');
+    assert((await sendRequest(apiQuery, netlifyHeaders)).statusCode === 200, 'POST isteği GET kotasını tüketmemeli');
+    assert(
+        (await sendRequest(apiQuery, { ...clientHeaders, 'X-Forwarded-For': '192.0.2.20' })).statusCode === 429,
+        'Netlify IP başlığı varken X-Forwarded-For değişikliği kotayı aşamamalı'
+    );
+    assert((await sendRequest(apiQuery, netlifyHeaders, 'POST')).statusCode === 405, 'Kota doluyken de POST isteği 405 dönmeli');
+
+    const forwardedHeaders = { 'X-Forwarded-For': ' 192.0.2.10 , 192.0.2.20 ' };
+    assert((await sendRequest(apiQuery, forwardedHeaders)).statusCode === 200, 'Farklı bir IP için API isteğine izin verilmeli');
+    assert(
+        (await sendRequest(apiQuery, { 'x-forwarded-for': '192.0.2.10' })).statusCode === 429,
+        'X-Forwarded-For listesindeki ilk IP kırpılıp kota anahtarı olarak kullanılmalı'
+    );
+    assert(
+        (await sendRequest(apiQuery, { 'X-Forwarded-For': '192.0.2.20' })).statusCode === 200,
+        'X-Forwarded-For listesindeki ikinci IP kendi kotasını korumalı'
+    );
+
+    now = 59_999;
+    const lastMillisecond = await sendRequest(apiQuery, netlifyHeaders);
+    assert(lastMillisecond.statusCode === 429 && lastMillisecond.headers['Retry-After'] === '1', 'Pencerenin son milisaniyesinde Retry-After 1 olmalı');
+    now = 60_000;
+    assert((await sendRequest(apiQuery, netlifyHeaders)).statusCode === 200, 'Pencere süresi dolduğunda aynı IP yeni kotasını kullanabilmeli');
+
+    assert((await sendRequest({}, {})).statusCode === 400, 'İlk geçersiz GET isteği 400 dönmeli');
+    assert(
+        (await sendRequest(apiQuery, { 'X-Nf-Client-Connection-Ip': ' ', 'X-Forwarded-For': ' ' })).statusCode === 429,
+        'Başlıksız ve boş IP başlıklı istekler aynı kotayı kullanmalı'
+    );
+
+    await runRateLimitCapacityTests();
+}
+
+async function runRateLimitCapacityTests() {
+    let now = 0;
+    tmdbFunction._resetRateLimit({ now: () => now, limits: { probe: 1 } });
+    const sendProbe = client => tmdbFunction.handler({
+        httpMethod: 'GET',
+        headers: { 'X-Nf-Client-Connection-Ip': `2001:db8::${client.toString(16)}` },
+        queryStringParameters: { probe: '1' }
+    });
+
+    for (let client = 1; client <= 5_000; client += 1) {
+        if (client === 3) now = 1;
+        assert((await sendProbe(client)).statusCode === 200, `Yeni istemci ${client} için probe 200 dönmeli`);
+    }
+
+    now = 60_000;
+    assert((await sendProbe(5_001)).statusCode === 200, 'Süresi dolmuş kayıtlar yeni istemciye yer açmalı');
+    assert((await sendProbe(5_002)).statusCode === 200, 'Süresi dolmuş tüm kayıtlar temizlenmeli');
+    assert((await sendProbe(3)).statusCode === 429, 'Süresi dolmamış en eski kayıt temizlikten sonra korunmalı');
+    assert((await sendProbe(5_003)).statusCode === 200, 'Dolu kayıt tablosu yeni istemciye yer açmalı');
+    assert((await sendProbe(4)).statusCode === 429, 'En eski kayıt çıkarılırken sonraki aktif kayıt korunmalı');
+    assert((await sendProbe(3)).statusCode === 200, 'Kapasite dolunca en eski aktif kayıt çıkarılmalı');
 }
 
 async function createTestServer() {
@@ -581,23 +783,28 @@ async function createIsolatedPage(browser) {
 }
 
 async function runBrowserIntegrationTests() {
+    tmdbFunction._setIndexBufferForTests(null);
+    tmdbFunction._resetRateLimit();
     console.log('2) TMDB API proxy ve görsel fallback entegrasyon testleri çalıştırılıyor...');
-    const { server, port, trackedProxyRequests } = await createTestServer();
+    let testServer;
     let browser;
 
-    const assertApiProxyRequests = requests => {
-        assert(requests.length > 0, 'Tarayıcı en az bir TMDB API isteği göndermeli');
-        assert(requests.every(rawUrl => {
-            const url = new URL(rawUrl);
-            return url.origin === `http://127.0.0.1:${port}` &&
-                url.pathname === '/.netlify/functions/tmdb' &&
-                url.searchParams.get('target') === 'api' &&
-                !url.searchParams.has('api_key') &&
-                !new URL(toTmdbApiUrl(rawUrl)).searchParams.has('api_key');
-        }), 'Tüm TMDB API istekleri anahtarsız ve aynı origin proxy üzerinden yapılmalı; doğrudan API isteği olmamalı');
-    };
-
     try {
+        testServer = await createTestServer();
+        const { port, trackedProxyRequests } = testServer;
+
+        const assertApiProxyRequests = requests => {
+            assert(requests.length > 0, 'Tarayıcı en az bir TMDB API isteği göndermeli');
+            assert(requests.every(rawUrl => {
+                const url = new URL(rawUrl);
+                return url.origin === `http://127.0.0.1:${port}` &&
+                    url.pathname === '/.netlify/functions/tmdb' &&
+                    url.searchParams.get('target') === 'api' &&
+                    !url.searchParams.has('api_key') &&
+                    !new URL(toTmdbApiUrl(rawUrl)).searchParams.has('api_key');
+            }), 'Tüm TMDB API istekleri anahtarsız ve aynı origin proxy üzerinden yapılmalı; doğrudan API isteği olmamalı');
+        };
+
         browser = await puppeteer.launch({
             headless: 'new',
             executablePath: getBrowserExecutablePath(),
@@ -774,10 +981,15 @@ async function runBrowserIntegrationTests() {
             console.log('✓ API proxy, tek probe ve görsel proxy fallback kontrolleri geçti.');
         }
     } finally {
-        if (browser) {
-            await browser.close();
+        try {
+            if (browser) {
+                await browser.close();
+            }
+        } finally {
+            tmdbFunction._resetIndexCache();
+            testServer?.server.close();
+            tmdbFunction._resetRateLimit();
         }
-        server.close();
     }
 }
 
