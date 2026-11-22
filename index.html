@@ -25,7 +25,7 @@
     </style>
     <!-- Google Fonts: Modern ve okunaklı bir font (Inter) -->
     <!-- Kendi CSS dosyamız -->
-    <link rel="stylesheet" href="style.css?v=68">
+    <link rel="stylesheet" href="style.css?v=69">
     <!-- Font Awesome (İkonlar için) -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" integrity="sha512-9usAa10IRO0HhonpyAIVpjrylPvoDwiPUiKdWk5t3PyolY1cOd4DSE0Ga+ri4AuTroPR5aQvXU9xC6qOPnzFeg==" crossorigin="anonymous" media="print" onload="this.media='all'">
     <noscript><link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" integrity="sha512-9usAa10IRO0HhonpyAIVpjrylPvoDwiPUiKdWk5t3PyolY1cOd4DSE0Ga+ri4AuTroPR5aQvXU9xC6qOPnzFeg==" crossorigin="anonymous"></noscript>
@@ -401,6 +401,8 @@
                 </div>
             </div>
             
+            <div id="active-filter-chips" class="active-filter-chips" aria-live="polite" aria-label="Aktif filtreler" hidden></div>
+
             <div id="search-results" class="movie-grid" style="margin-top: 30px;">
                 <!-- Arama sonuçları buraya gelecek -->
             </div>
@@ -899,10 +901,10 @@
     </div>
 
 
-<div id="advanced-search-panel" class="drawer" style="display:none; flex-direction: column; align-items: center; padding: 20px;">
+<div id="advanced-search-panel" class="drawer" style="display:none;">
     <button type="button" class="close-btn" onclick="toggleAdvancedSearch()" aria-label="Filtreleri Kapat">&times;</button>
                     <h3 style="text-align:center; margin-bottom: 15px; color: var(--text-muted);">Arama & Filtreleme</h3>
-                    <div style="display: flex; flex-direction: column; gap: 15px; width: 100%; align-items: center; margin-bottom: 20px;">
+                    <div class="advanced-filters-stack">
                         
                         <!-- Hidden select elements to preserve logic -->
                         <select id="mediaTypeFilter" style="display:none;" onchange="applyPlatformFilters()" aria-hidden="true" tabindex="-1">
@@ -933,7 +935,7 @@
                         </div>
 
                         <!-- Premium Secondary Filters (Year, Rating, Sort) -->
-                        <div style="display: flex; gap: 15px; flex-wrap: wrap; justify-content: center; width: 100%; align-items: center;">
+                        <div class="secondary-filters-row">
                             <input type="hidden" id="yearFilter" value="">
                             <div class="year-direct-filter" role="group" aria-label="Yıl veya Yıl Aralığı Filtresi">
                                 <input type="text" id="yearFromInput" class="custom-year-input" inputmode="numeric" maxlength="4" placeholder="Yıl (ör. 1994)" aria-label="Başlangıç veya tek yıl">
@@ -985,8 +987,7 @@
                                 <option value="order.asc" hidden disabled>Başrole Göre</option>
                             </select>
                         </div>
-                        
-                        
+                        <button type="button" id="drawer-clear-filters-btn" class="clear-all-filters-btn" onclick="resetAllPlatformFilters()" hidden><i class="fas fa-undo-alt" aria-hidden="true"></i> Filtreleri Temizle</button>
                     </div>
 </div>
     <div id="a11y-live-region" class="sr-only" role="status" aria-live="polite" aria-atomic="true"></div>
@@ -996,14 +997,14 @@
     <script src="js/runtime/security.js?v=6"></script>
     <script src="js/runtime/state.js?v=1"></script>
     <script src="js/runtime/router.js?v=10"></script>
-    <script src="js/runtime/shared-ui.js?v=16"></script>
+    <script src="js/runtime/shared-ui.js?v=17"></script>
     <script src="js/runtime/providers.js?v=6"></script>
-    <script src="js/runtime/platform.js?v=13"></script>
+    <script src="js/runtime/platform.js?v=14"></script>
     <script src="js/runtime/search.js?v=7"></script>
-    <script src="js/runtime/movie.js?v=15"></script>
+    <script src="js/runtime/movie.js?v=16"></script>
     <script src="js/runtime/actor.js?v=13"></script>
     <script src="js/runtime/home.js?v=14"></script>
-    <script src="js/runtime/profile.js?v=19"></script>
+    <script src="js/runtime/profile.js?v=20"></script>
     <script src="js/runtime/misc.js?v=14"></script>
     <script src="app.js?v=79"></script>
     <script>

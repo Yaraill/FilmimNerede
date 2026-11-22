@@ -147,6 +147,7 @@ if (typeof document !== 'undefined') {
                 }
             });
         });
+        renderActiveFilterChips();
     });
 }
 
@@ -194,6 +195,8 @@ function syncMyPlatformsUi() {
         document.getElementById(`btn-prov-${pid}`)
             ?.classList.toggle('my-platform-subscribed', subscribed);
     });
+
+    renderActiveFilterChips();
 }
 
 function toggleMyPlatformsPicker(forceOpen) {
@@ -356,6 +359,139 @@ function getPlatformFilterStateFromUi() {
     return sanitizePlatformFilterState(params.toString());
 }
 
+function getActivePlatformFilterEntries() {
+    const { media, genres, year, rating, runtime, sort, provider } = getPlatformFilterStateFromUi();
+    const entries = [];
+    const selectedOptionLabel = id => document.getElementById(id)?.selectedOptions?.[0]?.text || '';
+
+    if (media !== PLATFORM_FILTER_DEFAULTS.media) {
+        entries.push({
+            label: selectedOptionLabel('mediaTypeFilter'),
+            clear: () => syncPlatformMediaType(PLATFORM_FILTER_DEFAULTS.media)
+        });
+    }
+
+    if (genres.length > 0) {
+        const genrePills = Array.from(
+            document.querySelectorAll('.genre-pill-btn[onclick^="setGenre"]'),
+            button => ({
+                value: button.getAttribute('onclick').match(/^setGenre\('([^']*)'/)?.[1],
+                label: button.textContent.trim()
+            })
+        );
+
+        genres.forEach(genre => {
+            const pill = genrePills.find(({ value }) => value === genre);
+            const group = genrePills.find(({ value }) => value?.split('|').includes(genre));
+            entries.push({
+                label: pill?.label || genreMap[genre] || group?.label || 'Tür ' + genre,
+                clear: () => syncPlatformGenres(
+                    getPlatformFilterStateFromUi().genres.filter(value => value !== genre)
+                )
+            });
+        });
+    }
+
+    const yearLabel = parseYearFilterValue(year)?.label;
+    if (yearLabel) {
+        entries.push({ label: yearLabel, clear: () => syncPlatformSelect('yearFilter', '') });
+    }
+
+    if (rating !== PLATFORM_FILTER_DEFAULTS.rating) {
+        entries.push({
+            label: `IMDb ${rating}.0+`,
+            clear: () => syncPlatformSelect('ratingFilter', PLATFORM_FILTER_DEFAULTS.rating)
+        });
+    }
+
+    if (runtime !== PLATFORM_FILTER_DEFAULTS.runtime) {
+        entries.push({
+            label: selectedOptionLabel('runtimeFilter'),
+            clear: () => syncPlatformSelect('runtimeFilter', PLATFORM_FILTER_DEFAULTS.runtime)
+        });
+    }
+
+    if (sort !== PLATFORM_FILTER_DEFAULTS.sort) {
+        entries.push({
+            label: selectedOptionLabel('sortByFilter'),
+            clear: () => syncPlatformSelect('sortByFilter', PLATFORM_FILTER_DEFAULTS.sort)
+        });
+    }
+
+    if (provider !== PLATFORM_FILTER_DEFAULTS.provider) {
+        entries.push({
+            label: TR_SUBSCRIPTION_PROVIDERS[provider],
+            clear: () => syncSingleProviderFilter(0)
+        });
+    } else if (isMyPlatformsFilterEnabled() && getSubscribedProviderIds().length > 0) {
+        entries.push({
+            label: 'Sadece Aboneliklerim',
+            clear: () => {
+                if (!safeWriteStorage('myPlatformsFilterActive', false)) return false;
+                syncMyPlatformsUi();
+                return true;
+            }
+        });
+    }
+
+    return entries;
+}
+
+function renderActiveFilterChips() {
+    const container = document.getElementById('active-filter-chips');
+    if (!container) return;
+
+    const entries = getActivePlatformFilterEntries();
+    const drawerClearButton = document.getElementById('drawer-clear-filters-btn');
+    const focused = document.activeElement;
+    const focusedIndex = Array.from(container.querySelectorAll('button')).indexOf(focused);
+    const fragment = document.createDocumentFragment();
+
+    entries.forEach(({ label, clear }) => {
+        const chip = document.createElement('span');
+        chip.className = 'active-filter-chip';
+
+        const text = document.createElement('span');
+        text.textContent = label;
+
+        const removeButton = document.createElement('button');
+        removeButton.type = 'button';
+        removeButton.className = 'active-filter-chip-remove';
+        removeButton.textContent = '×';
+        removeButton.setAttribute('aria-label', `${label} filtresini kaldır`);
+        removeButton.addEventListener('click', () => {
+            if (clear() === false) return;
+            renderActiveFilterChips();
+            refreshPlatformFilterResults();
+        });
+
+        chip.append(text, removeButton);
+        fragment.append(chip);
+    });
+
+    if (entries.length > 0) {
+        const clearButton = document.createElement('button');
+        clearButton.type = 'button';
+        clearButton.className = 'clear-all-filters-btn';
+        clearButton.textContent = 'Filtreleri Temizle';
+        clearButton.addEventListener('click', resetAllPlatformFilters);
+        fragment.append(clearButton);
+    }
+
+    container.replaceChildren(fragment);
+    container.hidden = entries.length === 0;
+    if (drawerClearButton) drawerClearButton.hidden = container.hidden;
+
+    if (focusedIndex >= 0) {
+        const buttons = container.querySelectorAll('button');
+        const next = buttons[Math.min(focusedIndex, buttons.length - 1)] ||
+            document.getElementById('advanced-toggle-btn');
+        next?.focus({ preventScroll: true });
+    } else if (container.hidden && drawerClearButton && focused === drawerClearButton) {
+        document.querySelector('#advanced-search-panel > .close-btn')?.focus();
+    }
+}
+
 function buildPlatformFilterParams(state) {
     const params = new URLSearchParams();
 
@@ -512,13 +648,8 @@ function syncPlatformSelect(selectId, value) {
         });
 }
 
-function restorePlatformFilterState(state) {
-    syncPlatformSelect('mediaTypeFilter', state.media);
-    syncPlatformSelect('yearFilter', state.year);
-    syncPlatformSelect('ratingFilter', state.rating);
-    syncPlatformSelect('runtimeFilter', state.runtime);
-    syncPlatformSelect('sortByFilter', state.sort);
-
+function syncPlatformMediaType(media) {
+    syncPlatformSelect('mediaTypeFilter', media);
     document
         .querySelectorAll('.segment-btn[onclick^="setMediaType"]')
         .forEach(button => {
@@ -527,12 +658,14 @@ function restorePlatformFilterState(state) {
                 ?.match(/^setMediaType\('([^']*)'/);
             button.classList.toggle(
                 'active',
-                Boolean(match && match[1] === state.media)
+                Boolean(match && match[1] === media)
             );
         });
+}
 
-    const selectedGenreSet = new Set(state.genres);
-    selectedGenres = [...state.genres];
+function syncPlatformGenres(genres) {
+    const selectedGenreSet = new Set(genres);
+    selectedGenres = [...genres];
     const genreFilter = document.getElementById('genreFilter');
     if (genreFilter) {
         genreFilter.value = selectedGenres.join(',');
@@ -605,7 +738,7 @@ function restorePlatformFilterState(state) {
                     );
             });
 
-        state.genres.forEach(value => {
+        genres.forEach(value => {
             const genreValue =
                 String(value);
 
@@ -662,7 +795,15 @@ function restorePlatformFilterState(state) {
             );
         });
     }
+}
 
+function restorePlatformFilterState(state) {
+    syncPlatformMediaType(state.media);
+    syncPlatformSelect('yearFilter', state.year);
+    syncPlatformSelect('ratingFilter', state.rating);
+    syncPlatformSelect('runtimeFilter', state.runtime);
+    syncPlatformSelect('sortByFilter', state.sort);
+    syncPlatformGenres(state.genres);
     syncSingleProviderFilter(Number(state.provider) || 0);
     syncMyPlatformsUi();
 }
@@ -835,7 +976,7 @@ function restoreSearchFilterStateFromSession(query) {
     return false;
 }
 
-function applyPlatformFilters() {
+function applyPlatformFilters({ refreshUnchangedPlatform = false } = {}) {
     if (currentMode === "actor") {
         syncSingleProviderFilter(normalizeTmdbId(document.getElementById('providerFilter').value) || 0);
         if (currentProvider > 0) safeWriteStorage('myPlatformsFilterActive', false);
@@ -848,8 +989,18 @@ function applyPlatformFilters() {
         const state = getPlatformFilterStateFromUi();
         saveSearchFilterStateToSession(query, state);
         navigate(buildSearchRoute(query, state), { replace: true, searchFilterChange: true });
+    } else if (refreshUnchangedPlatform && location.hash === '#' + buildPlatformRoute()) {
+        refreshMyPlatformsResults();
     } else {
         navigateToCurrentPlatformFilters();
+    }
+}
+
+function refreshPlatformFilterResults() {
+    if (currentMode === 'actor') {
+        refreshMyPlatformsResults();
+    } else if (currentMode === 'platform' || currentMode === 'search') {
+        applyPlatformFilters({ refreshUnchangedPlatform: true });
     }
 }
 
@@ -1267,6 +1418,11 @@ function clearAllFilters() {
     resetPlatformFilterControls();
     safeWriteStorage('myPlatformsFilterActive', false);
     syncMyPlatformsUi();
+}
+
+function resetAllPlatformFilters() {
+    clearAllFilters();
+    refreshPlatformFilterResults();
 }
 
 function resetPlatformFilterControls() {

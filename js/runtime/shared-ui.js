@@ -832,8 +832,8 @@ function createMovieCard(item, mediaType = "movie", tabContext = "", renderOptio
                     decoding="async"
                     style="cursor:pointer"
                     onclick="openDetails(${escapeAttr(itemId)}, '${escapeAttr(normalizedMediaType)}')"
-                    onmouseenter="startHoverSlideshow(this, ${escapeAttr(itemId)}, '${escapeAttr(normalizedMediaType)}')"
-                    onmouseleave="stopHoverSlideshow(this)"
+                    onmouseenter="startHoverSlideshow(this, ${escapeAttr(itemId)}, '${escapeAttr(normalizedMediaType)}'); if (typeof scheduleMediaDetailPrefetch === 'function') scheduleMediaDetailPrefetch(${escapeAttr(itemId)}, '${escapeAttr(normalizedMediaType)}');"
+                    onmouseleave="stopHoverSlideshow(this); if (typeof cancelMediaDetailPrefetch === 'function') cancelMediaDetailPrefetch();"
                 >
                 ${userRatingBadgeHtml}
                 ${tvProgressSlot}
@@ -848,6 +848,8 @@ function createMovieCard(item, mediaType = "movie", tabContext = "", renderOptio
                     <button
                         type="button"
                         class="movie-title-btn"
+                        onfocus="if (typeof scheduleMediaDetailPrefetch === 'function') scheduleMediaDetailPrefetch(${escapeAttr(itemId)}, '${escapeAttr(normalizedMediaType)}')"
+                        onblur="if (typeof cancelMediaDetailPrefetch === 'function') cancelMediaDetailPrefetch()"
                         onclick="openDetails(${itemId}, '${normalizedMediaType}')"
                         aria-label="${escapeHtml(titleWithYear)} detayları"
                     >

@@ -351,6 +351,7 @@ async function runTest() {
 
             // SCENARIO 3.5 — explicit typed TV navigation (Test 2 standalone)
             window.networkRequests = [];
+            if (typeof movieDetailCache !== 'undefined') movieDetailCache.delete('tv:94997');
             window.openDetails(94997, 'tv');
             await waitRender();
             check(window.location.hash === '#movie/94997/tv', 'S3.5: hash should be #movie/94997/tv but was ' + window.location.hash);

@@ -298,14 +298,21 @@ function renderRecentlyViewed(routeContext = null) {
 
 
 const PROFILE_BACKUP_APP = 'FilmimNerede';
-const PROFILE_BACKUP_VERSION = 1;
+const PROFILE_BACKUP_VERSION = 2;
+const PROFILE_BACKUP_SUPPORTED_VERSIONS = new Set([1, 2]);
 const PROFILE_BACKUP_MAX_FILE_BYTES = 5 * 1024 * 1024;
-const PROFILE_BACKUP_STORAGE_KEYS = [
+const PROFILE_BACKUP_V1_STORAGE_KEYS = [
     'watchlist',
     'ratedMovies',
     'movieRatings',
     'favoriteActors',
     'recentlyViewed'
+];
+const PROFILE_BACKUP_STORAGE_KEYS = [
+    ...PROFILE_BACKUP_V1_STORAGE_KEYS,
+    'userSubscribedProviders',
+    'tvEpisodeProgress',
+    'savedSharedLists'
 ];
 
 function isPlainBackupObject(value) {
@@ -465,12 +472,149 @@ function normalizeBackupRatings(value, strict = true) {
     return normalized;
 }
 
-function normalizeProfileBackupData(data, strict = true) {
+function normalizeBackupSubscribedProviders(value, strict = true) {
+    if (!Array.isArray(value)) {
+        if (strict) throw new Error('userSubscribedProviders dizi olmalı');
+        return [];
+    }
+
+    const allowedIds = new Set(typeof TR_SUBSCRIPTION_PROVIDERS === 'object'
+        ? Object.keys(TR_SUBSCRIPTION_PROVIDERS).map(Number)
+        : [8, 119, 337, 1899, 11, 1826, 1904, 2235, 1791, 342]);
+    const ids = new Set();
+    for (const rawId of value) {
+        const id = normalizeTmdbId(rawId);
+        if (!allowedIds.has(id)) {
+            if (strict) throw new Error('userSubscribedProviders geçersiz kimlik içeriyor');
+            continue;
+        }
+        ids.add(id);
+    }
+    return [...ids];
+}
+
+function parseBackupEpisodeKey(key) {
+    if (typeof parseEpisodeKey === 'function') return parseEpisodeKey(key);
+
+    const match = typeof key === 'string' && /^S([1-9]\d*)E([1-9]\d*)$/.exec(key);
+    if (!match) return null;
+    const seasonNumber = normalizeTmdbId(match[1]);
+    const episodeNumber = normalizeTmdbId(match[2]);
+    return seasonNumber && episodeNumber ? { seasonNumber, episodeNumber } : null;
+}
+
+function createBackupTvProgressRecord(id, record, watched, updatedAt) {
+    const name = normalizeBackupText(record.name, 300);
+    if (typeof normalizeTvProgressRecord === 'function') {
+        return normalizeTvProgressRecord(id, { ...record, name }, watched, updatedAt);
+    }
+
+    const episodes = [...new Set(watched)].map(key => ({ key, ...parseBackupEpisodeKey(key) }));
+    episodes.sort((a, b) => a.seasonNumber - b.seasonNumber || a.episodeNumber - b.episodeNumber);
+    const last = episodes[episodes.length - 1];
+    const episodeRuntimes = {};
+    for (const { key } of episodes) {
+        const minutes = record.episodeRuntimes?.[key];
+        if (Number.isFinite(minutes) && minutes > 0) episodeRuntimes[key] = minutes;
+    }
+
+    return {
+        id,
+        media_type: 'tv',
+        name: name.trim() ? name : 'Bilinmiyor',
+        poster_path: isValidTmdbImagePath(record.poster_path) ? record.poster_path : null,
+        first_air_date: normalizeBackupDate(record.first_air_date),
+        vote_average: Number.isFinite(record.vote_average) ? record.vote_average : null,
+        genre_ids: Array.isArray(record.genre_ids) ? record.genre_ids.map(normalizeTmdbId).filter(Boolean) : [],
+        totalSeasons: normalizeTmdbId(record.totalSeasons),
+        totalEpisodes: normalizeTmdbId(record.totalEpisodes),
+        watched: episodes.map(({ key }) => key),
+        avgEpisodeRuntime: Number.isFinite(record.avgEpisodeRuntime) && record.avgEpisodeRuntime > 0
+            ? record.avgEpisodeRuntime : null,
+        episodeRuntimes,
+        lastSeason: last.seasonNumber,
+        lastEpisode: last.episodeNumber,
+        updatedAt: Number.isFinite(updatedAt) && updatedAt >= 0 ? updatedAt : 0
+    };
+}
+
+function normalizeBackupTvProgress(value, strict = true) {
+    if (!isPlainBackupObject(value)) {
+        if (strict) throw new Error('tvEpisodeProgress nesne olmalı');
+        return {};
+    }
+
+    const normalized = {};
+    for (const [key, record] of Object.entries(value)) {
+        const id = normalizeTmdbId(/^tv:([1-9]\d*)$/.exec(key)?.[1]);
+        const validRecord = id && isPlainBackupObject(record) && normalizeTmdbId(record.id) === id &&
+            record.media_type === 'tv' && Array.isArray(record.watched) && record.watched.length > 0 &&
+            record.watched.every(parseBackupEpisodeKey);
+        const progress = validRecord && createBackupTvProgressRecord(id, record, record.watched, record.updatedAt);
+        if (!progress) {
+            if (strict) throw new Error('tvEpisodeProgress geçersiz kayıt içeriyor');
+            continue;
+        }
+        normalized[key] = progress;
+    }
+    return normalized;
+}
+
+function normalizeBackupSavedSharedList(record) {
+    if (!isPlainBackupObject(record) ||
+        typeof record.id !== 'string' || !/^[\w-]{1,80}$/.test(record.id) ||
+        typeof record.title !== 'string' || record.title.length < 1 || record.title.length > 80 ||
+        typeof record.route !== 'string' || record.route.length > 2048 ||
+        (!record.route.startsWith('secki/') && !record.route.startsWith('list?')) ||
+        !Array.isArray(record.items) || !record.items.length || record.items.length > SHARED_LIST_MAX_ITEMS ||
+        !Number.isFinite(record.updatedAt) || record.updatedAt < 0) return null;
+
+    const snapshots = record.items.map(normalizeShareListItemSnapshot);
+    if (snapshots.includes(null)) return null;
+    const items = getUniqueShareListItems(snapshots);
+    const parsed = parseSharedListRoute(record.route);
+    const titleArg = parsed.hasCustomTitle ? parsed.title : '';
+    const canonicalRoute = buildSharedListRoute(titleArg, items);
+    const legacyRoute = buildLegacySharedListRoute(titleArg, items);
+    if (!canonicalRoute || (record.route !== canonicalRoute && record.route !== legacyRoute) ||
+        record.title !== parsed.title) return null;
+
+    const shortId = normalizeShortlinkId(record.shortId);
+    if (Object.hasOwn(record, 'shortId') && !shortId) return null;
+    return {
+        id: record.id, title: parsed.title, route: canonicalRoute, items, updatedAt: record.updatedAt,
+        ...(shortId ? { shortId } : {})
+    };
+}
+
+function normalizeBackupSavedSharedLists(value, strict = true) {
+    if (!Array.isArray(value)) {
+        if (strict) throw new Error('savedSharedLists dizi olmalı');
+        return [];
+    }
+    if (strict && value.length > SAVED_SHARED_LISTS_MAX) {
+        throw new Error('savedSharedLists kayıt sınırını aşıyor');
+    }
+
+    const byId = new Map();
+    for (const record of value) {
+        const list = normalizeBackupSavedSharedList(record);
+        if (!list) {
+            if (strict) throw new Error('savedSharedLists geçersiz kayıt içeriyor');
+            continue;
+        }
+        const previous = byId.get(list.id);
+        if (!previous || list.updatedAt > previous.updatedAt) byId.set(list.id, list);
+    }
+    return [...byId.values()].sort((a, b) => b.updatedAt - a.updatedAt).slice(0, SAVED_SHARED_LISTS_MAX);
+}
+
+function normalizeProfileBackupData(data, strict = true, version = PROFILE_BACKUP_VERSION) {
     if (!isPlainBackupObject(data)) {
         throw new Error('Yedek verisi geçersiz');
     }
 
-    return {
+    const normalized = {
         watchlist: normalizeBackupMovieList(data.watchlist, 'watchlist', strict),
         ratedMovies: normalizeBackupMovieList(data.ratedMovies, 'ratedMovies', strict),
         movieRatings: normalizeBackupRatings(data.movieRatings, strict),
@@ -481,16 +625,18 @@ function normalizeProfileBackupData(data, strict = true) {
             strict
         ).slice(0, 10)
     };
+    if (version === 1) return normalized;
+
+    normalized.userSubscribedProviders = normalizeBackupSubscribedProviders(data.userSubscribedProviders, strict);
+    normalized.tvEpisodeProgress = normalizeBackupTvProgress(data.tvEpisodeProgress, strict);
+    normalized.savedSharedLists = normalizeBackupSavedSharedLists(data.savedSharedLists, strict);
+    return normalized;
 }
 
-function collectCurrentProfileBackupData() {
-    return normalizeProfileBackupData({
-        watchlist: readProfileBackupStorage('watchlist', []),
-        ratedMovies: readProfileBackupStorage('ratedMovies', []),
-        movieRatings: readProfileBackupStorage('movieRatings', {}),
-        favoriteActors: readProfileBackupStorage('favoriteActors', []),
-        recentlyViewed: readProfileBackupStorage('recentlyViewed', [])
-    }, false);
+function collectCurrentProfileBackupData(version = PROFILE_BACKUP_VERSION) {
+    const keys = version === 1 ? PROFILE_BACKUP_V1_STORAGE_KEYS : PROFILE_BACKUP_STORAGE_KEYS;
+    const data = Object.fromEntries(keys.map(key => [key, readProfileBackupStorage(key, null)]));
+    return normalizeProfileBackupData(data, false, version);
 }
 
 function createProfileBackupPayload() {
@@ -506,12 +652,12 @@ function validateProfileBackupPayload(payload) {
     if (
         !isPlainBackupObject(payload) ||
         payload.app !== PROFILE_BACKUP_APP ||
-        payload.version !== PROFILE_BACKUP_VERSION ||
+        !PROFILE_BACKUP_SUPPORTED_VERSIONS.has(payload.version) ||
         !Object.prototype.hasOwnProperty.call(payload, 'data')
     ) {
         throw new Error('Desteklenmeyen yedek formatı');
     }
-    return normalizeProfileBackupData(payload.data, true);
+    return normalizeProfileBackupData(payload.data, true, payload.version);
 }
 
 function mergeBackupList(currentItems, importedItems, limit = null, byMediaType = true) {
@@ -530,6 +676,45 @@ function mergeBackupList(currentItems, importedItems, limit = null, byMediaType 
     return typeof limit === 'number' ? merged.slice(0, limit) : merged;
 }
 
+function mergeBackupTvProgress(currentProgress = {}, importedProgress) {
+    const merged = { ...currentProgress };
+    for (const [key, imported] of Object.entries(importedProgress)) {
+        const current = currentProgress[key];
+        if (!current) {
+            merged[key] = imported;
+            continue;
+        }
+        const metadata = {
+            ...imported,
+            ...current,
+            name: current.name === 'Bilinmiyor' ? imported.name : current.name,
+            poster_path: current.poster_path ?? imported.poster_path,
+            totalSeasons: current.totalSeasons ?? imported.totalSeasons,
+            totalEpisodes: current.totalEpisodes ?? imported.totalEpisodes,
+            avgEpisodeRuntime: current.avgEpisodeRuntime ?? imported.avgEpisodeRuntime,
+            episodeRuntimes: { ...imported.episodeRuntimes, ...current.episodeRuntimes }
+        };
+        merged[key] = createBackupTvProgressRecord(
+            current.id, metadata, [...current.watched, ...imported.watched],
+            Math.max(current.updatedAt, imported.updatedAt)
+        );
+    }
+    return merged;
+}
+
+function mergeBackupSavedSharedLists(currentLists = [], importedLists) {
+    const merged = [];
+    const ids = new Set();
+    const routes = new Set();
+    for (const list of [...currentLists, ...importedLists]) {
+        if (ids.has(list.id) || routes.has(list.route)) continue;
+        ids.add(list.id);
+        routes.add(list.route);
+        merged.push(list);
+    }
+    return merged.sort((a, b) => b.updatedAt - a.updatedAt).slice(0, SAVED_SHARED_LISTS_MAX);
+}
+
 function mergeProfileBackupData(currentData, importedData) {
     const currentRatings = normalizeBackupRatings(currentData.movieRatings, false);
     const movieRatings = normalizeBackupRatings(importedData.movieRatings, false);
@@ -544,7 +729,7 @@ function mergeProfileBackupData(currentData, importedData) {
     });
     Object.assign(movieRatings, currentRatings);
 
-    return {
+    const merged = {
         watchlist: mergeBackupList(currentData.watchlist, importedData.watchlist),
         ratedMovies: mergeBackupList(currentData.ratedMovies, importedData.ratedMovies),
         movieRatings,
@@ -558,20 +743,35 @@ function mergeProfileBackupData(currentData, importedData) {
             10
         )
     };
+
+    // A v1 import leaves its absent v2 fields out of the write entirely.
+    if (Object.hasOwn(importedData, 'userSubscribedProviders')) {
+        merged.userSubscribedProviders = [...new Set([
+            ...(currentData.userSubscribedProviders ?? []), ...importedData.userSubscribedProviders
+        ])];
+    }
+    if (Object.hasOwn(importedData, 'tvEpisodeProgress')) {
+        merged.tvEpisodeProgress = mergeBackupTvProgress(currentData.tvEpisodeProgress, importedData.tvEpisodeProgress);
+    }
+    if (Object.hasOwn(importedData, 'savedSharedLists')) {
+        merged.savedSharedLists = mergeBackupSavedSharedLists(currentData.savedSharedLists, importedData.savedSharedLists);
+    }
+    return merged;
 }
 
 function writeProfileBackupData(data) {
+    const keysToWrite = PROFILE_BACKUP_STORAGE_KEYS.filter(key => Object.hasOwn(data, key));
     profileMutationGeneration++;
     const previousValues = Object.fromEntries(
-        PROFILE_BACKUP_STORAGE_KEYS.map(key => [key, localStorage.getItem(key)])
+        keysToWrite.map(key => [key, localStorage.getItem(key)])
     );
 
     try {
-        PROFILE_BACKUP_STORAGE_KEYS.forEach(key => {
+        keysToWrite.forEach(key => {
             localStorage.setItem(key, JSON.stringify(data[key]));
         });
     } catch (error) {
-        PROFILE_BACKUP_STORAGE_KEYS.forEach(key => {
+        keysToWrite.forEach(key => {
             try {
                 if (previousValues[key] === null) localStorage.removeItem(key);
                 else localStorage.setItem(key, previousValues[key]);
@@ -644,20 +844,22 @@ async function handleProfileBackupFileSelection(event) {
         }
 
         const finalData = mode === 'merge'
-            ? mergeProfileBackupData(collectCurrentProfileBackupData(), importedData)
+            ? mergeProfileBackupData(collectCurrentProfileBackupData(payload.version), importedData)
             : importedData;
         writeProfileBackupData(finalData);
 
-        try {
-            const profile = document.getElementById('profile');
-            if (
-                profile?.classList.contains('active-tab') &&
-                typeof loadProfile === 'function'
-            ) {
-                loadProfile();
+        const refreshFunctions = [
+            typeof syncMyPlatformsUi === 'function' ? syncMyPlatformsUi : null,
+            renderTvTrackerSection,
+            renderSavedSharedListsSection,
+            () => loadProfile(null, { refreshCollectionSections: false, persistTrackedTvRuntime: false })
+        ];
+        for (const refresh of refreshFunctions) {
+            try {
+                refresh?.();
+            } catch (refreshError) {
+                console.warn('Profil import sonrası yenilenemedi:', refreshError);
             }
-        } catch (refreshError) {
-            console.warn('Profil import sonrası yenilenemedi:', refreshError);
         }
 
         setProfileBackupStatus(
@@ -857,7 +1059,7 @@ function renderTvTrackerSection() {
     grid.replaceChildren(cards);
 }
 
-function refreshProfileWatchStats(routeContext = null) {
+function refreshProfileWatchStats(routeContext = null, persistTrackedTvRuntime = true) {
     const statsContainer = document.getElementById('profile-stats-container');
     if (!statsContainer) return;
 
@@ -981,7 +1183,7 @@ function refreshProfileWatchStats(routeContext = null) {
 
     if (needsFetch) {
         const watchTimeElem = statsContainer.querySelector('#profile-watch-time');
-        calculateExactWatchTime(ratedMovies, routeContext?.signal, trackedTvShows)
+        calculateExactWatchTime(ratedMovies, routeContext?.signal, trackedTvShows, persistTrackedTvRuntime)
             .then(exactMinutes => {
                 if (routeContext?.signal?.aborted || !watchTimeElem?.isConnected) return;
                 if (routeContext && !isRouteContextCurrent(routeContext, 'profile')) return;
@@ -993,11 +1195,13 @@ function refreshProfileWatchStats(routeContext = null) {
     }
 }
 
-function loadProfile(routeContext = null) {
+function loadProfile(routeContext = null, { refreshCollectionSections = true, persistTrackedTvRuntime = true } = {}) {
     if (typeof document === 'undefined' || typeof document.getElementById !== 'function') return;
-    renderTvTrackerSection();
-    renderSavedSharedListsSection();
-    refreshProfileWatchStats(routeContext);
+    if (refreshCollectionSections) {
+        renderTvTrackerSection();
+        renderSavedSharedListsSection();
+    }
+    refreshProfileWatchStats(routeContext, persistTrackedTvRuntime);
     const watchlistGrid = document.getElementById('watchlist-grid');
     const ratedTvGrid = document.getElementById('rated-tv-grid');
     const ratedMovieGrid = document.getElementById('rated-movie-grid');
@@ -1433,7 +1637,8 @@ function doesTrackedTvNeedRuntimeFetch(show) {
 async function calculateExactWatchTime(
     ratedMovies,
     signal = null,
-    trackedTvShows = []
+    trackedTvShows = [],
+    persistTrackedTvRuntime = true
 ) {
     const trackedTvIds = new Set();
     const trackedItems = [];
@@ -1578,7 +1783,8 @@ async function calculateExactWatchTime(
 
                     const data = await fetchDetail('tv', itemId);
                     const avgRuntime = calculateTvAverageEpisodeRuntime(data);
-                    if (data && !signal?.aborted && typeof updateTvShowAvgRuntime === 'function') {
+                    if (data && persistTrackedTvRuntime && !signal?.aborted &&
+                        profileMutationGeneration === startGeneration && typeof updateTvShowAvgRuntime === 'function') {
                         updateTvShowAvgRuntime(itemId, avgRuntime);
                     }
                     return getTrackedTvWatchedMinutesLocal({ ...show, avgEpisodeRuntime: avgRuntime });

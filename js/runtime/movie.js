@@ -68,14 +68,16 @@ function syncDetailsMetaSeparators(metaContainer) {
     }
 }
 
-const MOVIE_DETAIL_CACHE_TTL_MS = 2000;
+const MOVIE_DETAIL_CACHE_TTL_MS = 60000;
 const MOVIE_DETAIL_CACHE_MAX_ENTRIES = 50;
+const MEDIA_DETAIL_PREFETCH_DELAY_MS = 150;
 const MOVIE_DETAIL_APPEND_PARAM = 'videos,credits,recommendations,external_ids';
 const movieDetailCache = new Map();
 const movieDetailInflight = new Map();
 const movieCollectionCache = new Map();
 const movieCollectionInflight = new Map();
 let movieTrailerRequest = null;
+let mediaDetailPrefetchTimer = null;
 
 function createMovieAbortError() {
     const err = new Error('The operation was aborted.');
@@ -235,6 +237,32 @@ async function fetchExtendedMediaDetail(mediaType, id, signal) {
         }
         return { ok: false, data };
     });
+}
+
+function cancelMediaDetailPrefetch() {
+    if (mediaDetailPrefetchTimer !== null) {
+        clearTimeout(mediaDetailPrefetchTimer);
+        mediaDetailPrefetchTimer = null;
+    }
+}
+
+function scheduleMediaDetailPrefetch(movieId, mediaType = 'movie') {
+    cancelMediaDetailPrefetch();
+
+    const safeId = normalizeTmdbId(movieId);
+    const safeType = normalizeMediaType(mediaType);
+    if (!safeId || !safeType) return;
+    if (typeof navigator !== 'undefined' && navigator.connection?.saveData === true) return;
+
+    const key = getMovieDetailCacheKey(safeType, safeId);
+    if (!key || getCachedExtendedMediaDetail(safeType, safeId) || movieDetailInflight.has(key)) return;
+
+    mediaDetailPrefetchTimer = setTimeout(() => {
+        mediaDetailPrefetchTimer = null;
+        if (!getCachedExtendedMediaDetail(safeType, safeId) && !movieDetailInflight.has(key)) {
+            fetchExtendedMediaDetail(safeType, safeId).catch(() => {});
+        }
+    }, MEDIA_DETAIL_PREFETCH_DELAY_MS);
 }
 
 async function fetchCollectionDetail(collectionId, signal) {
@@ -530,7 +558,7 @@ async function renderMovie(
     const backdropEl = document.getElementById('details-backdrop');
     const ambilightEl = document.getElementById('ambilight-bg');
 
-    posterImgElem.crossOrigin = 'Anonymous';
+    posterImgElem.crossOrigin = 'anonymous';
     posterImgElem.alt = detailTitle;
 
     // Dynamic Theme (ColorThief)
@@ -557,9 +585,17 @@ async function renderMovie(
 
     const showPoster = posterUrl => {
         posterImgElem.style.visibility = '';
-        // Force a CORS reload if the card image was cached without CORS.
-        const separator = posterUrl.includes('?') ? '&' : '?';
-        posterImgElem.src = `${posterUrl}${separator}cb=${Date.now()}`;
+        // Use a stable URL for ColorThief's anonymous CORS request, separate from the card image.
+        if (/^(?:https?:)?\/\//i.test(posterUrl) || posterUrl.startsWith('/.netlify/')) {
+            const fragmentIndex = posterUrl.indexOf('#');
+            const requestUrl = fragmentIndex === -1 ? posterUrl : posterUrl.slice(0, fragmentIndex);
+            if (!/\?(?:[^#]*&)?cors=1(?:&|$)/.test(requestUrl)) {
+                const separator = requestUrl.includes('?') ? '&' : '?';
+                const fragment = posterUrl.slice(requestUrl.length);
+                posterUrl = `${requestUrl}${separator}cors=1${fragment}`;
+            }
+        }
+        posterImgElem.src = posterUrl;
     };
 
     const showBackdrop = (backdropPath, posterUrl) => {
