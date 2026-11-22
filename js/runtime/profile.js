@@ -1909,6 +1909,7 @@ const SHARED_LIST_FETCH_CONCURRENCY = 4;
 const SHARED_LIST_CACHE_LIMIT = 20;
 const SHARED_LIST_SHORTLINK_ENDPOINT = '/.netlify/functions/shortlink';
 const SHARED_LIST_SHORTLINK_TIMEOUT_MS = 2500;
+const SHARED_LIST_SHORTLINK_GET_TIMEOUT_MS = 6000;
 const SAVED_SHARED_LISTS_KEY = 'savedSharedLists';
 const SAVED_SHARED_LISTS_MAX = 40;
 const SHARED_LIST_B64URL_CHARS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_';
@@ -2394,19 +2395,38 @@ async function createShortSharedListRoute(title, items, existingShortId = null) 
 async function resolveShortSharedList(shortId, signal = null) {
     const safeId = normalizeShortlinkId(shortId);
     if (!safeId) return { notFound: true, invalid: true };
-    signal?.throwIfAborted?.();
+    if (signal?.aborted) {
+        signal.throwIfAborted?.();
+        const abortError = new Error('The operation was aborted.');
+        abortError.name = 'AbortError';
+        throw abortError;
+    }
 
     const cached = getCachedShortSharedList(shortSharedListPayloadCache, safeId);
     if (cached) return { ok: true, ...cached };
 
+    const controller = new AbortController();
+    let timedOut = false;
+    const onCallerAbort = () => controller.abort(signal?.reason);
+    signal?.addEventListener?.('abort', onCallerAbort, { once: true });
+    const timeout = setTimeout(() => {
+        timedOut = true;
+        controller.abort();
+    }, SHARED_LIST_SHORTLINK_GET_TIMEOUT_MS);
+
     try {
         const url = `${SHARED_LIST_SHORTLINK_ENDPOINT}?id=${encodeURIComponent(safeId)}`;
-        const response = await fetch(url, signal ? { signal } : undefined);
+        const response = await fetch(url, { signal: controller.signal });
         if (response.status === 404 || response.status === 400) return { ok: false, notFound: true };
         if (!response.ok) return { ok: false, error: true };
 
         const data = await response.json();
-        signal?.throwIfAborted?.();
+        if (signal?.aborted) {
+            signal.throwIfAborted?.();
+            const abortError = new Error('The operation was aborted.');
+            abortError.name = 'AbortError';
+            throw abortError;
+        }
         const title = normalizeSharedListTitle(data?.title, '');
         const items = [];
         const seen = new Set();
@@ -2426,8 +2446,12 @@ async function resolveShortSharedList(shortId, signal = null) {
         cacheShortSharedList(shortSharedListPayloadCache, safeId, payload);
         return { ok: true, ...payload };
     } catch (error) {
-        if (error?.name === 'AbortError') throw error;
+        if (timedOut && !signal?.aborted) return { ok: false, error: true };
+        if (error?.name === 'AbortError' || signal?.aborted) throw error;
         return { ok: false, error: true };
+    } finally {
+        clearTimeout(timeout);
+        signal?.removeEventListener?.('abort', onCallerAbort);
     }
 }
 

@@ -49,14 +49,19 @@ function assertUncached(response, statusCode) {
     return JSON.parse(response.body);
 }
 
-function loadFrontend({ fetch, protocol = 'https:' } = {}) {
+function loadFrontend({
+    fetch,
+    protocol = 'https:',
+    setTimeout: customSetTimeout = setTimeout,
+    clearTimeout: customClearTimeout = clearTimeout
+} = {}) {
     const context = vm.createContext({
         window: { location: { hash: '', protocol } },
         history: {},
         AbortController,
         fetch,
-        setTimeout,
-        clearTimeout
+        setTimeout: customSetTimeout,
+        clearTimeout: customClearTimeout
     });
     for (const script of ['security.js', 'router.js', 'profile.js']) {
         const filename = require.resolve(`../js/runtime/${script}`);
@@ -417,7 +422,51 @@ test('resolving a short route decodes the GET response and caches the list', asy
     const [url, options] = fetch.mock.calls[0].arguments;
     assert.equal(url, `${endpoint}?id=${shortId}`);
     assert.equal(options.method ?? 'GET', 'GET');
-    assert.equal(options.signal, signal);
+    assert.equal(typeof options.signal?.aborted, 'boolean');
+});
+
+test('resolving a short route returns error on timeout and aborts fetch cleanly', async t => {
+    let capturedTimeoutMs = null;
+    let triggerTimeout = null;
+    const mockClearTimeout = t.mock.fn();
+    const fetch = t.mock.fn((_url, { signal }) => new Promise((_resolve, reject) => {
+        signal.addEventListener('abort', () => reject(Object.assign(new Error('Aborted'), { name: 'AbortError' })), { once: true });
+    }));
+    const { resolveShortSharedList } = loadFrontend({
+        fetch,
+        setTimeout: (fn, ms) => {
+            capturedTimeoutMs = ms;
+            triggerTimeout = fn;
+            return 42;
+        },
+        clearTimeout: mockClearTimeout
+    });
+
+    const pending = resolveShortSharedList(shortId);
+    assert.equal(capturedTimeoutMs, 6000);
+    assert.equal(typeof triggerTimeout, 'function');
+    triggerTimeout();
+    assert.deepEqual({ ...await pending }, { ok: false, error: true });
+    assert.equal(fetch.mock.calls[0].arguments[1].signal.aborted, true);
+    assert.equal(mockClearTimeout.mock.callCount(), 1);
+});
+
+test('resolving a short route rethrows caller AbortError and clears GET timeout', async t => {
+    const mockClearTimeout = t.mock.fn();
+    const callerController = new AbortController();
+    const fetch = t.mock.fn((_url, { signal }) => new Promise((_resolve, reject) => {
+        signal.addEventListener('abort', () => reject(Object.assign(new Error('Aborted'), { name: 'AbortError' })), { once: true });
+    }));
+    const { resolveShortSharedList } = loadFrontend({
+        fetch,
+        setTimeout: () => 99,
+        clearTimeout: mockClearTimeout
+    });
+
+    const pending = resolveShortSharedList(shortId, callerController.signal);
+    callerController.abort();
+    await assert.rejects(pending, { name: 'AbortError' });
+    assert.equal(mockClearTimeout.mock.calls[0]?.arguments[0], 99);
 });
 
 test('resolving a missing short route returns notFound', async t => {
