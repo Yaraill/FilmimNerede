@@ -646,6 +646,7 @@ function createMovieCard(item, mediaType = "movie", tabContext = "", renderOptio
         .filter(Boolean)
         .map(name => String(name));
 
+    const allGenresText = allGenres.join(', ');
     const genres =
         allGenres.slice(0, 3).join(', ') +
         (
@@ -788,7 +789,7 @@ function createMovieCard(item, mediaType = "movie", tabContext = "", renderOptio
     if (userRating !== null) {
         userRatingBadgeHtml = `
             <div class="card-user-rating" title="Puanınız: ${userRating}/10" aria-label="Puanınız: ${userRating}/10">
-                <i class="fas fa-star" aria-hidden="true"></i> Puanım: ${userRating}/10
+                <i class="fas fa-star" aria-hidden="true"></i> ${userRating}/10
             </div>
         `;
     }
@@ -834,15 +835,13 @@ function createMovieCard(item, mediaType = "movie", tabContext = "", renderOptio
                     onmouseenter="startHoverSlideshow(this, ${escapeAttr(itemId)}, '${escapeAttr(normalizedMediaType)}')"
                     onmouseleave="stopHoverSlideshow(this)"
                 >
+                ${userRatingBadgeHtml}
                 ${tvProgressSlot}
             </div>
 
             <div class="movie-info">
                 <div class="movie-meta">
-                    <span class="genre-list" title="${escapeHtml(genres)}">
-                        ${escapeHtml(genres)}
-                    </span>
-                    ${userRatingBadgeHtml}
+                    <span class="genre-list" title="${escapeAttr(allGenresText)}">${escapeHtml(genres)}</span>
                 </div>
 
                 <div class="movie-title">

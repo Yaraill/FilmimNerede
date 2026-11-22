@@ -585,6 +585,7 @@ body.light-theme .view-mode-controls .action-btn:not(.active) {
    ========================================= */
 .movie-meta {
     display: flex;
+    align-self: stretch;
     justify-content: space-between;
     align-items: center;
     min-height: 1.35rem;
@@ -605,27 +606,37 @@ body.light-theme .view-mode-controls .action-btn:not(.active) {
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
-    max-width: 60%;
-    text-align: right;
+    flex: 1 1 auto;
+    min-width: 0;
+    max-width: 100%;
+    text-align: left;
 }
 .card-user-rating {
+    position: absolute;
+    top: 46px;
+    left: 10px;
+    z-index: 10;
     display: inline-flex;
     align-items: center;
     gap: 4px;
-    font-size: 0.75rem;
+    font-size: 0.72rem;
     font-weight: 700;
+    line-height: 1.25;
+    padding: 3px 7px;
+    border-radius: 7px;
     color: #fbbf24;
-    background: rgba(251, 191, 36, 0.12);
-    border: 1px solid rgba(251, 191, 36, 0.35);
-    padding: 2px 7px;
-    border-radius: 6px;
+    background: rgba(15, 23, 42, 0.84);
+    border: 1px solid rgba(251, 191, 36, 0.55);
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.35);
     white-space: nowrap;
-    flex-shrink: 0;
+    pointer-events: none;
 }
 body.light-theme .card-user-rating {
-    background: rgba(217, 119, 6, 0.12);
-    color: #b45309;
-    border-color: rgba(217, 119, 6, 0.3);
+    background: rgba(15, 23, 42, 0.86);
+    color: #fbbf24;
+    border-color: rgba(251, 191, 36, 0.6);
 }
 .bottom-group {
     margin-top: auto;
@@ -729,6 +740,16 @@ body.light-theme .card-user-rating {
     width: 90%;
     max-width: 900px;
     background: transparent;
+}
+.modal-content.glass {
+    background: var(--card-bg);
+    border-radius: 16px;
+    box-shadow: 0 20px 50px rgba(0, 0, 0, 0.45);
+}
+body.light-theme .modal-content.glass {
+    background: rgba(255, 255, 255, 0.96);
+    border: 1px solid rgba(15, 23, 42, 0.12);
+    box-shadow: 0 20px 50px rgba(15, 23, 42, 0.16);
 }
 .close-btn {
     position: absolute;
@@ -1019,6 +1040,10 @@ body.light-theme .card-user-rating {
     padding: 0;
     border: 1px solid rgba(255,255,255,0.1);
     box-shadow: 0 25px 50px rgba(0,0,0,0.5);
+}
+body.light-theme .details-modal-wrapper .details-content {
+    background: rgba(255, 255, 255, 0.94);
+    border: 1px solid rgba(15, 23, 42, 0.1);
 }
 
 .details-backdrop {
@@ -1319,6 +1344,7 @@ body.light-theme .card-user-rating {
 
 .movie-grid.list-view .movie-info {
     flex: 1;
+    min-width: 0;
     display: flex;
     flex-direction: column;
     justify-content: center;
