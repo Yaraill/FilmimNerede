@@ -23,7 +23,8 @@ function isRouteContextCurrent(routeContext, expectedPage, expectedId = null) {
         currentId = hashPath.split("/")[1];
     } else if (hashPath === "search") {
         currentPage = "search";
-    } else if (hashPath === "list" || hashPath === "secki" || hashPath.startsWith("secki/")) {
+    } else if (hashPath === "list" || hashPath === "secki" || hashPath.startsWith("secki/") ||
+        hashPath === "s" || hashPath.startsWith("s/")) {
         currentPage = "list";
     } else if (hashPath) {
         currentPage = hashPath;
@@ -178,6 +179,10 @@ function parseRoute() {
         return { page: "list", listQuery: queryString, listPath: "" };
     }
 
+    if (path === "s" || path.startsWith("s/")) {
+        return { page: "list", listQuery: queryString, listPath: "", shortId: path.slice("s".length).replace(/^\/+|\/+$/g, "") };
+    }
+
     if (path === "secki" || path.startsWith("secki/")) {
         return {
             page: "list",
@@ -265,6 +270,7 @@ function handleRoute({ searchFilterChange = false } = {}) {
             : null,
         listQuery: route.page === 'list' ? (route.listQuery || '') : null,
         listPath: route.page === 'list' ? (route.listPath || '') : null,
+        shortId: route.page === 'list' ? (route.shortId || '') : null,
         returningFromDetails:
             shouldRestoreDetailsFocus
     };

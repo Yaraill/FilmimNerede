@@ -1701,6 +1701,8 @@ const SHARED_LIST_MAX_TITLE_LENGTH = 80;
 const SHARED_LIST_DEFAULT_TITLE = 'Paylaşılan Film & Dizi Seçkisi';
 const SHARED_LIST_FETCH_CONCURRENCY = 4;
 const SHARED_LIST_CACHE_LIMIT = 20;
+const SHARED_LIST_SHORTLINK_ENDPOINT = '/.netlify/functions/shortlink';
+const SHARED_LIST_SHORTLINK_TIMEOUT_MS = 2500;
 const SAVED_SHARED_LISTS_KEY = 'savedSharedLists';
 const SAVED_SHARED_LISTS_MAX = 40;
 const SHARED_LIST_B64URL_CHARS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_';
@@ -1712,9 +1714,14 @@ const SHARE_PERSON_BLOCKED_TITLE_WORDS = [
 ];
 const SHARE_PERSON_SELF_CHARACTER_PATTERN = /^(?:self|himself|herself|guest|host|presenter|narrator|various|archive footage)\b|\b(?:himself|herself|archive footage|uncredited)\b/i;
 const sharedListResultCache = new Map();
+const shortSharedListRouteCache = new Map();
+const shortSharedListPayloadCache = new Map();
+const shortSharedListInflight = new Map();
 const shareListPersonCreditsCache = new Map();
 
 let currentSharedListState = null;
+let sharedListLoadGeneration = 0;
+let watchlistShareGeneration = 0;
 let shareListDraft = null;
 let shareListDraftInitialSignature = '';
 let shareListSearchTimer = null;
@@ -2099,6 +2106,125 @@ function getSharedListRouteUrl(route) {
     return window.location.origin + window.location.pathname + '#' + route;
 }
 
+function normalizeShortlinkId(value) {
+    const id = typeof value === 'string' ? value.trim() : '';
+    return /^[0-9A-Za-z]{6,12}$/.test(id) ? id : null;
+}
+
+function getCachedShortSharedList(cache, key) {
+    const value = cache.get(key);
+    if (value !== undefined) {
+        cache.delete(key);
+        cache.set(key, value);
+    }
+    return value;
+}
+
+function cacheShortSharedList(cache, key, value) {
+    cache.delete(key);
+    cache.set(key, value);
+    if (cache.size > SHARED_LIST_CACHE_LIMIT) {
+        cache.delete(cache.keys().next().value);
+    }
+}
+
+function compactShareListPayloadItems(items) {
+    return getUniqueShareListItems(items).slice(0, SHARED_LIST_MAX_ITEMS).map(item => {
+        const token = encodeSharedListItemToken(item);
+        return { id: Number(token.slice(1)), media_type: token[0] === 'm' ? 'movie' : 'tv' };
+    });
+}
+
+async function createShortSharedListRoute(title, items, existingShortId = null) {
+    const fallbackRoute = buildSharedListRoute(title, items);
+    if (!fallbackRoute) return null;
+
+    const validExistingId = normalizeShortlinkId(existingShortId);
+    if (validExistingId) return 's/' + validExistingId;
+
+    const cached = getCachedShortSharedList(shortSharedListRouteCache, fallbackRoute);
+    if (cached) return cached;
+    if (typeof fetch !== 'function' || typeof window === 'undefined' ||
+        window.location?.protocol === 'file:' || window.navigator?.onLine === false) return fallbackRoute;
+
+    const inflight = shortSharedListInflight.get(fallbackRoute);
+    if (inflight) return inflight;
+
+    const request = (async () => {
+        let timeout;
+        try {
+            const controller = new AbortController();
+            timeout = setTimeout(() => controller.abort(), SHARED_LIST_SHORTLINK_TIMEOUT_MS);
+            const response = await fetch(SHARED_LIST_SHORTLINK_ENDPOINT, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    title: normalizeSharedListTitle(title, ''),
+                    items: compactShareListPayloadItems(items)
+                }),
+                signal: controller.signal
+            });
+            if (!response.ok) return fallbackRoute;
+            const data = await response.json();
+            const id = normalizeShortlinkId(data?.id);
+            if (!id || controller.signal.aborted) return fallbackRoute;
+            const shortRoute = 's/' + id;
+            cacheShortSharedList(shortSharedListRouteCache, fallbackRoute, shortRoute);
+            return shortRoute;
+        } catch (_) {
+            return fallbackRoute;
+        } finally {
+            clearTimeout(timeout);
+        }
+    })();
+    shortSharedListInflight.set(fallbackRoute, request);
+    try {
+        return await request;
+    } finally {
+        shortSharedListInflight.delete(fallbackRoute);
+    }
+}
+
+async function resolveShortSharedList(shortId, signal = null) {
+    const safeId = normalizeShortlinkId(shortId);
+    if (!safeId) return { notFound: true, invalid: true };
+    signal?.throwIfAborted?.();
+
+    const cached = getCachedShortSharedList(shortSharedListPayloadCache, safeId);
+    if (cached) return { ok: true, ...cached };
+
+    try {
+        const url = `${SHARED_LIST_SHORTLINK_ENDPOINT}?id=${encodeURIComponent(safeId)}`;
+        const response = await fetch(url, signal ? { signal } : undefined);
+        if (response.status === 404 || response.status === 400) return { ok: false, notFound: true };
+        if (!response.ok) return { ok: false, error: true };
+
+        const data = await response.json();
+        signal?.throwIfAborted?.();
+        const title = normalizeSharedListTitle(data?.title, '');
+        const items = [];
+        const seen = new Set();
+        for (const item of Array.isArray(data?.items) ? data.items : []) {
+            const mediaType = item?.media_type;
+            if (mediaType !== 'movie' && mediaType !== 'tv') continue;
+            const token = encodeSharedListItemToken({ id: item.id, mediaType });
+            if (!token || seen.has(token)) continue;
+            seen.add(token);
+            const id = Number(token.slice(1));
+            items.push({ id, mediaType, key: `${mediaType}:${id}`, token });
+            if (items.length === SHARED_LIST_MAX_ITEMS) break;
+        }
+        if (!items.length) return { ok: false, error: true };
+
+        const payload = { title: title || SHARED_LIST_DEFAULT_TITLE, hasCustomTitle: Boolean(title), items };
+        cacheShortSharedList(shortSharedListPayloadCache, safeId, payload);
+        return { ok: true, ...payload };
+    } catch (error) {
+        if (error?.name === 'AbortError') throw error;
+        return { ok: false, error: true };
+    }
+}
+
 async function copyTextToClipboard(text) {
     if (typeof text !== 'string' || !text) return false;
     try {
@@ -2179,27 +2305,71 @@ async function loadSharedList(routeContext = null) {
     const hash = window.location.hash;
     const rawRoute = hash.startsWith('#') ? hash.slice(1) : '';
     const queryStart = hash.indexOf('?');
-    const parsed = typeof routeContext?.listPath === 'string' && (rawRoute === 'secki' || rawRoute.startsWith('secki/'))
-        ? parseSharedListPath(routeContext.listPath)
-        : (rawRoute === 'secki' || rawRoute.startsWith('secki/'))
-            ? parseSharedListRoute(rawRoute)
-            : parseSharedListQuery(routeContext?.listQuery ?? (queryStart === -1 ? '' : hash.slice(queryStart + 1)));
+    const routePath = rawRoute.split('?')[0];
+    const generation = ++sharedListLoadGeneration;
+    const isCurrentLoad = () => generation === sharedListLoadGeneration && window.location.hash === hash &&
+        (!routeContext || typeof isRouteContextCurrent !== 'function' || isRouteContextCurrent(routeContext, 'list'));
     const actions = document.getElementById('shared-list-actions');
     const notice = document.getElementById('shared-list-notice');
     const previousState = currentSharedListState;
+    setSharedListStatus('shared-list-status');
+    notice.hidden = true;
+    notice.textContent = '';
+
+    let parsed;
+    let shortId = null;
+    if (routeContext?.shortId || routePath === 's' || routePath.startsWith('s/')) {
+        shortId = normalizeShortlinkId(routeContext?.shortId || routePath.slice(1).replace(/^\/+|\/+$/g, ''));
+        currentSharedListState = null;
+        actions.hidden = true;
+        syncSharedListSaveButton();
+
+        let resolved = { notFound: true };
+        if (shortId) {
+            const cached = shortSharedListPayloadCache.get(shortId);
+            setSharedListStatus('shared-list-title', cached?.title || 'Seçki Yükleniyor…');
+            setSharedListStatus('shared-list-subtitle', 'Kısa bağlantı açılıyor…');
+            if (!cached) {
+                if (typeof showSkeletons === 'function') showSkeletons('shared-list-grid', 4);
+                else grid.replaceChildren();
+            }
+            try {
+                resolved = await resolveShortSharedList(shortId, routeContext?.signal);
+            } catch (error) {
+                if (error?.name === 'AbortError') return;
+                resolved = { error: true };
+            }
+            if (!isCurrentLoad()) return;
+        }
+
+        if (!resolved.ok) {
+            const message = resolved.notFound ? 'Bu kısa seçki bağlantısı bulunamadı.' :
+                'Kısa seçki bağlantısı açılamadı. Sayfayı yenileyip tekrar deneyebilirsin.';
+            setSharedListStatus('shared-list-title', SHARED_LIST_DEFAULT_TITLE);
+            setSharedListStatus('shared-list-subtitle', message);
+            renderSharedListEmpty(grid, message);
+            return;
+        }
+        parsed = resolved;
+    } else if (rawRoute === 'secki' || rawRoute.startsWith('secki/')) {
+        parsed = typeof routeContext?.listPath === 'string'
+            ? parseSharedListPath(routeContext.listPath)
+            : parseSharedListRoute(rawRoute);
+    } else {
+        parsed = parseSharedListQuery(routeContext?.listQuery ?? (queryStart === -1 ? '' : hash.slice(queryStart + 1)));
+    }
+
     const state = {
         title: parsed.title,
         items: [],
         entries: parsed.items,
         route: buildSharedListRoute(parsed.hasCustomTitle ? parsed.title : '', parsed.items),
+        shortId,
         hash
     };
     currentSharedListState = state;
 
     setSharedListStatus('shared-list-title', parsed.title);
-    setSharedListStatus('shared-list-status');
-    notice.hidden = true;
-    notice.textContent = '';
     actions.hidden = !state.route;
     syncSharedListSaveButton();
     if (!state.route) {
@@ -2224,9 +2394,7 @@ async function loadSharedList(routeContext = null) {
         );
         loadedItems = results.filter(Boolean);
     }
-    if (currentSharedListState !== state || window.location.hash !== hash ||
-        (routeContext && typeof isRouteContextCurrent === 'function' &&
-            !isRouteContextCurrent(routeContext, 'list'))) return;
+    if (currentSharedListState !== state || !isCurrentLoad()) return;
 
     state.items = loadedItems;
     syncSharedListSaveButton();
@@ -2294,7 +2462,11 @@ function getSavedSharedLists() {
         const legacyRoute = buildLegacySharedListRoute(titleArg, items);
         if (!canonicalRoute || (record.route !== canonicalRoute && record.route !== legacyRoute) ||
             record.title !== parsed.title) continue;
-        valid.push({ id: record.id, title: parsed.title, route: canonicalRoute, items, updatedAt: record.updatedAt });
+        const shortId = normalizeShortlinkId(record.shortId);
+        valid.push({
+            id: record.id, title: parsed.title, route: canonicalRoute, items, updatedAt: record.updatedAt,
+            ...(shortId ? { shortId } : {})
+        });
     }
     const seen = new Set();
     return valid.sort((a, b) => b.updatedAt - a.updatedAt).filter(record => {
@@ -2304,7 +2476,7 @@ function getSavedSharedLists() {
     }).slice(0, SAVED_SHARED_LISTS_MAX);
 }
 
-function saveSharedListRecord({ id = null, title, items }) {
+function saveSharedListRecord({ id = null, title, items, shortId = null }) {
     if (typeof safeWriteStorage !== 'function') return null;
     const snapshots = getUniqueShareListItems(items).slice(0, SHARED_LIST_MAX_ITEMS).map(normalizeShareListItemSnapshot);
     const customTitle = normalizeSharedListTitle(title, '');
@@ -2313,19 +2485,37 @@ function saveSharedListRecord({ id = null, title, items }) {
 
     const lists = getSavedSharedLists();
     const previous = lists.find(list => list.id === id) || lists.find(list => list.route === route);
+    let validShortId = normalizeShortlinkId(shortId);
+    if (previous?.route === route) validShortId ??= previous.shortId;
+    else if (validShortId === previous?.shortId) validShortId = null;
+
     const now = Date.now();
     const record = {
         id: previous?.id || `list_${now}_${Math.random().toString(36).slice(2, 7)}`,
         title: customTitle || SHARED_LIST_DEFAULT_TITLE,
         route,
         items: snapshots,
-        updatedAt: now
+        updatedAt: now,
+        ...(validShortId ? { shortId: validShortId } : {})
     };
     const updated = [record, ...lists.filter(list => list.id !== record.id)].slice(0, SAVED_SHARED_LISTS_MAX);
     if (!safeWriteStorage(SAVED_SHARED_LISTS_KEY, updated)) return null;
     renderSavedSharedListsSection(updated);
     syncSharedListSaveButton(updated);
     return record;
+}
+
+function persistSavedSharedListShortId(list, routeToCopy) {
+    if (!routeToCopy.startsWith('s/') || typeof safeWriteStorage !== 'function') return;
+    const shortId = normalizeShortlinkId(routeToCopy.slice(2));
+    if (!shortId || shortId === list.shortId) return;
+
+    const lists = getSavedSharedLists();
+    // The list may have been edited or deleted while the short link was being created.
+    const current = lists.find(entry => entry.id === list.id && entry.route === list.route);
+    if (!current || current.shortId === shortId) return;
+    current.shortId = shortId;
+    safeWriteStorage(SAVED_SHARED_LISTS_KEY, lists);
 }
 
 function deleteSavedSharedList(listId) {
@@ -2352,7 +2542,11 @@ function deleteSavedSharedList(listId) {
 async function copySavedSharedListLink(listId) {
     const list = getSavedSharedLists().find(entry => entry.id === listId);
     if (!list || typeof window === 'undefined') return;
-    const copied = await copyTextToClipboard(getSharedListRouteUrl(list.route));
+    const parsed = parseSharedListRoute(list.route);
+    const routeToCopy = await createShortSharedListRoute(parsed.hasCustomTitle ? parsed.title : '', list.items, list.shortId);
+    if (!routeToCopy) return;
+    persistSavedSharedListShortId(list, routeToCopy);
+    const copied = await copyTextToClipboard(getSharedListRouteUrl(routeToCopy));
     setSharedListStatus('saved-lists-status', copied ? 'Seçki linki kopyalandı.' : 'Seçki linki kopyalanamadı.');
 }
 
@@ -2447,7 +2641,7 @@ function saveCurrentSharedListToProfile() {
     const loaded = new Map(state.items.map(item => [encodeSharedListItemToken(item), item]));
     const items = state.entries.map(entry => loaded.get(entry.token) || entry);
     const title = parseSharedListRoute(state.route);
-    const saved = saveSharedListRecord({ title: title.hasCustomTitle ? title.title : '', items });
+    const saved = saveSharedListRecord({ title: title.hasCustomTitle ? title.title : '', items, shortId: state.shortId });
     const message = saved ? 'Seçki profiline kaydedildi.' : 'Seçki profiline kaydedilemedi.';
     setSharedListStatus('shared-list-status', message);
 }
@@ -2499,7 +2693,11 @@ function pickRandomFromSharedList() {
 async function copyCurrentSharedListLink() {
     const state = getCurrentSharedList();
     if (!state?.route) return;
-    const copied = await copyTextToClipboard(getSharedListRouteUrl(state.route));
+    const parsed = parseSharedListRoute(state.route);
+    const routeToCopy = await createShortSharedListRoute(parsed.hasCustomTitle ? parsed.title : '', state.entries, state.shortId);
+    if (!routeToCopy) return;
+    if (routeToCopy.startsWith('s/')) state.shortId = routeToCopy.slice(2);
+    const copied = await copyTextToClipboard(getSharedListRouteUrl(routeToCopy));
     if (state === getCurrentSharedList()) {
         setSharedListStatus('shared-list-status', copied ? 'Seçki linki kopyalandı.' : 'Seçki linki kopyalanamadı.');
     }
@@ -2517,14 +2715,20 @@ function openShareListBuilderFromCurrent() {
 
 async function shareWatchlistQuick() {
     const status = document.getElementById('watchlist-share-status');
+    if (!status) return;
+    const generation = ++watchlistShareGeneration;
     const watchlist = readShareListLibrary('watchlist');
-    const route = buildSharedListRoute('İzleme Listem', watchlist.slice(0, SHARED_LIST_MAX_ITEMS));
+    const items = watchlist.slice(0, SHARED_LIST_MAX_ITEMS);
+    status.textContent = 'Seçki bağlantısı hazırlanıyor…';
+    const route = await createShortSharedListRoute('İzleme Listem', items);
+    if (generation !== watchlistShareGeneration) return;
     if (!route) {
         status.textContent = 'İzleme listende paylaşılabilecek yapım yok.';
         return;
     }
 
     const copied = await copyTextToClipboard(getSharedListRouteUrl(route));
+    if (generation !== watchlistShareGeneration) return;
     const cap = watchlist.length > SHARED_LIST_MAX_ITEMS ? ' İlk 30 yapım paylaşılıyor.' : '';
     status.textContent = (copied ? 'Seçki linki kopyalandı.' : 'Seçki linki kopyalanamadı.') + cap;
     const openButton = document.createElement('button');
@@ -3221,9 +3425,10 @@ async function copyBuiltSharedListLink() {
         const saveBtn = document.getElementById('share-list-save-btn');
         if (saveBtn) setShareListIconButtonLabel(saveBtn, 'Kaydet ve Güncelle');
     }
-    const route = saved?.route || buildSharedListRoute(draft.title, draft.items);
-    if (!route) return;
-    const copied = await copyTextToClipboard(getSharedListRouteUrl(route));
+    const routeToCopy = await createShortSharedListRoute(draft.title, draft.items, saved?.shortId);
+    if (!routeToCopy) return;
+    if (saved) persistSavedSharedListShortId(saved, routeToCopy);
+    const copied = await copyTextToClipboard(getSharedListRouteUrl(routeToCopy));
     if (draft === shareListDraft && isShareListBuilderOpen()) {
         const message = copied ? 'Seçki linki kopyalandı.' : 'Seçki linki kopyalanamadı.';
         setSharedListStatus('share-list-modal-status', saved ? message : message + ' Seçki profiline kaydedilemedi.');
