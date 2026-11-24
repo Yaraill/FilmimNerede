@@ -1,8 +1,8 @@
-const CACHE_NAME = 'filmimnerede-v123';
+const CACHE_NAME = 'filmimnerede-v124';
 const ASSETS_TO_CACHE = [
   '/',
   '/index.html',
-  '/style.css?v=69',
+  '/style.css?v=70',
   '/js/runtime/config.js?v=2',
   '/js/runtime/security.js?v=6',
   '/js/runtime/state.js?v=1',

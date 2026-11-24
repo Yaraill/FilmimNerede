@@ -25,7 +25,7 @@
     </style>
     <!-- Google Fonts: Modern ve okunaklı bir font (Inter) -->
     <!-- Kendi CSS dosyamız -->
-    <link rel="stylesheet" href="style.css?v=69">
+    <link rel="stylesheet" href="style.css?v=70">
     <!-- Font Awesome (İkonlar için) -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" integrity="sha512-9usAa10IRO0HhonpyAIVpjrylPvoDwiPUiKdWk5t3PyolY1cOd4DSE0Ga+ri4AuTroPR5aQvXU9xC6qOPnzFeg==" crossorigin="anonymous" media="print" onload="this.media='all'">
     <noscript><link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" integrity="sha512-9usAa10IRO0HhonpyAIVpjrylPvoDwiPUiKdWk5t3PyolY1cOd4DSE0Ga+ri4AuTroPR5aQvXU9xC6qOPnzFeg==" crossorigin="anonymous"></noscript>
@@ -845,7 +845,7 @@
             <div class="details-body">
                 <div class="details-left">
                     <img id="details-poster" src="" alt="" crossorigin="anonymous">
-                    <div id="details-date-badge" style="position:absolute; top: 10px; right: 10px; background: rgba(0,0,0,0.8); color: var(--text-color); padding: 5px 10px; border-radius: 8px; font-weight: bold; font-size: 0.85rem; box-shadow: 0 2px 10px rgba(0,0,0,0.5); backdrop-filter: blur(5px);"></div>
+                    <div id="details-date-badge" style="position:absolute; top: 10px; right: 10px; background: rgba(0,0,0,0.8); color: #ffffff; padding: 5px 10px; border-radius: 8px; font-weight: bold; font-size: 0.85rem; box-shadow: 0 2px 10px rgba(0,0,0,0.5); backdrop-filter: blur(5px);"></div>
                     <div id="modal-providers" class="modal-providers"></div>
                 </div>
                 <div class="details-right">
@@ -938,7 +938,7 @@
                         <div class="secondary-filters-row">
                             <input type="hidden" id="yearFilter" value="">
                             <div class="year-direct-filter" role="group" aria-label="Yıl veya Yıl Aralığı Filtresi">
-                                <input type="text" id="yearFromInput" class="custom-year-input" inputmode="numeric" maxlength="4" placeholder="Yıl (ör. 1994)" aria-label="Başlangıç veya tek yıl">
+                                <input type="text" id="yearFromInput" class="custom-year-input" inputmode="numeric" maxlength="4" placeholder="Başlangıç" aria-label="Başlangıç veya tek yıl">
                                 <span class="custom-year-sep" aria-hidden="true">-</span>
                                 <input type="text" id="yearToInput" class="custom-year-input" inputmode="numeric" maxlength="4" placeholder="Bitiş" aria-label="Bitiş yılı (isteğe bağlı)">
                                 <button type="button" id="yearRangeApplyBtn" class="custom-year-apply-btn" onclick="applyCustomYearFilterFromInputs()">Uygula</button>
