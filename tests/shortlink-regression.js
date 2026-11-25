@@ -337,25 +337,36 @@ test('the Netlify Blobs adapter connects Functions v1 before opening the store',
     assert.deepEqual(calls, [['getStore', SHORTLINK_STORE_NAME]]);
 });
 
-test('short hashes parse as shared lists and keep their route context current', () => {
+test('short hashes and clean /s/ routes parse as shared lists and keep their route context current', () => {
     const runtime = loadFrontend();
     const renders = [];
     runtime.document = { getElementById: () => null, body: { style: {} } };
     runtime.renderSection = (page, context) => renders.push({ page, context });
     let previousContext;
 
-    for (const [hash, expectedId] of [[`#s/${shortId}`, shortId], [`#s/${shortId}/`, shortId], ['#s', '']]) {
-        runtime.window.location.hash = hash;
+    runtime.window.location.hash = `#s/${shortId}/`;
+    assert.deepEqual({ ...runtime.parseRoute() }, {
+        page: 'list', listQuery: '', listPath: '', shortId
+    });
+    assert.equal(runtime.window.location.pathname, `/s/${shortId}`);
+
+    for (const [locationPatch, expectedId, expectedPathname] of [
+        [{ hash: `#s/${shortId}`, pathname: '/' }, shortId, `/s/${shortId}`],
+        [{ hash: '', pathname: '/s/Other123' }, 'Other123', '/s/Other123'],
+        [{ hash: '#s', pathname: '/' }, '', '/s']
+    ]) {
+        Object.assign(runtime.window.location, locationPatch);
         assert.deepEqual({ ...runtime.parseRoute() }, {
             page: 'list', listQuery: '', listPath: '', shortId: expectedId
         });
+        assert.equal(runtime.window.location.pathname, expectedPathname);
         runtime.handleRoute();
         const { page, context } = renders.at(-1);
         assert.equal(page, 'list');
         assert.equal(context.shortId, expectedId);
-        assert.equal(runtime.isRouteContextCurrent(context, 'list'), true, hash);
-        assert.equal(runtime.isRouteContextCurrent(context, 'home'), false, hash);
-        if (previousContext) assert.equal(runtime.isRouteContextCurrent(previousContext, 'list'), false, hash);
+        assert.equal(runtime.isRouteContextCurrent(context, 'list'), true, expectedPathname);
+        assert.equal(runtime.isRouteContextCurrent(context, 'home'), false, expectedPathname);
+        if (previousContext) assert.equal(runtime.isRouteContextCurrent(previousContext, 'list'), false, expectedPathname);
         previousContext = context;
     }
     assert.equal(renders.length, 3);
@@ -491,4 +502,19 @@ test('invalid short IDs are rejected locally or fall back when returned by POST'
     assert.match(fallbackRoute, /^secki\//);
     assert.equal(await createShortSharedListRoute(payload.title, frontendItems, invalidId), fallbackRoute);
     assert.equal(fetch.mock.callCount(), 1);
+});
+
+test('POST rejects oversized plain-text body quickly and handles non-string headers safely', async () => {
+    shortlink._resetRateLimit({ limits: { write: 50 } });
+    const oversizedPlain = 'x'.repeat(SHORTLINK_MAX_BODY_BYTES + 1);
+    assertUncached(await post(payload, {
+        body: oversizedPlain,
+        isBase64Encoded: false,
+        headers: { 'X-Nf-Client-Connection-Ip': ['192.0.2.1'], 'X-Forwarded-For': 12345 }
+    }), 413);
+
+    const created = await post(payload, {
+        headers: { 'X-Nf-Client-Connection-Ip': ['192.0.2.2'], 'X-Forwarded-For': 999 }
+    });
+    assertUncached(created, 201);
 });

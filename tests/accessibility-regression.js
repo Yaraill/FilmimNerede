@@ -85,7 +85,8 @@ async function runAccessibilityTests() {
         console.log('Starting local HTTP server for accessibility tests...');
         server = http.createServer((req, res) => {
             const urlPath = req.url.split('?')[0].split('#')[0];
-            const filePath = path.join(ROOT_DIR, urlPath === '/' ? 'index.html' : urlPath);
+            const isSpaRoute = urlPath === '/' || !path.extname(urlPath);
+            const filePath = path.join(ROOT_DIR, isSpaRoute ? 'index.html' : urlPath);
 
             if (!filePath.startsWith(ROOT_DIR)) {
                 res.writeHead(403);
@@ -634,9 +635,9 @@ async function runAccessibilityTests() {
 
         const historyState1 = await page.evaluate(() => ({
             index: history.state?.filmRehberiRouter?.index,
-            hash: window.location.hash
+            pathname: window.location.pathname
         }));
-        assert(historyState1.hash.includes('movie/101'), 'Journey E FAILED: Route hash does not contain movie/101');
+        assert(historyState1.pathname.includes('/film/101'), 'Journey E FAILED: Route pathname does not contain /film/101');
 
         // Activate real recommendation card for Movie 102 via keyboard Enter
         const recommendationCard =
@@ -668,8 +669,8 @@ async function runAccessibilityTests() {
 
         await page.waitForFunction(
             () =>
-                window.location.hash.includes(
-                    'movie/102'
+                window.location.pathname.includes(
+                    '/film/102'
                 ),
             { timeout: 5000 }
         );
@@ -693,9 +694,9 @@ async function runAccessibilityTests() {
 
         const historyState2 = await page.evaluate(() => ({
             index: history.state?.filmRehberiRouter?.index,
-            hash: window.location.hash
+            pathname: window.location.pathname
         }));
-        assert(historyState2.hash.includes('movie/102'), 'Journey E FAILED: Route hash does not contain movie/102');
+        assert(historyState2.pathname.includes('/film/102'), 'Journey E FAILED: Route pathname does not contain /film/102');
         assert(historyState2.index > historyState1.index, `Journey E FAILED: Router history index did not advance: ${historyState2.index} <= ${historyState1.index}`);
 
         // Close details from Movie 102 via close button
@@ -709,8 +710,8 @@ async function runAccessibilityTests() {
                 );
 
             return (
-                window.location.hash.includes(
-                    'movie/101'
+                window.location.pathname.includes(
+                    '/film/101'
                 ) ||
                 (
                     dm &&
@@ -722,10 +723,10 @@ async function runAccessibilityTests() {
         }, { timeout: 5000 });
 
         // If history rewound back to Movie 101, close once more to reach platform
-        const currentHash = await page.evaluate(
-            () => window.location.hash
+        const currentPathname = await page.evaluate(
+            () => window.location.pathname
         );
-        if (currentHash.includes('movie/101')) {
+        if (currentPathname.includes('/film/101')) {
             await page.focus('#details-modal .close-btn');
             await page.keyboard.press('Enter');
             await page.waitForFunction(() => {
@@ -736,8 +737,8 @@ async function runAccessibilityTests() {
 
         const finalJourneyState =
             await page.evaluate(() => ({
-                hash:
-                    window.location.hash,
+                pathname:
+                    window.location.pathname,
                 detailsActive:
                     document
                         .getElementById(
@@ -755,10 +756,10 @@ async function runAccessibilityTests() {
             }));
 
         assert(
-            !finalJourneyState.hash.includes(
-                'movie/'
+            !finalJourneyState.pathname.includes(
+                '/film/'
             ),
-            `Journey E FAILED: Still on movie route: ${finalJourneyState.hash}`
+            `Journey E FAILED: Still on movie route: ${finalJourneyState.pathname}`
         );
 
         assert(
@@ -797,7 +798,7 @@ async function runAccessibilityTests() {
         await page.waitForFunction(() => {
             const platform = document.getElementById('platform');
             const details = document.getElementById('details-modal');
-            return window.location.hash.includes('actor/201') &&
+            return window.location.pathname.includes('/oyuncu/201') &&
                 platform &&
                 platform.classList.contains('active-tab') &&
                 details &&
@@ -806,12 +807,12 @@ async function runAccessibilityTests() {
         });
 
         const actorRouteState = await page.evaluate(() => ({
-            hash: window.location.hash,
+            pathname: window.location.pathname,
             detailsHidden: document.getElementById('details-modal').getAttribute('aria-hidden'),
             actorModalActive: document.getElementById('actor-modal').classList.contains('active'),
             resultCount: document.querySelectorAll('#search-results .movie-title-btn').length
         }));
-        assert(actorRouteState.hash.includes('actor/201'), `Journey F FAILED: real actor keyboard activation routed to "${actorRouteState.hash}"`);
+        assert(actorRouteState.pathname.includes('/oyuncu/201'), `Journey F FAILED: real actor keyboard activation routed to "${actorRouteState.pathname}"`);
         assert(actorRouteState.detailsHidden === 'true', `Journey F FAILED: details modal aria-hidden is "${actorRouteState.detailsHidden}" on actor route`);
         assert(actorRouteState.actorModalActive === false, 'Journey F FAILED: legacy actor modal opened instead of production actor route');
         assert(actorRouteState.resultCount > 0, 'Journey F FAILED: actor route did not render production movie results');
@@ -826,12 +827,12 @@ async function runAccessibilityTests() {
         await page.keyboard.press('Space');
         await page.waitForFunction(() => {
             const details = document.getElementById('details-modal');
-            return window.location.hash.includes('actor/201') &&
+            return window.location.pathname.includes('/oyuncu/201') &&
                 details &&
                 !details.classList.contains('active') &&
                 document.querySelector('#search-results .movie-title-btn');
         });
-        assert(await page.evaluate(() => window.location.hash.includes('actor/201')), 'Journey F FAILED: actor card Space activation did not route to #actor/201');
+        assert(await page.evaluate(() => window.location.pathname.includes('/oyuncu/201')), 'Journey F FAILED: actor card Space activation did not route to /oyuncu/201');
 
         await page.evaluate(() => switchTab(null, 'platform'));
         await page.waitForFunction(() => document.getElementById('platform').classList.contains('active-tab'));
@@ -924,14 +925,14 @@ async function runAccessibilityTests() {
 
         await page.waitForFunction(
             () =>
-                window.location.hash.includes('actor/201') &&
+                window.location.pathname.includes('/oyuncu/201') &&
                 document.querySelectorAll('#search-results .movie-title-btn').length > 0,
             { timeout: 3000 }
         );
 
         assert(
             await page.evaluate(() =>
-                window.location.hash.includes('actor/201') &&
+                window.location.pathname.includes('/oyuncu/201') &&
                 document.querySelectorAll('#search-results .movie-title-btn').length > 0
             ),
             'Journey H FAILED: trending actor did not render real actor route results'
@@ -979,7 +980,7 @@ async function runAccessibilityTests() {
 
         await page.waitForFunction(() => {
             const modal = document.getElementById('details-modal');
-            return window.location.hash.includes('movie/101') &&
+            return window.location.pathname.includes('/film/101') &&
                 modal &&
                 modal.classList.contains('active') &&
                 document.getElementById('details-title').textContent.includes('Accessibility Inception');
@@ -1156,7 +1157,7 @@ async function runAccessibilityTests() {
         await page.click('#search-opt-0');
         await page.waitForFunction(() => {
             const modal = document.getElementById('details-modal');
-            return window.location.hash.includes('movie/101') &&
+            return window.location.pathname.includes('/film/101') &&
                 modal &&
                 modal.classList.contains('active') &&
                 document.getElementById('details-title').textContent.includes('Accessibility Inception');
@@ -1696,7 +1697,7 @@ async function runAccessibilityTests() {
         await page.waitForFunction(() => {
             const title = document.getElementById('details-title');
             const trailer = document.getElementById('trailer-modal');
-            return window.location.hash.includes('movie/101') &&
+            return window.location.pathname.includes('/film/101') &&
                 title && title.textContent.includes('Accessibility Inception') &&
                 trailer && !trailer.classList.contains('active');
         });
@@ -1727,15 +1728,15 @@ async function runAccessibilityTests() {
 
         // B. Random modal -> real browser history change -> overlay/stack/background cleanup.
         await page.click('.nav-links a[onclick*="games"]');
-        await page.waitForFunction(() => window.location.hash === '#games');
+        await page.waitForFunction(() => window.location.pathname === '/oyunlar');
         await page.click('.nav-links a[onclick*="platform"]');
-        await page.waitForFunction(() => window.location.hash === '#platform');
+        await page.waitForFunction(() => window.location.pathname === '/nerede-izlerim');
 
         await page.focus('#surprise-btn');
         await page.keyboard.press('Enter');
         await page.waitForFunction(() => document.getElementById('random-modal')?.classList.contains('active'));
         await page.evaluate(() => history.back());
-        await page.waitForFunction(() => window.location.hash === '#games' && !document.getElementById('random-modal')?.classList.contains('active'));
+        await page.waitForFunction(() => window.location.pathname === '/oyunlar' && !document.getElementById('random-modal')?.classList.contains('active'));
 
         const randomRouteState = await page.evaluate(() => ({
             randomHidden: document.getElementById('random-modal').getAttribute('aria-hidden'),

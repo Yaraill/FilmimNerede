@@ -23,7 +23,8 @@ const ALLOWED_API_PATH_PREFIXES = [
     '/3/trending/',
     '/3/genre/',
     '/3/collection/',
-    '/3/watch/providers/'
+    '/3/watch/providers/',
+    '/3/find/'
 ];
 
 const IPV4_PATTERN =
@@ -252,6 +253,12 @@ function validateTmdbTargetAndPath(rawTarget, rawPath) {
             prefix => parsed.pathname.startsWith(prefix) && parsed.pathname.length > prefix.length
         );
         if (!isAllowedApiPath) {
+            return { valid: false, error: 'Desteklenmeyen TMDB uç noktası.' };
+        }
+        if (
+            parsed.pathname.startsWith('/3/find/') &&
+            (!/^\/3\/find\/tt\d{7,10}$/.test(parsed.pathname) || parsed.searchParams.get('external_source') !== 'imdb_id')
+        ) {
             return { valid: false, error: 'Desteklenmeyen TMDB uç noktası.' };
         }
 

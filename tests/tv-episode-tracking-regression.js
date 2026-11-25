@@ -40,7 +40,8 @@ const UNTRACKED_TOP10_CARD = '#top10-grid .top10-card[data-media-id="202"][data-
 
 function serveRepo(req, res) {
     const pathname = new URL(req.url, 'http://localhost').pathname;
-    const file = path.resolve(ROOT_DIR, pathname === '/' ? 'index.html' : '.' + pathname);
+    const isSpaRoute = pathname === '/' || !path.extname(pathname);
+    const file = path.resolve(ROOT_DIR, isSpaRoute ? 'index.html' : '.' + pathname);
     if (!file.startsWith(ROOT_DIR + path.sep)) {
         res.writeHead(403).end('Forbidden');
         return;

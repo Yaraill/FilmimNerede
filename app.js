@@ -94,6 +94,8 @@ document.addEventListener('DOMContentLoaded', () => {
                         closeShareListModal(null, true);
                     } else if (topModal.id === 'actor-modal') {
                         closeActor(null, true);
+                    } else if (topModal.id === 'external-import-modal') {
+                        closeExternalImportModal(null, true);
                     } else {
                         window.ModalManager.closeModal(topModal.element);
                     }
@@ -440,7 +442,12 @@ async function loadGenres() {
 }
 
 function switchTab(event, tabId) {
-    if (event) event.preventDefault();
+    if (event) {
+        if (typeof shouldHandleLinkClickInSpa === 'function' && !shouldHandleLinkClickInSpa(event)) {
+            return;
+        }
+        event.preventDefault();
+    }
     navigate(tabId);
 }
 
@@ -458,7 +465,9 @@ function renderSection(tabId, routeContext = null) {
     const tabEl = document.getElementById(tabId);
     if(tabEl) tabEl.classList.add('active-tab');
     
-    const link = document.querySelector(`.nav-links a[onclick*="${tabId}"]`);
+    const link = tabId === 'not-found'
+        ? null
+        : document.querySelector(`.nav-links a[onclick*="${tabId}"]`);
     if(link) link.classList.add('active');
 
     if (tabId === 'now-playing') {

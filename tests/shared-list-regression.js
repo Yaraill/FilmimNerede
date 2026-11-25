@@ -16,8 +16,14 @@ const mimeTypes = {
 };
 const maliciousTitle = '<img src=x onerror=window.__xss=1>';
 const maliciousRoute = 'list?title=%3Cimg%20src%3Dx%20onerror%3Dwindow.__xss%3D1%3E&items=m550,t1396';
-const expectedNav = ['now-playing', 'vizyon', 'platform', 'profile', 'games', 'imax']
-    .map(tab => ['#', `switchTab(event, '${tab}')`]);
+const expectedNav = [
+    ['/', "switchTab(event, 'now-playing')"],
+    ['/vizyon', "switchTab(event, 'vizyon')"],
+    ['/nerede-izlerim', "switchTab(event, 'platform')"],
+    ['/profilim', "switchTab(event, 'profile')"],
+    ['/oyunlar', "switchTab(event, 'games')"],
+    ['/imax', "switchTab(event, 'imax')"]
+];
 
 function testQueryHelpers() {
     const storage = new Map();
@@ -128,7 +134,8 @@ function testQueryHelpers() {
 
 function serveFile(req, res) {
     const pathname = new URL(req.url, 'http://localhost').pathname;
-    const file = path.join(root, pathname === '/' ? 'index.html' : pathname);
+    const isSpaRoute = pathname === '/' || !path.extname(pathname);
+    const file = path.join(root, isSpaRoute ? 'index.html' : pathname);
     if (!file.startsWith(root + path.sep)) {
         res.writeHead(403).end();
         return;
@@ -279,23 +286,23 @@ async function testSharedList(page, origin, listDetailRequests) {
     assert.deepEqual([...listDetailRequests].sort(), ['movie:550', 'tv:1396']);
 
     await page.click('#shared-list-copy-btn');
-    await page.waitForFunction(() => window.__copiedLink?.includes('#secki/'));
+    await page.waitForFunction(() => window.__copiedLink?.includes('/secki/'));
     const copiedUrl = new URL(await page.evaluate(() => window.__copiedLink));
     assert.equal(copiedUrl.origin, origin);
-    const parsedCopied = await page.evaluate(hash => parseSharedListRoute(hash), copiedUrl.hash);
+    const parsedCopied = await page.evaluate(pathname => parseSharedListRoute(pathname.slice(1)), copiedUrl.pathname);
     assert.equal(parsedCopied.title, maliciousTitle);
     assert.deepEqual(parsedCopied.items.map(item => item.token), ['m550', 't1396']);
 
     await page.click('#shared-list-grid .movie-card[data-media-id="550"] .movie-title-btn');
-    await page.waitForFunction(() => location.hash === '#movie/550/movie' &&
+    await page.waitForFunction(() => location.pathname === '/film/550' &&
         document.querySelector('#details-modal.active #details-title')?.textContent.includes('Dövüş Kulübü'));
     await page.evaluate(() => {
         window.movieCache = {};
         closeDetails(null, true);
     });
-    await page.waitForFunction(hash => location.hash === hash &&
+    await page.waitForFunction(routeUrl => (location.pathname + location.search) === routeUrl &&
         !document.getElementById('details-modal').classList.contains('active') &&
-        document.querySelectorAll('#shared-list-grid .movie-card').length === 2, {}, '#' + maliciousRoute);
+        document.querySelectorAll('#shared-list-grid .movie-card').length === 2, {}, '/' + maliciousRoute);
     assert.equal(listDetailRequests.length, 2, 'Back navigation should use the shared list cache');
 
     for (const added of [2, 0]) {
@@ -310,10 +317,10 @@ async function testSharedList(page, origin, listDetailRequests) {
 
     await page.click('#shared-list-pick-random-btn');
     await page.waitForSelector('#details-modal.active');
-    assert.match(new URL(page.url()).hash, /^#movie\/(550\/movie|1396\/tv)$/);
+    assert.match(new URL(page.url()).pathname, /^\/(film\/550|dizi\/1396)$/);
     assert.match(await page.$eval('#shared-list-status', el => el.textContent), /Seçilen yapım: (Dövüş Kulübü|Breaking Bad)/);
     await page.evaluate(() => closeDetails(null, true));
-    await page.waitForFunction(hash => location.hash === hash, {}, '#' + maliciousRoute);
+    await page.waitForFunction(routeUrl => (location.pathname + location.search) === routeUrl, {}, '/' + maliciousRoute);
 
     await page.evaluate(() => navigate('list?items=m550,t999'));
     await page.waitForFunction(() => document.getElementById('shared-list-notice').textContent.includes('1 yapım yüklenemedi.'));
@@ -350,9 +357,9 @@ async function testBuilder(page, queries) {
     await page.waitForSelector('#watchlist-share-status .share-list-inline-open-btn');
     assert.match(await page.$eval('#watchlist-share-status', el => el.textContent), /linki kopyalandı/);
     await page.click('#watchlist-share-status .share-list-inline-open-btn');
-    await page.waitForFunction(() => location.hash.includes('#secki/izleme-listem/') &&
+    await page.waitForFunction(() => location.pathname.includes('/secki/izleme-listem/') &&
         document.getElementById('shared-list-title').textContent === 'İzleme Listem');
-    assert.equal(new URL(await page.evaluate(() => window.__copiedLink)).hash, new URL(page.url()).hash);
+    assert.equal(new URL(await page.evaluate(() => window.__copiedLink)).pathname, new URL(page.url()).pathname);
     await page.evaluate(() => navigate('profile'));
     await page.click('#open-share-builder-btn');
     await page.waitForSelector('#share-list-modal.active', { visible: true });
@@ -540,7 +547,7 @@ async function testBuilder(page, queries) {
     const copiedLink = await page.evaluate(() => window.__copiedLink);
     const savedOnCopy = await page.evaluate(() => JSON.parse(localStorage.getItem('savedSharedLists')));
     assert.equal(savedOnCopy.length, 1);
-    assert.equal(savedOnCopy[0].route, new URL(copiedLink).hash.slice(1));
+    assert.equal(savedOnCopy[0].route, new URL(copiedLink).pathname.slice(1));
     await page.click('#share-list-open-btn');
     await page.waitForSelector('#shared-list.active-tab .movie-card[data-media-id="603"]');
     assert.equal(page.url(), copiedLink);
@@ -633,7 +640,7 @@ async function testSavedLists(page) {
     const [original] = await savedLists();
     await clickCardAction(0, 'Linki Kopyala');
     await page.waitForFunction(() => document.getElementById('saved-lists-status').textContent.includes('kopyalandı'));
-    assert.equal(new URL(await page.evaluate(() => window.__copiedLink)).hash, '#' + original.route);
+    assert.equal(new URL(await page.evaluate(() => window.__copiedLink)).pathname, '/' + original.route);
 
     await clickCardAction(0, 'Düzenle');
     await page.waitForSelector('#share-list-modal.active');
@@ -652,7 +659,7 @@ async function testSavedLists(page) {
     assert.equal(edited[0].title, 'Yeni ' + original.title);
     assert.equal(await page.$eval(card + ' .saved-list-title-btn', el => el.textContent), edited[0].title);
     await clickCardAction(0, 'Seçkiyi Aç');
-    await page.waitForFunction(route => location.hash === '#' + route &&
+    await page.waitForFunction(route => location.pathname === '/' + route &&
         document.getElementById('shared-list-save-btn').getAttribute('aria-pressed') === 'true', {}, edited[0].route);
 
     const partialRoute = 'list?items=m550%2Ct999';
@@ -685,7 +692,7 @@ async function testSavedLists(page) {
     assert.equal(await page.$eval('#share-list-title-input', el => el.value), '');
     await page.click('#share-list-library-chips [data-share-token="m550"]');
     await page.click('#share-list-open-btn');
-    await page.waitForFunction(() => location.hash === '#secki/mfa' &&
+    await page.waitForFunction(() => location.pathname === '/secki/mfa' &&
         document.getElementById('shared-list-save-btn').getAttribute('aria-pressed') === 'true');
     const [untitled] = await savedLists();
     assert.equal(untitled.route, 'secki/mfa');
@@ -697,7 +704,7 @@ async function testSavedLists(page) {
     assert.equal(await page.$eval('#share-list-title-input', el => el.value), '');
     await page.click('#share-list-copy-link-btn');
     await page.waitForFunction(() => document.getElementById('share-list-modal-status').textContent.includes('kopyalandı'));
-    assert.equal(new URL(await page.evaluate(() => window.__copiedLink)).hash, '#secki/mfa');
+    assert.equal(new URL(await page.evaluate(() => window.__copiedLink)).pathname, '/secki/mfa');
     assert.deepEqual((await savedLists()).map(list => list.id), [untitled.id]);
 
     await page.keyboard.press('Escape');

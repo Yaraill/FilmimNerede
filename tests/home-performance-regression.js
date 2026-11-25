@@ -734,10 +734,10 @@ async function runTest() {
                                     )
                                     .length,
 
-                            hash:
+                            pathname:
                                 window
                                     .location
-                                    .hash
+                                    .pathname
                         };
                     } finally {
                         Date.now =
@@ -747,9 +747,9 @@ async function runTest() {
             );
 
         assert(
-            staleResult.hash ===
-                '#games',
-            `Expected games route, got ${staleResult.hash}`
+            staleResult.pathname ===
+                '/oyunlar',
+            `Expected /oyunlar route, got ${staleResult.pathname}`
         );
 
         assert(

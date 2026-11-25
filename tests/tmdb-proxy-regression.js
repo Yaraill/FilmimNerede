@@ -246,7 +246,8 @@ async function runExistingHandlerChecks() {
         '/3/trending/all/week?language=tr-TR',
         '/3/genre/movie/list?language=tr-TR',
         '/3/collection/10?language=tr-TR',
-        '/3/watch/providers/movie?language=tr-TR'
+        '/3/watch/providers/movie?language=tr-TR',
+        '/3/find/tt0137523?external_source=imdb_id&language=tr-TR'
     ];
     for (const apiPath of allowedApiPaths) {
         const validApi = tmdbFunction.validateTmdbTargetAndPath('api', apiPath);
@@ -272,6 +273,9 @@ async function runExistingHandlerChecks() {
         ['api', '/3/list/1'],
         ['api', '/3/movie/'],
         ['api', '/4/movie/1'],
+        ['api', '/3/find/tt0137523'],
+        ['api', '/3/find/nm0000093?external_source=imdb_id'],
+        ['api', '/3/find/tt123?external_source=imdb_id'],
         ['image', '/t/p/w999/a.jpg'],
         ['image', '/t/p/w500/bad path.jpg']
     ];
@@ -914,12 +918,9 @@ async function runBrowserIntegrationTests() {
                     const state = window.getTmdbFallbackState?.();
                     const cards = document.querySelectorAll('.movie-card');
                     const poster = cards[0]?.querySelector('img');
-                    const logos = Array.from(document.querySelectorAll('img')).filter(img => {
+                    const logos = Array.from(document.querySelectorAll('#btn-prov-8 img, #btn-prov-119 img, #btn-prov-337 img')).filter(img => {
                         const raw = img.getAttribute('src') || '';
-                        return (
-                            !img.closest('.movie-card') &&
-                            decodeURIComponent(raw).includes('/t/p/original/')
-                        );
+                        return decodeURIComponent(raw).includes('/t/p/w154/');
                     });
                     return (
                         state?.imageActive === true &&
@@ -942,12 +943,9 @@ async function runBrowserIntegrationTests() {
 
             // Statik platform logolarının da yeniden yazıldığını ve yüklendiğini doğrula
             const staticLogoCheck = await page.evaluate(() => {
-                const logos = Array.from(document.querySelectorAll('img')).filter(img => {
+                const logos = Array.from(document.querySelectorAll('#btn-prov-8 img, #btn-prov-119 img, #btn-prov-337 img')).filter(img => {
                     const raw = img.getAttribute('src') || '';
-                    return (
-                        !img.closest('.movie-card') &&
-                        decodeURIComponent(raw).includes('/t/p/original/')
-                    );
+                    return decodeURIComponent(raw).includes('/t/p/w154/');
                 });
                 return {
                     count: logos.length,

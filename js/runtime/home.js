@@ -1296,7 +1296,7 @@ async function loadTop10Trending(
                     getSafeTmdbImageUrl(
                         item.poster_path,
                         top10PosterBase,
-                        'assets/placeholder.svg'
+                        '/assets/placeholder.svg'
                     );
 
                 const cachedEntry = {
@@ -1566,7 +1566,7 @@ function buildTrendingActorCard(actor, actorImageBase, index = -1) {
             actor
                 .profile_path,
             actorImageBase,
-            'assets/placeholder.svg'
+            '/assets/placeholder.svg'
         );
 
     const card =
@@ -1858,7 +1858,7 @@ function buildCuratedCollectionCard(result, backdropBase, posterBase, index = -1
         getSafeTmdbImageUrl(
             data.poster_path,
             posterBase,
-            'assets/placeholder.svg'
+            '/assets/placeholder.svg'
         );
 
     const poster =

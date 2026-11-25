@@ -4,11 +4,64 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="description" content="FilmimNerede ile Türkiye'de vizyona girecek filmleri, popüler dizileri takip edin. Hangi platformda yayınlandıklarını öğrenin, fragman izleyin ve kendi izleme listenizi oluşturun.">
-    <meta name="keywords" content="film izle, dizi izle, vizyondaki filmler, netflix türkiye, blu tv dizileri, filmimnerede, fragman izle">
+    <meta name="keywords" content="film izle, dizi izle, vizyondaki filmler, netflix türkiye, amazon prime video, disney+, max (eski blutv), mubi, tod tv, tabii, imax türkiye, filmimnerede, fragman izle">
     <title>FilmimNerede - Türkiye Film & Dizi Rehberi</title>
+    <link rel="canonical" href="https://filmimnerede.netlify.app/">
+    <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1">
+    <meta property="og:type" content="website">
+    <meta property="og:locale" content="tr_TR">
+    <meta property="og:site_name" content="FilmimNerede">
+    <meta property="og:title" content="FilmimNerede - Türkiye Film & Dizi Rehberi">
+    <meta property="og:description" content="Türkiye'de vizyondaki filmler, yakında vizyona girecek yapımlar, dijital yayın platformu (Netflix, Amazon Prime Video, Disney+, Max, MUBI, TOD TV, TV+, tabii, Exxen, puhutv) arama motoru ve Türkiye IMAX salonları rehberi.">
+    <meta property="og:url" content="https://filmimnerede.netlify.app/">
+    <meta property="og:image" content="https://filmimnerede.netlify.app/assets/icons/icon-512.png">
+    <meta property="og:image:alt" content="FilmimNerede logosu">
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="FilmimNerede - Türkiye Film & Dizi Rehberi">
+    <meta name="twitter:description" content="Türkiye'de vizyondaki filmler, yakında vizyona girecek yapımlar, dijital yayın platformu arama motoru ve Türkiye IMAX salonları rehberi.">
+    <meta name="twitter:image" content="https://filmimnerede.netlify.app/assets/icons/icon-512.png">
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@graph": [
+        {
+          "@type": "WebSite",
+          "@id": "https://filmimnerede.netlify.app/#website",
+          "url": "https://filmimnerede.netlify.app/",
+          "name": "FilmimNerede",
+          "description": "Türkiye'de vizyondaki filmler, yakında çıkacak yapımlar, dijital yayın platformu (Netflix, Amazon Prime Video, Disney+, Max, MUBI, TOD TV, TV+, tabii, Exxen, puhutv) arama motoru ve Türkiye IMAX salonları rehberi.",
+          "inLanguage": "tr-TR",
+          "potentialAction": {
+            "@type": "SearchAction",
+            "target": {
+              "@type": "EntryPoint",
+              "urlTemplate": "https://filmimnerede.netlify.app/nerede-izlerim?q={search_term_string}"
+            },
+            "query-input": "required name=search_term_string"
+          }
+        },
+        {
+          "@type": "WebApplication",
+          "@id": "https://filmimnerede.netlify.app/#app",
+          "name": "FilmimNerede",
+          "url": "https://filmimnerede.netlify.app/",
+          "applicationCategory": "EntertainmentApplication",
+          "operatingSystem": "Web",
+          "inLanguage": "tr-TR",
+          "offers": {
+            "@type": "Offer",
+            "price": "0",
+            "priceCurrency": "TRY"
+          }
+        }
+      ]
+    }
+    </script>
     <link rel="preconnect" href="https://image.tmdb.org" crossorigin>
     <link rel="preconnect" href="https://cdnjs.cloudflare.com" crossorigin>
     <style id="critical-cls-css">
+        .site-hero-heading { text-align: center; margin-bottom: 1.5rem; }
+        .site-hero-heading h1 { font-size: clamp(1.35rem, 2.4vw, 1.9rem); font-weight: 800; line-height: 1.25; color: var(--text-color); margin: 0; }
         .movie-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 2rem; }
         #now-playing-grid, #upcoming-movies { min-height: 480px; }
         #trending-actors-list, .actor-story-container { min-height: 128px; align-items: flex-start; }
@@ -25,15 +78,15 @@
     </style>
     <!-- Google Fonts: Modern ve okunaklı bir font (Inter) -->
     <!-- Kendi CSS dosyamız -->
-    <link rel="stylesheet" href="style.css?v=70">
+    <link rel="stylesheet" href="/style.css?v=77">
     <!-- Font Awesome (İkonlar için) -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" integrity="sha512-9usAa10IRO0HhonpyAIVpjrylPvoDwiPUiKdWk5t3PyolY1cOd4DSE0Ga+ri4AuTroPR5aQvXU9xC6qOPnzFeg==" crossorigin="anonymous" media="print" onload="this.media='all'">
     <noscript><link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" integrity="sha512-9usAa10IRO0HhonpyAIVpjrylPvoDwiPUiKdWk5t3PyolY1cOd4DSE0Ga+ri4AuTroPR5aQvXU9xC6qOPnzFeg==" crossorigin="anonymous"></noscript>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/color-thief/2.3.0/color-thief.umd.js" integrity="sha512-5gayFJH2if1OExccimIYUfygbKxdorNUfihQJtcwR2U1uDGf4JSw4PUmTOnssdCAIomst/UV5hoqO7U17c4M7w==" crossorigin="anonymous" defer></script>
     <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🎬</text></svg>">
-    <link rel="manifest" href="manifest.json">
+    <link rel="manifest" href="/manifest.json">
     <meta name="theme-color" content="#3b82f6">
-    <link rel="apple-touch-icon" href="assets/icons/icon-192.png">
+    <link rel="apple-touch-icon" href="/assets/icons/icon-192.png">
 </head>
 <body>
     <a href="#main-content" class="skip-link">Ana içeriğe atla</a>
@@ -58,12 +111,12 @@
             <span class="bar"></span>
         </button>
         <ul class="nav-links" id="nav-links">
-            <li><a href="#" class="active" onclick="switchTab(event, 'now-playing')">Şu An Vizyonda</a></li>
-            <li><a href="#" onclick="switchTab(event, 'vizyon')">Yakında Vizyonda</a></li>
-            <li><a href="#" onclick="switchTab(event, 'platform')">Nerede İzlerim?</a></li>
-            <li><a href="#" onclick="switchTab(event, 'profile')">Profilim</a></li>
-            <li><a href="#" onclick="switchTab(event, 'games')">Oyunlar 🎲</a></li>
-            <li><a href="#" onclick="switchTab(event, 'imax')" class="imax-badge">IMAX</a></li>
+            <li><a href="/" class="active" onclick="switchTab(event, 'now-playing')">Şu An Vizyonda</a></li>
+            <li><a href="/vizyon" onclick="switchTab(event, 'vizyon')">Yakında Vizyonda</a></li>
+            <li><a href="/nerede-izlerim" onclick="switchTab(event, 'platform')">Nerede İzlerim?</a></li>
+            <li><a href="/profilim" onclick="switchTab(event, 'profile')">Profilim</a></li>
+            <li><a href="/oyunlar" onclick="switchTab(event, 'games')">Oyunlar 🎲</a></li>
+            <li><a href="/imax" onclick="switchTab(event, 'imax')" class="imax-badge">IMAX</a></li>
             <li><button type="button" onclick="toggleTheme()" id="themeToggleBtn" title="Açık Temaya Geç" aria-label="Açık Temaya Geç" aria-pressed="false" style="background:transparent; border:none; color:var(--text-color); font-size:1.2rem; cursor:pointer;"><i class="fas fa-sun" aria-hidden="true"></i></button></li>
         </ul>
     </nav>
@@ -73,6 +126,10 @@
 
         <!-- SEKTME 1: Şu An Vizyonda (YENİ) -->
         <section id="now-playing" class="tab-content active-tab">
+            <header class="site-hero-heading">
+                <h1>FilmimNerede: Türkiye Film, Dizi ve IMAX Platform Rehberi</h1>
+                <p class="site-hero-lead">FilmimNerede, Türkiye'de vizyondaki ve yakında sinemalara gelecek filmleri takip etmenizi sağlar. Ayrıca Netflix, Amazon Prime Video, Disney+, Max, MUBI, TOD TV, TV+, tabii, Exxen ve puhutv olmak üzere 10 dijital platformdaki içerikleri, IMDb ve Rotten Tomatoes puanlarını ve Türkiye'deki 11 IMAX salonunu tek yerden ücretsiz inceleyebilirsiniz.</p>
+            </header>
 
             <div id="trending-actors-section" style="margin-bottom:30px;">
                 <div class="section-header"><h2>Gündemdeki İsimler</h2></div>
@@ -228,7 +285,23 @@
                 </div>
             </div>
             
-            
+            <section class="home-geo-faq glass" aria-labelledby="home-faq-title">
+                <h2 id="home-faq-title">FilmimNerede Hakkında Sık Sorulan Sorular</h2>
+                <div class="home-faq-grid">
+                    <article class="home-faq-item">
+                        <h3>FilmimNerede hangi dijital platformları kapsar?</h3>
+                        <p>Netflix, Amazon Prime Video, Disney+, Max, MUBI, TOD TV, TV+, tabii, Exxen ve puhutv dahil Türkiye'deki 10 dijital yayın seçeneğini kapsar.</p>
+                    </article>
+                    <article class="home-faq-item">
+                        <h3>FilmimNerede ücretsiz mi ve puanları nereden alır?</h3>
+                        <p>FilmimNerede ücretsizdir; film ve dizi puanlarını IMDb ile Rotten Tomatoes bilgilerinden ve TMDB verilerinden derler.</p>
+                    </article>
+                    <article class="home-faq-item">
+                        <h3>İzleme listemi ve seçkilerimi nasıl saklayıp paylaşırım?</h3>
+                        <p>İzleme listenizi tarayıcıdaki profilde saklayabilir, JSON olarak yedekleyebilir veya seçkinizi oluşturup paylaşılabilir bağlantıyla gönderebilirsiniz.</p>
+                    </article>
+                </div>
+            </section>
         </section>
 
         <!-- SEKTME 2: Yakında Vizyonda -->
@@ -294,7 +367,7 @@
         <section id="platform" class="tab-content">
             <div class="section-header">
                 <h2>Film & Dizi Arama Motoru</h2>
-                <p>Türkiye'de (Netflix, Amazon, BluTV vb.) nerede yayınlandığını bulun.</p>
+                <p>Türkiye'de (Netflix, Amazon Prime Video, Disney+, Max (eski BluTV), MUBI, TOD TV, TV+, tabii, Exxen, puhutv) nerede yayınlandığını bulun.</p>
             </div>
             <div id="top10-section" style="display:none; margin-bottom: 30px;">
                 <h3 style="color: var(--text-color); margin-bottom: 10px; padding-left: 10px; border-left: 4px solid var(--accent-color);">🔥 Top 10 Bu Hafta</h3>
@@ -315,34 +388,34 @@
                         <h3 style="text-align:center; margin-bottom: 15px; color: var(--text-muted);">Veya Doğrudan Platform Seçin</h3>
                         <div class="provider-logos-filter">
                             <button type="button" class="provider-filter-btn" id="btn-prov-8" onclick="handlePlatformButtonClick(8)" title="Netflix" aria-label="Netflix">
-                                <img src="https://image.tmdb.org/t/p/original/pbpMk2JmcoNnQwx5JGpXngfoWtp.jpg" alt="Netflix">
+                                <img src="https://image.tmdb.org/t/p/w154/pbpMk2JmcoNnQwx5JGpXngfoWtp.jpg" alt="Netflix" width="60" height="60">
                             </button>
                             <button type="button" class="provider-filter-btn" id="btn-prov-119" onclick="handlePlatformButtonClick(119)" title="Amazon Prime" aria-label="Amazon Prime">
-                                <img src="https://image.tmdb.org/t/p/original/pvske1MyAoymrs5bguRfVqYiM9a.jpg" alt="Amazon Prime">
+                                <img src="https://image.tmdb.org/t/p/w154/pvske1MyAoymrs5bguRfVqYiM9a.jpg" alt="Amazon Prime" width="60" height="60">
                             </button>
                             <button type="button" class="provider-filter-btn" id="btn-prov-337" onclick="handlePlatformButtonClick(337)" title="Disney+" aria-label="Disney+">
-                                <img src="https://image.tmdb.org/t/p/original/97yvRBw1GzX7fXprcF80er19ot.jpg" alt="Disney+">
+                                <img src="https://image.tmdb.org/t/p/w154/97yvRBw1GzX7fXprcF80er19ot.jpg" alt="Disney+" width="60" height="60">
                             </button>
                             <button type="button" class="provider-filter-btn" id="btn-prov-1899" onclick="handlePlatformButtonClick(1899)" title="HBO Max" aria-label="HBO Max">
-                                <img src="https://upload.wikimedia.org/wikipedia/commons/1/17/HBO_Max_Logo.svg" style="background:#000; object-fit:contain; padding:5px;" alt="HBO Max">
+                                <img src="https://upload.wikimedia.org/wikipedia/commons/1/17/HBO_Max_Logo.svg" style="background:#000; object-fit:contain; padding:5px;" alt="HBO Max" width="60" height="60">
                             </button>
                             <button type="button" class="provider-filter-btn" id="btn-prov-11" onclick="handlePlatformButtonClick(11)" title="MUBI" aria-label="MUBI">
-                                <img src="https://image.tmdb.org/t/p/w154/k7iSlvgWzZuO4zU5PcBjhABMuia.png" alt="" loading="lazy">
+                                <img src="https://image.tmdb.org/t/p/w154/k7iSlvgWzZuO4zU5PcBjhABMuia.png" alt="" width="60" height="60" loading="lazy">
                             </button>
                             <button type="button" class="provider-filter-btn" id="btn-prov-1826" onclick="handlePlatformButtonClick(1826)" title="TOD TV" aria-label="TOD TV">
-                                <img src="https://image.tmdb.org/t/p/w154/d67wyFHwK84A0vC7PslzaMqYGif.png" alt="" loading="lazy">
+                                <img src="https://image.tmdb.org/t/p/w154/d67wyFHwK84A0vC7PslzaMqYGif.png" alt="" width="60" height="60" loading="lazy">
                             </button>
                             <button type="button" class="provider-filter-btn" id="btn-prov-1904" onclick="handlePlatformButtonClick(1904)" title="TV+" aria-label="TV+">
-                                <img src="https://image.tmdb.org/t/p/w154/ck9ropbn6okqSdtgxGkkvMMgtSe.png" alt="" loading="lazy">
+                                <img src="https://image.tmdb.org/t/p/w154/ck9ropbn6okqSdtgxGkkvMMgtSe.png" alt="" width="60" height="60" loading="lazy">
                             </button>
                             <button type="button" class="provider-filter-btn" id="btn-prov-2235" onclick="handlePlatformButtonClick(2235)" title="tabii" aria-label="tabii">
-                                <img src="https://image.tmdb.org/t/p/w154/8OIs6ZVYbS3auTiW6cWsXE5LTX.png" alt="" loading="lazy">
+                                <img src="https://image.tmdb.org/t/p/w154/8OIs6ZVYbS3auTiW6cWsXE5LTX.png" alt="" width="60" height="60" loading="lazy">
                             </button>
                             <button type="button" class="provider-filter-btn" id="btn-prov-1791" onclick="handlePlatformButtonClick(1791)" title="Exxen" aria-label="Exxen">
-                                <img src="https://image.tmdb.org/t/p/w154/4CzzpXkWljs4o3IugWKtS9fWeu.png" alt="" loading="lazy">
+                                <img src="https://image.tmdb.org/t/p/w154/4CzzpXkWljs4o3IugWKtS9fWeu.png" alt="" width="60" height="60" loading="lazy">
                             </button>
                             <button type="button" class="provider-filter-btn" id="btn-prov-342" onclick="handlePlatformButtonClick(342)" title="puhutv" aria-label="puhutv">
-                                <img src="https://image.tmdb.org/t/p/w154/x6YrA73boPbd9XugZFRSzr0ZZ9o.png" alt="" loading="lazy">
+                                <img src="https://image.tmdb.org/t/p/w154/x6YrA73boPbd9XugZFRSzr0ZZ9o.png" alt="" width="60" height="60" loading="lazy">
                             </button>
                         </div>
                         <div class="my-platforms-bar">
@@ -401,7 +474,7 @@
                 </div>
             </div>
             
-            <div id="active-filter-chips" class="active-filter-chips" aria-live="polite" aria-label="Aktif filtreler" hidden></div>
+            <div id="active-filter-chips" class="active-filter-chips" role="group" aria-label="Aktif filtreler" hidden></div>
 
             <div id="search-results" class="movie-grid" style="margin-top: 30px;">
                 <!-- Arama sonuçları buraya gelecek -->
@@ -427,31 +500,46 @@
 
             <div id="profile-stats-container" style="display:flex; justify-content:center; gap:20px; flex-wrap:wrap; margin-bottom:30px;"></div>
             
-            <section class="profile-backup-panel glass" aria-labelledby="profile-backup-title">
-                <div class="profile-backup-copy">
-                    <h3 id="profile-backup-title"><i class="fas fa-download" aria-hidden="true"></i> Veri Yedekleme</h3>
-                    <p>Listenizi, puanlarınızı, favori oyuncularınızı ve son baktıklarınızı JSON dosyası olarak yedekleyip daha sonra geri yükleyebilirsiniz.</p>
-                </div>
-                <div class="profile-backup-actions">
-                    <button type="button" id="profile-export-btn" class="profile-backup-btn">
-                        <i class="fas fa-file-export" aria-hidden="true"></i> Verilerimi Yedekle
-                    </button>
-                    <div class="profile-backup-import">
-                        <div class="profile-backup-field">
-                            <label for="profile-import-mode">Geri yükleme şekli</label>
-                            <select id="profile-import-mode" class="profile-backup-select" aria-describedby="profile-backup-mode-help">
-                                <option value="merge">Birleştir (önerilen)</option>
-                                <option value="replace">Mevcut verilerin yerine koy</option>
-                            </select>
-                            <span id="profile-backup-mode-help" class="sr-only">Birleştir mevcut kayıtları korur ve eksik kayıtları ekler. Yerine koy seçeneği yedekteki verileri bu cihazdaki FilmimNerede verilerinin yerine yazar.</span>
-                        </div>
-                        <input type="file" id="profile-import-file" class="sr-only" accept=".json,application/json">
-                        <button type="button" id="profile-import-btn" class="profile-backup-btn secondary">
-                            <i class="fas fa-file-import" aria-hidden="true"></i> Yedeği Geri Yükle
+            <section class="profile-data-bar glass" aria-labelledby="profile-backup-title">
+                <div class="profile-data-bar-main">
+                    <div class="profile-data-bar-heading">
+                        <h3 id="profile-backup-title"><i class="fas fa-database" aria-hidden="true"></i> Veri Yönetimi</h3>
+                        <details class="profile-data-help">
+                            <summary><i class="fas fa-info-circle" aria-hidden="true"></i> Bilgi</summary>
+                            <div class="profile-data-help-body">
+                                <p><strong>Yedekle / Geri Yükle:</strong> Listenizi, puanlarınızı, dizi takibinizi, kayıtlı seçkilerinizi, platform aboneliklerinizi, favori oyuncularınızı ve son baktıklarınızı JSON dosyası olarak saklayıp geri yükleyin.</p>
+                                <p><strong>IMDb &amp; Letterboxd İçe Aktar:</strong> IMDb (<code>ratings.csv</code>, <code>watchlist.csv</code>) veya Letterboxd (<code>.csv</code> ya da dışa aktarım <code>.zip</code>) dosyalarını aktarın.</p>
+                            </div>
+                        </details>
+                    </div>
+                    <div class="profile-data-bar-actions">
+                        <input type="file" id="external-import-file" class="sr-only" accept=".csv,.zip,text/csv,application/zip,application/x-zip-compressed" multiple>
+                        <button type="button" id="external-import-btn" class="profile-backup-btn">
+                            <i class="fas fa-upload" aria-hidden="true"></i> IMDb / Letterboxd İçe Aktar
                         </button>
+                        <button type="button" id="profile-export-btn" class="profile-backup-btn secondary">
+                            <i class="fas fa-file-export" aria-hidden="true"></i> Yedekle
+                        </button>
+                        <div class="profile-backup-import">
+                            <div class="profile-backup-field">
+                                <label for="profile-import-mode" class="sr-only">Geri yükleme şekli</label>
+                                <select id="profile-import-mode" class="profile-backup-select" aria-describedby="profile-backup-mode-help">
+                                    <option value="merge">Birleştir (önerilen)</option>
+                                    <option value="replace">Mevcut verilerin yerine koy</option>
+                                </select>
+                                <span id="profile-backup-mode-help" class="sr-only">Birleştir mevcut kayıtları korur ve eksik kayıtları, dizi ilerlemelerini, abonelikleri ve seçkileri ekler. Yerine koy seçeneği yedekteki verileri bu cihazdaki FilmimNerede verilerinin yerine yazar.</span>
+                            </div>
+                            <input type="file" id="profile-import-file" class="sr-only" accept=".json,application/json">
+                            <button type="button" id="profile-import-btn" class="profile-backup-btn secondary">
+                                <i class="fas fa-file-import" aria-hidden="true"></i> Yedeği Geri Yükle
+                            </button>
+                        </div>
                     </div>
                 </div>
-                <p id="profile-backup-status" class="profile-backup-status" role="status" aria-live="polite" aria-atomic="true"></p>
+                <div class="profile-data-bar-statuses">
+                    <p id="profile-backup-status" class="profile-backup-status" role="status" aria-live="polite" aria-atomic="true"></p>
+                    <p id="external-import-status" class="profile-backup-status" role="status" aria-live="polite" aria-atomic="true"></p>
+                </div>
             </section>
 
             <div id="recently-viewed-section" style="display:none; margin-bottom:40px;">
@@ -462,7 +550,7 @@
             
             
                     <div class="profile-tabs glass-nav" role="tablist" aria-label="Profil Sekmeleri">
-                <button type="button" class="profile-tab-btn active" role="tab" id="tab-profile-watchlist" aria-controls="profile-watchlist" aria-selected="true" tabindex="0" onclick="switchProfileTab('profile-watchlist', this)">Listeme Eklediklerim</button>
+                <button type="button" class="profile-tab-btn active" role="tab" id="tab-profile-watchlist" aria-controls="profile-watchlist" aria-selected="true" tabindex="0" onclick="switchProfileTab('profile-watchlist', this)">İzleme Listesi</button>
                 <button type="button" class="profile-tab-btn" role="tab" id="tab-profile-tv-tracker" aria-controls="profile-tv-tracker" aria-selected="false" tabindex="-1" onclick="switchProfileTab('profile-tv-tracker', this)"><i class="fas fa-tv" aria-hidden="true"></i> Dizi Takibim</button>
                 <button type="button" class="profile-tab-btn" role="tab" id="tab-profile-shared-lists" aria-controls="profile-shared-lists" aria-selected="false" tabindex="-1" onclick="switchProfileTab('profile-shared-lists', this)"><i class="fas fa-list-ul" aria-hidden="true"></i> Seçkilerim</button>
                 <button type="button" class="profile-tab-btn" role="tab" id="tab-profile-rated" aria-controls="profile-rated" aria-selected="false" tabindex="-1" onclick="switchProfileTab('profile-rated', this)">Puanladıklarım</button>
@@ -486,7 +574,34 @@
                     </div>
                     <div id="watchlist-share-status" class="watchlist-share-status" role="status" aria-live="polite" aria-atomic="true"></div>
                 </div>
+                <div class="profile-list-toolbar glass">
+                    <div class="profile-toolbar-row">
+                        <div class="profile-toolbar-search-wrap">
+                            <i class="fas fa-search" aria-hidden="true"></i>
+                            <input type="search" id="watchlist-search-input" class="profile-toolbar-search" placeholder="İzleme listemde ara (ad veya yıl)…" aria-label="İzleme listemde ara" autocomplete="off">
+                        </div>
+                        <div class="profile-toolbar-pills" role="group" aria-label="İzleme listesi tür filtresi">
+                            <button type="button" class="profile-toolbar-pill active" data-profile-section="watchlist" data-profile-media="all" aria-pressed="true">Tümü</button>
+                            <button type="button" class="profile-toolbar-pill" data-profile-section="watchlist" data-profile-media="movie" aria-pressed="false">Filmler</button>
+                            <button type="button" class="profile-toolbar-pill" data-profile-section="watchlist" data-profile-media="tv" aria-pressed="false">Diziler</button>
+                        </div>
+                        <select id="watchlist-sort-select" class="profile-toolbar-select" aria-label="İzleme listesi sıralaması">
+                            <option value="recent">En Yeni Eklenen</option>
+                            <option value="title-asc">İsim (A–Z)</option>
+                            <option value="year-desc">Yıl (En Yeni)</option>
+                            <option value="year-asc">Yıl (En Eski)</option>
+                            <option value="score-desc">IMDb / Genel Puan</option>
+                        </select>
+                    </div>
+                    <div class="profile-toolbar-meta">
+                        <span id="watchlist-filter-count" class="profile-toolbar-count"></span>
+                        <button type="button" id="watchlist-filter-reset-btn" class="profile-toolbar-reset" hidden>Filtreyi Temizle</button>
+                    </div>
+                </div>
                 <div id="watchlist-grid" class="profile-movie-grid"></div>
+                <div class="profile-load-more-wrap">
+                    <button type="button" id="watchlist-load-more-btn" class="action-btn profile-load-more-btn" hidden>Daha Fazla Göster</button>
+                </div>
             </div>
 
             <div id="profile-tv-tracker" class="profile-tab-content" role="tabpanel" aria-labelledby="tab-profile-tv-tracker" tabindex="0" hidden>
@@ -508,10 +623,35 @@
             </div>
 
             <div id="profile-rated" class="profile-tab-content" role="tabpanel" aria-labelledby="tab-profile-rated" tabindex="0" hidden>
-                <h3 style="margin-top: 20px; color:var(--text-color);">Puanlanan Filmler</h3>
-                <div id="rated-movie-grid" class="profile-movie-grid"></div>
-                <h3 style="margin-top: 20px; color:var(--text-color);">Puanlanan Diziler</h3>
-                <div id="rated-tv-grid" class="profile-movie-grid"></div>
+                <div class="profile-list-toolbar glass">
+                    <div class="profile-toolbar-row">
+                        <div class="profile-toolbar-search-wrap">
+                            <i class="fas fa-search" aria-hidden="true"></i>
+                            <input type="search" id="rated-search-input" class="profile-toolbar-search" placeholder="Puanladıklarımda ara (ad veya yıl)…" aria-label="Puanladıklarımda ara" autocomplete="off">
+                        </div>
+                        <div class="profile-toolbar-pills" role="group" aria-label="Puanlananlar tür filtresi">
+                            <button type="button" class="profile-toolbar-pill active" data-profile-section="rated" data-profile-media="all" aria-pressed="true">Tümü</button>
+                            <button type="button" class="profile-toolbar-pill" data-profile-section="rated" data-profile-media="movie" aria-pressed="false">Filmler</button>
+                            <button type="button" class="profile-toolbar-pill" data-profile-section="rated" data-profile-media="tv" aria-pressed="false">Diziler</button>
+                        </div>
+                        <select id="rated-sort-select" class="profile-toolbar-select" aria-label="Puanlananlar sıralaması">
+                            <option value="rating-desc">Puanım (En Yüksek)</option>
+                            <option value="rating-asc">Puanım (En Düşük)</option>
+                            <option value="recent">En Yeni Eklenen</option>
+                            <option value="title-asc">İsim (A–Z)</option>
+                            <option value="year-desc">Yıl (En Yeni)</option>
+                            <option value="year-asc">Yıl (En Eski)</option>
+                        </select>
+                    </div>
+                    <div class="profile-toolbar-meta">
+                        <span id="rated-filter-count" class="profile-toolbar-count"></span>
+                        <button type="button" id="rated-filter-reset-btn" class="profile-toolbar-reset" hidden>Filtreyi Temizle</button>
+                    </div>
+                </div>
+                <div id="rated-grid" class="profile-movie-grid"></div>
+                <div class="profile-load-more-wrap">
+                    <button type="button" id="rated-load-more-btn" class="action-btn profile-load-more-btn" hidden>Daha Fazla Göster</button>
+                </div>
             </div>
             
             <div id="profile-fav-actors" class="profile-tab-content" role="tabpanel" aria-labelledby="tab-profile-fav-actors" tabindex="0" hidden>
@@ -561,7 +701,7 @@
                         
                         <div id="game-container" style="display:none; text-align:center;">
                             <div class="game-poster-wrapper" style="position: relative; margin: 0 auto;">
-                                <img id="game-poster" src="" class="game-poster-img" alt="Film Afişi">
+                                <img id="game-poster" src="/assets/placeholder.svg" class="game-poster-img" alt="Film Afişi">
                             </div>
                             
                             <div id="game-clues" class="game-clues-container">
@@ -612,6 +752,7 @@
             <div class="section-header">
                 <h2>Türkiye IMAX Salonları</h2>
                 <p>Türkiye'deki gerçek ve devasa IMAX perdelerinin bulunduğu iller. Harita üzerindeki noktalara tıklayabilir veya aşağıdaki salon listesini inceleyebilirsiniz.</p>
+                <p class="imax-direct-answer">Türkiye'deki 11 IMAX salonu İstanbul, Ankara, İzmir, Bursa ve Adana'nın beş büyük kentinde bulunur. Kentlerdeki dağılım sırasıyla 5, 3, 1, 1 ve 1 salon şeklindedir. 4 IMAX Lazer, 7 Dijital IMAX teknolojisi sunan bu salonları ücretsiz karşılaştırabilir, ilçelerini ve sinema seçeneklerini inceleyebilirsiniz.</p>
             </div>
             
             <div class="map-wrapper">
@@ -708,6 +849,48 @@
                     </div>
                 </div>
             </div>
+
+            <div class="imax-geo-section">
+                <h2>Türkiye'de Kaç Tane IMAX Salonu Var?</h2>
+                <p>Türkiye'de toplam 11 IMAX salonu bulunur: 5'i İstanbul'da, 3'ü Ankara'da, 1'i İzmir'de, 1'i Bursa'da ve 1'i Adana'dadır.</p>
+                <div class="imax-table-wrapper">
+                    <table class="imax-summary-table">
+                        <caption>Türkiye'deki 11 IMAX Salonunun İl, Sinema, İlçe ve Teknoloji Bilgileri</caption>
+                        <thead>
+                            <tr>
+                                <th scope="col">İl</th>
+                                <th scope="col">Sinema Salonu</th>
+                                <th scope="col">İlçe</th>
+                                <th scope="col">IMAX Teknolojisi</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr><td>İstanbul</td><td>Paribu Cineverse İstinyePark</td><td>Sarıyer</td><td><span class="imax-tech-pill laser">IMAX Lazer</span></td></tr>
+                            <tr><td>İstanbul</td><td>Paribu Cineverse Akasya Acıbadem</td><td>Üsküdar</td><td><span class="imax-tech-pill">Dijital IMAX</span></td></tr>
+                            <tr><td>İstanbul</td><td>Paribu Cineverse Marmara Park</td><td>Esenyurt</td><td><span class="imax-tech-pill">Dijital IMAX</span></td></tr>
+                            <tr><td>İstanbul</td><td>World Cinezone Marmara Forum</td><td>Bakırköy</td><td><span class="imax-tech-pill">Dijital IMAX</span></td></tr>
+                            <tr><td>İstanbul</td><td>Paribu Cineverse Hilltown</td><td>Maltepe / Küçükyalı</td><td><span class="imax-tech-pill">Dijital IMAX</span></td></tr>
+                            <tr><td>Ankara</td><td>Paribu Cineverse ANKAmall</td><td>Yenimahalle</td><td><span class="imax-tech-pill laser">IMAX Lazer</span></td></tr>
+                            <tr><td>Ankara</td><td>World Cinezone Gordion</td><td>Çayyolu</td><td><span class="imax-tech-pill">Dijital IMAX</span></td></tr>
+                            <tr><td>Ankara</td><td>Paribu Cineverse Panora</td><td>Çankaya</td><td><span class="imax-tech-pill laser">IMAX Lazer</span></td></tr>
+                            <tr><td>İzmir</td><td>Paribu Cineverse MaviBahçe</td><td>Karşıyaka</td><td><span class="imax-tech-pill laser">IMAX Lazer</span></td></tr>
+                            <tr><td>Bursa</td><td>Paribu Cineverse Sur Yapı Marka</td><td>Nilüfer</td><td><span class="imax-tech-pill">Dijital IMAX</span></td></tr>
+                            <tr><td>Adana</td><td>Paribu Cineverse M1 Adana</td><td>Seyhan</td><td><span class="imax-tech-pill">Dijital IMAX</span></td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <div class="imax-geo-section">
+                <h2>IMAX Lazer ile Dijital IMAX Arasındaki Fark Nedir?</h2>
+                <p>IMAX Lazer, ışık kaynağı olarak lazer kullanırken Dijital IMAX sistemleri ksenon lambalı dijital projektörlerle çalışır. Lazer projeksiyon daha yüksek parlaklık ve kontrast sunar.</p>
+                <ul>
+                    <li>Lazer sistemindeki <strong>parlaklık ve kontrast</strong> farkı, daha derin siyahlar ve daha canlı renklerle belirginleşir.</li>
+                    <li><strong>Projeksiyon</strong> IMAX Lazer'de 4K lazer projektörle, Dijital IMAX'ta ksenon lambalı projektörle yapılır.</li>
+                    <li>Her iki sistem de <strong>çok kanallı ses</strong> kullanır; IMAX Lazer kurulumlarında 12 kanallı ses sistemi bulunur.</li>
+                    <li>Türkiye'de <strong>IMAX Lazer</strong> teknolojisini Paribu Cineverse İstinyePark, Paribu Cineverse ANKAmall, Paribu Cineverse Panora ve Paribu Cineverse MaviBahçe kullanıyor.</li>
+                </ul>
+            </div>
         </section>
 
         <section id="shared-list" class="tab-content" aria-labelledby="shared-list-title">
@@ -738,6 +921,16 @@
                 <p id="shared-list-status" class="shared-list-status" role="status" aria-live="polite" aria-atomic="true"></p>
             </div>
             <div id="shared-list-grid" class="movie-grid"></div>
+        </section>
+
+        <section id="not-found" class="tab-content not-found-section" aria-labelledby="not-found-title">
+            <div class="not-found-card glass">
+                <h2 id="not-found-title">Sayfa Bulunamadı (404)</h2>
+                <p>Aradığınız sayfa mevcut değil veya taşınmış olabilir. Ana sayfadan vizyondaki filmlere ve dijital platform rehberine dönebilirsiniz.</p>
+                <a href="/" class="action-btn btn-buy-ticket not-found-home-btn" onclick="switchTab(event, 'now-playing')">
+                    <i class="fas fa-home" aria-hidden="true"></i> Ana Sayfaya Dön
+                </a>
+            </div>
         </section>
     </main>
 
@@ -835,6 +1028,59 @@
         </div>
     </div>
 
+    <div id="external-import-modal" class="modal" role="dialog" aria-modal="true" aria-labelledby="external-import-modal-title" aria-hidden="true" inert>
+        <div class="modal-content glass external-import-modal-content">
+            <button type="button" class="close-btn" aria-label="İçe aktarma penceresini kapat">&times;</button>
+            <h2 id="external-import-modal-title"><i class="fas fa-file-import" aria-hidden="true"></i> IMDb &amp; Letterboxd İçe Aktarma</h2>
+
+            <div id="external-import-progress-section" class="external-import-progress-section">
+                <p id="external-import-progress-label" class="external-import-progress-label" aria-live="polite">Hazırlanıyor…</p>
+                <div class="external-import-progress-track">
+                    <div id="external-import-progress-bar" class="external-import-progress-bar" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"></div>
+                </div>
+                <p id="external-import-rate-note" class="external-import-rate-note" role="status" aria-live="polite" hidden></p>
+                <div class="external-import-progress-actions">
+                    <button type="button" id="external-import-abort-btn" class="profile-backup-btn secondary">İptal Et</button>
+                </div>
+            </div>
+
+            <div id="external-import-preview-section" class="external-import-preview-section" hidden>
+                <div id="external-import-summary" class="external-import-summary"></div>
+
+                <div class="external-import-options">
+                    <div class="external-import-option-field">
+                        <label for="external-import-conflict-mode">Mevcut Puanlarla Çakışma Durumu</label>
+                        <select id="external-import-conflict-mode" class="profile-backup-select">
+                            <option value="keep">Mevcut puanlarımı koru (yalnızca yeni puanları ekle)</option>
+                            <option value="overwrite">Çakışan yapımlarda içe aktarılan puanları üzerine yaz</option>
+                        </select>
+                    </div>
+                    <label id="external-import-watched-wrap" class="external-import-checkbox-label" hidden>
+                        <input type="checkbox" id="external-import-include-watched" checked>
+                        <span>Puansız izlenen yapımları da izleme geçmişime / süreme dahil et</span>
+                    </label>
+                </div>
+
+                <div id="external-import-ambiguous-section" class="external-import-ambiguous-section" hidden>
+                    <h3>Onay Bekleyen Eşleşmeler</h3>
+                    <p class="external-import-section-hint">Doğru filmi veya diziyi seçin; afişi ve özeti büyütmek için adayın üzerine gelin.</p>
+                    <div id="external-import-ambiguous-list" class="external-import-ambiguous-list"></div>
+                </div>
+
+                <details id="external-import-unmatched-details" class="external-import-unmatched-details" hidden>
+                    <summary>Bulunamayan Yapımlar</summary>
+                    <ul id="external-import-unmatched-list" class="external-import-unmatched-list"></ul>
+                </details>
+
+                <div class="external-import-footer">
+                    <button type="button" id="external-import-cancel-preview-btn" class="profile-backup-btn secondary">Vazgeç</button>
+                    <button type="button" id="external-import-confirm-btn" class="profile-backup-btn">Seçilenleri Profilime Aktar</button>
+                </div>
+            </div>
+        </div>
+        <div id="external-import-poster-preview" class="external-import-poster-preview" aria-hidden="true" hidden></div>
+    </div>
+
     <!-- Detaylar Penceresi (Modal) -->
     <div id="details-modal" class="modal details-modal-wrapper" onclick="closeDetails(event)" role="dialog" aria-modal="true" aria-labelledby="details-title" aria-hidden="true">
         <div id="ambilight-bg" class="ambilight-bg"></div>
@@ -844,7 +1090,7 @@
             <div id="details-backdrop" class="details-backdrop"></div>
             <div class="details-body">
                 <div class="details-left">
-                    <img id="details-poster" src="" alt="" crossorigin="anonymous">
+                    <img id="details-poster" src="/assets/placeholder.svg" alt="" crossorigin="anonymous">
                     <div id="details-date-badge" style="position:absolute; top: 10px; right: 10px; background: rgba(0,0,0,0.8); color: #ffffff; padding: 5px 10px; border-radius: 8px; font-weight: bold; font-size: 0.85rem; box-shadow: 0 2px 10px rgba(0,0,0,0.5); backdrop-filter: blur(5px);"></div>
                     <div id="modal-providers" class="modal-providers"></div>
                 </div>
@@ -880,7 +1126,7 @@
         <div class="modal-content" style="max-width: 800px; padding: 0;">
             <button type="button" class="close-btn" onclick="closeActor(null, true)" aria-label="Kapat">&times;</button>
             <div class="actor-header">
-                <img id="actor-profile-img" src="" alt="Oyuncu Profili" style="width: 150px; height: 225px; object-fit: cover; border-radius: 10px; box-shadow: 0 5px 15px rgba(0,0,0,0.5);">
+                <img id="actor-profile-img" src="/assets/placeholder.svg" alt="Oyuncu Profili" style="width: 150px; height: 225px; object-fit: cover; border-radius: 10px; box-shadow: 0 5px 15px rgba(0,0,0,0.5);">
                 <div style="flex:1;">
                     <h2 id="actor-name" style="margin:0 0 10px 0; font-size: 2rem;">Oyuncu Detayları</h2>
                     <p id="actor-bio" style="font-size: 0.95rem; line-height: 1.5; color: #ccc; max-height: 100px; overflow-y: auto; padding-right: 10px;"></p>
@@ -993,20 +1239,21 @@
     <div id="a11y-live-region" class="sr-only" role="status" aria-live="polite" aria-atomic="true"></div>
 
     <!-- Kendi JS dosyamız -->
-    <script src="js/runtime/config.js?v=2"></script>
-    <script src="js/runtime/security.js?v=6"></script>
-    <script src="js/runtime/state.js?v=1"></script>
-    <script src="js/runtime/router.js?v=10"></script>
-    <script src="js/runtime/shared-ui.js?v=17"></script>
-    <script src="js/runtime/providers.js?v=6"></script>
-    <script src="js/runtime/platform.js?v=14"></script>
-    <script src="js/runtime/search.js?v=7"></script>
-    <script src="js/runtime/movie.js?v=16"></script>
-    <script src="js/runtime/actor.js?v=13"></script>
-    <script src="js/runtime/home.js?v=14"></script>
-    <script src="js/runtime/profile.js?v=21"></script>
-    <script src="js/runtime/misc.js?v=14"></script>
-    <script src="app.js?v=79"></script>
+    <script src="/js/runtime/config.js?v=2" defer></script>
+    <script src="/js/runtime/security.js?v=7" defer></script>
+    <script src="/js/runtime/state.js?v=1" defer></script>
+    <script src="/js/runtime/router.js?v=11" defer></script>
+    <script src="/js/runtime/shared-ui.js?v=19" defer></script>
+    <script src="/js/runtime/providers.js?v=9" defer></script>
+    <script src="/js/runtime/platform.js?v=16" defer></script>
+    <script src="/js/runtime/search.js?v=8" defer></script>
+    <script src="/js/runtime/movie.js?v=18" defer></script>
+    <script src="/js/runtime/actor.js?v=14" defer></script>
+    <script src="/js/runtime/home.js?v=15" defer></script>
+    <script src="/js/runtime/profile.js?v=24" defer></script>
+    <script src="/js/runtime/importer.js?v=6" defer></script>
+    <script src="/js/runtime/misc.js?v=15" defer></script>
+    <script src="/app.js?v=81" defer></script>
     <script>
         if ('serviceWorker' in navigator) {
             window.addEventListener('load', () => {

@@ -127,6 +127,14 @@ async function renderActor(
             const searchInput = document.getElementById('searchInput');
             if (searchInput) searchInput.value = personData.name;
         }
+        if (typeof updateRouteSeoMeta === 'function') {
+            const safeActorName = personData.name.trim();
+            updateRouteSeoMeta({
+                title: `${safeActorName} Filmleri ve Dizileri | FilmimNerede`,
+                description: `${safeActorName} rol aldığı film ve diziler ile Türkiye dijital yayın platformu bilgileri.`,
+                canonical: `https://filmimnerede.netlify.app/oyuncu/${actorId}`
+            });
+        }
         
         // EĞER KİŞİ ASLEN BİR YÖNETMENSE VE VARSAYILAN OLARAK 'CAST' GELDİYSE, ONU YÖNETMEN OLARAK DEĞİŞTİR!
         if (jobType === 'cast' && personData.known_for_department === 'Directing') {
@@ -505,7 +513,7 @@ async function renderActor(
         getSafeTmdbImageUrl(
             profilePath,
             IMAGE_BASE,
-            'assets/placeholder.svg'
+            '/assets/placeholder.svg'
         );
 
     let favoriteActors = [];
@@ -1693,7 +1701,7 @@ async function handleActorAutocomplete(
                                         item
                                             ?.profile_path,
                                         IMAGE_BASE,
-                                        'assets/placeholder.svg'
+                                        '/assets/placeholder.svg'
                                     );
 
                                 const knownFor =

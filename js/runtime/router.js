@@ -1,35 +1,305 @@
-if ('scrollRestoration' in history) {
+if (typeof history !== 'undefined' && 'scrollRestoration' in history) {
     history.scrollRestoration = 'manual';
 }
 
+const SITE_ORIGIN = 'https://filmimnerede.netlify.app';
+const DEFAULT_ROBOTS_CONTENT = 'index, follow, max-image-preview:large, max-snippet:-1';
+const NOINDEX_ROBOTS_CONTENT = 'noindex, follow';
+const DEFAULT_SEO_DESCRIPTION = "FilmimNerede ile Türkiye'de vizyona girecek filmleri, popüler dizileri takip edin. Hangi platformda yayınlandıklarını öğrenin, fragman izleyin ve kendi izleme listenizi oluşturun.";
+
 let routeGeneration = 0;
 let currentAbortController = null;
+
+function shouldHandleLinkClickInSpa(event) {
+    if (!event) return true;
+    if (event.defaultPrevented) return false;
+    if (typeof event.button === 'number' && event.button !== 0) return false;
+    if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return false;
+    return true;
+}
+
+function splitPathAndQuery(rawUrl) {
+    const raw = String(rawUrl || '/');
+    const qIdx = raw.indexOf('?');
+    if (qIdx === -1) {
+        return { pathname: raw || '/', search: '', queryString: '' };
+    }
+    const pathname = raw.slice(0, qIdx) || '/';
+    const queryString = raw.slice(qIdx + 1);
+    return {
+        pathname,
+        search: queryString ? `?${queryString}` : '',
+        queryString
+    };
+}
+
+function normalizePathname(rawPath) {
+    const path = String(rawPath || '/').trim();
+    if (!path || path === '/') return '/';
+    const withLeadingSlash = path.startsWith('/') ? path : `/${path}`;
+    const trimmed = withLeadingSlash.replace(/\/+$/, '');
+    return trimmed || '/';
+}
+
+function getCurrentAppUrl() {
+    if (typeof window === 'undefined' || !window.location) return '/';
+    const pathname = normalizePathname(window.location.pathname || '/');
+    const search = window.location.search || '';
+    return `${pathname}${search}`;
+}
+
+function buildAppUrl(route) {
+    const raw = String(route || '').trim();
+    if (!raw) return '/';
+
+    const withoutHash = raw.startsWith('#') ? raw.slice(1) : raw;
+    const { pathname: rawPath, queryString } = splitPathAndQuery(withoutHash);
+    const cleaned = rawPath.replace(/^\/+|\/+$/g, '');
+    const suffix = queryString ? `?${queryString}` : '';
+
+    if (!cleaned || cleaned === 'home' || cleaned === 'now-playing' || cleaned === 'index.html') {
+        return '/';
+    }
+    if (cleaned === 'vizyon' || cleaned === 'upcoming') {
+        return '/vizyon';
+    }
+    if (cleaned === 'platform' || cleaned === 'nerede-izlerim' || cleaned === 'search') {
+        return `/nerede-izlerim${suffix}`;
+    }
+    if (cleaned === 'profile' || cleaned === 'profilim') {
+        return '/profilim';
+    }
+    if (cleaned === 'games' || cleaned === 'oyunlar') {
+        return '/oyunlar';
+    }
+    if (cleaned === 'imax') {
+        return '/imax';
+    }
+    if (cleaned.startsWith('movie/')) {
+        const parts = cleaned.split('/');
+        const id = parts[1] || '';
+        const type = parts[2];
+        if (parts.length === 3 && type === 'movie') return `/film/${id}`;
+        if (parts.length === 3 && type === 'tv') return `/dizi/${id}`;
+        return `/${cleaned}`;
+    }
+    if (cleaned.startsWith('film/')) {
+        const parts = cleaned.split('/');
+        return parts.length === 2 ? `/film/${parts[1]}` : `/${cleaned}`;
+    }
+    if (cleaned.startsWith('dizi/')) {
+        const parts = cleaned.split('/');
+        return parts.length === 2 ? `/dizi/${parts[1]}` : `/${cleaned}`;
+    }
+    if (cleaned.startsWith('actor/') || cleaned.startsWith('oyuncu/')) {
+        const parts = cleaned.split('/');
+        return parts.length === 2 ? `/oyuncu/${parts[1]}` : `/${cleaned}`;
+    }
+    if (cleaned === 's' || cleaned.startsWith('s/')) {
+        return `/${cleaned}`;
+    }
+    if (cleaned === 'secki' || cleaned.startsWith('secki/')) {
+        return `/${cleaned}${suffix}`;
+    }
+    if (cleaned === 'list') {
+        return `/list${suffix}`;
+    }
+    return `/${cleaned}${suffix}`;
+}
+
+function isCurrentAppRoute(route) {
+    if (typeof window === 'undefined' || !window.location) return false;
+    return !window.location.hash && getCurrentAppUrl() === buildAppUrl(route);
+}
+
+function replaceAppUrl(targetUrl) {
+    if (typeof window === 'undefined' || !window.location) return;
+    const { pathname, search } = splitPathAndQuery(targetUrl);
+    if (typeof history !== 'undefined' && typeof history.replaceState === 'function') {
+        history.replaceState(history.state, '', targetUrl);
+    } else {
+        window.location.pathname = pathname;
+        window.location.search = search;
+        if ('hash' in window.location) {
+            window.location.hash = '';
+        }
+    }
+}
+
+function setMetaTagContent(selector, attrName, attrValue, content) {
+    if (typeof document === 'undefined' || typeof document.querySelector !== 'function') return;
+    let el = document.querySelector(selector);
+    if (!el && document.head && typeof document.createElement === 'function') {
+        el = document.createElement('meta');
+        el.setAttribute(attrName, attrValue);
+        document.head.appendChild(el);
+    }
+    if (el) {
+        el.setAttribute('content', content);
+    }
+}
+
+function setCanonicalHref(href) {
+    if (typeof document === 'undefined' || typeof document.querySelector !== 'function') return;
+    let link = document.querySelector('link[rel="canonical"]');
+    if (!link && document.head && typeof document.createElement === 'function') {
+        link = document.createElement('link');
+        link.setAttribute('rel', 'canonical');
+        document.head.appendChild(link);
+    }
+    if (link) {
+        link.setAttribute('href', href);
+    }
+}
+
+function updateRouteSeoMeta({
+    title,
+    description = DEFAULT_SEO_DESCRIPTION,
+    canonical = `${SITE_ORIGIN}/`,
+    robots = DEFAULT_ROBOTS_CONTENT
+} = {}) {
+    if (typeof document === 'undefined') return;
+    if (title) {
+        document.title = title;
+        setMetaTagContent('meta[property="og:title"]', 'property', 'og:title', title);
+        setMetaTagContent('meta[name="twitter:title"]', 'name', 'twitter:title', title);
+    }
+    if (description) {
+        setMetaTagContent('meta[name="description"]', 'name', 'description', description);
+        setMetaTagContent('meta[property="og:description"]', 'property', 'og:description', description);
+        setMetaTagContent('meta[name="twitter:description"]', 'name', 'twitter:description', description);
+    }
+    if (canonical) {
+        setCanonicalHref(canonical);
+        setMetaTagContent('meta[property="og:url"]', 'property', 'og:url', canonical);
+    }
+    if (robots) {
+        setMetaTagContent('meta[name="robots"]', 'name', 'robots', robots);
+    }
+}
+
+function getDefaultRouteSeoMeta(route) {
+    const pathname = typeof window !== 'undefined' && window.location
+        ? normalizePathname(window.location.pathname || '/')
+        : '/';
+
+    switch (route?.page) {
+        case 'vizyon':
+            return {
+                title: 'Yakında Vizyona Girecek Filmler | FilmimNerede',
+                description: "Türkiye sinemalarında yakında vizyona girecek filmleri, çıkış tarihlerini ve fragmanlarını keşfedin.",
+                canonical: `${SITE_ORIGIN}/vizyon`,
+                robots: DEFAULT_ROBOTS_CONTENT
+            };
+        case 'platform':
+            return {
+                title: 'Nerede İzlerim? Türkiye Dijital Platform Arama Motoru | FilmimNerede',
+                description: "Netflix, Amazon Prime Video, Disney+, Max, MUBI, TOD TV, TV+, tabii, Exxen ve puhutv Türkiye kataloglarında film ve dizi arayın.",
+                canonical: `${SITE_ORIGIN}/nerede-izlerim`,
+                robots: DEFAULT_ROBOTS_CONTENT
+            };
+        case 'search': {
+            const q = String(route.query || '').trim();
+            return {
+                title: q ? `"${q}" Arama Sonuçları | FilmimNerede` : 'Nerede İzlerim? | FilmimNerede',
+                description: q ? `FilmimNerede üzerinde "${q}" için film, dizi ve dijital yayın platformu arama sonuçları.` : DEFAULT_SEO_DESCRIPTION,
+                canonical: `${SITE_ORIGIN}/nerede-izlerim`,
+                robots: NOINDEX_ROBOTS_CONTENT
+            };
+        }
+        case 'profile':
+            return {
+                title: 'Profilim — İzleme Listem ve İstatistiklerim | FilmimNerede',
+                description: 'İzleme listeniz, dizi bölüm takibiniz, puanladığınız yapımlar ve kişisel sinema istatistikleriniz.',
+                canonical: `${SITE_ORIGIN}/profilim`,
+                robots: NOINDEX_ROBOTS_CONTENT
+            };
+        case 'games':
+            return {
+                title: 'Sinema Oyunları ve Ortak Oyuncu Aracı | FilmimNerede',
+                description: 'Afişten film tahmin oyunu oynayın ve iki oyuncunun birlikte rol aldığı ortak yapımları keşfedin.',
+                canonical: `${SITE_ORIGIN}/oyunlar`,
+                robots: DEFAULT_ROBOTS_CONTENT
+            };
+        case 'imax':
+            return {
+                title: 'Türkiye IMAX Salonları Rehberi (İstanbul, Ankara, İzmir, Bursa, Adana) | FilmimNerede',
+                description: "Türkiye'deki aktif IMAX Lazer ve Dijital IMAX sinema salonlarının il, ilçe ve teknoloji bazlı tam rehberi.",
+                canonical: `${SITE_ORIGIN}/imax`,
+                robots: DEFAULT_ROBOTS_CONTENT
+            };
+        case 'movie': {
+            const mediaSlug = route.mediaType === 'tv' ? 'dizi' : (route.mediaType === 'movie' ? 'film' : 'movie');
+            return {
+                title: 'Yapım Detayları | FilmimNerede',
+                description: "Yapımın Türkiye dijital yayın platformları, IMDb puanı, fragmanı ve oyuncu kadrosu bilgileri.",
+                canonical: `${SITE_ORIGIN}/${mediaSlug}/${route.id}`,
+                robots: DEFAULT_ROBOTS_CONTENT
+            };
+        }
+        case 'actor':
+            return {
+                title: 'Oyuncu Filmografisi | FilmimNerede',
+                description: 'Oyuncu veya yönetmenin yer aldığı tüm film ve diziler ile Türkiye yayın platformları.',
+                canonical: `${SITE_ORIGIN}/oyuncu/${route.id}`,
+                robots: DEFAULT_ROBOTS_CONTENT
+            };
+        case 'list':
+            return {
+                title: 'Paylaşılan Film & Dizi Seçkisi | FilmimNerede',
+                description: 'FilmimNerede üzerinden paylaşılan özel film ve dizi seçkisi.',
+                canonical: `${SITE_ORIGIN}${pathname}`,
+                robots: NOINDEX_ROBOTS_CONTENT
+            };
+        case 'invalid':
+        case 'not-found':
+            return {
+                title: 'Sayfa Bulunamadı (404) | FilmimNerede',
+                description: 'Aradığınız sayfa FilmimNerede üzerinde bulunamadı.',
+                canonical: `${SITE_ORIGIN}/`,
+                robots: NOINDEX_ROBOTS_CONTENT
+            };
+        case 'now-playing':
+        case 'home':
+        default:
+            return {
+                title: 'FilmimNerede - Türkiye Film & Dizi Rehberi',
+                description: DEFAULT_SEO_DESCRIPTION,
+                canonical: `${SITE_ORIGIN}/`,
+                robots: DEFAULT_ROBOTS_CONTENT
+            };
+    }
+}
+
+function syncResolvedMediaRoute(id, mediaType) {
+    const safeId = typeof normalizeTmdbId === 'function' ? normalizeTmdbId(id) : Number(id);
+    const safeType = typeof normalizeMediaType === 'function'
+        ? normalizeMediaType(mediaType)
+        : (mediaType === 'tv' || mediaType === 'movie' ? mediaType : null);
+    if (!safeId || !safeType || typeof window === 'undefined' || !window.location) return;
+
+    const targetUrl = `/${safeType === 'tv' ? 'dizi' : 'film'}/${safeId}`;
+    const currentPath = normalizePathname(window.location.pathname || '/');
+    if (currentPath === `/movie/${safeId}`) {
+        replaceAppUrl(targetUrl);
+        lastRenderedRoute = targetUrl;
+    }
+}
+
+function parseRouteIdentityFromLocation() {
+    const route = parseRoute({ readOnly: true });
+    let currentPage = route.page || 'home';
+    if (currentPage === 'now-playing') currentPage = 'home';
+    const currentId = route.id ?? null;
+    return { currentPage, currentId };
+}
 
 function isRouteContextCurrent(routeContext, expectedPage, expectedId = null) {
     if (!routeContext) return false;
     if (routeContext.signal && routeContext.signal.aborted) return false;
     if (routeContext.generation !== routeGeneration) return false;
 
-    const hash = window.location.hash.slice(1);
-    const hashPath = hash.split("?")[0];
-    let currentPage = "home";
-    let currentId = null;
-
-    if (hashPath.startsWith("movie/")) {
-        currentPage = "movie";
-        currentId = hashPath.split("/")[1];
-    } else if (hashPath.startsWith("actor/")) {
-        currentPage = "actor";
-        currentId = hashPath.split("/")[1];
-    } else if (hashPath === "search") {
-        currentPage = "search";
-    } else if (hashPath === "list" || hashPath === "secki" || hashPath.startsWith("secki/") ||
-        hashPath === "s" || hashPath.startsWith("s/")) {
-        currentPage = "list";
-    } else if (hashPath) {
-        currentPage = hashPath;
-    }
-
+    const { currentPage, currentId } = parseRouteIdentityFromLocation();
     if (currentPage !== expectedPage) return false;
 
     if (
@@ -52,13 +322,13 @@ function isValidRouteId(value) {
 
 function navigate(route, options = {}) {
     const { replace = false, searchFilterChange = false } = options;
-    const url = '#' + route;
+    const url = buildAppUrl(route);
 
-    if (window.location.hash === url && !searchFilterChange) {
+    if (getCurrentAppUrl() === url && !window.location.hash && !searchFilterChange) {
         return;
     }
 
-    const currentState = history.state || {};
+    const currentState = (typeof history !== 'undefined' && history.state) || {};
 
     let currentIndex = currentState.filmRehberiRouter
         ? currentState.filmRehberiRouter.index
@@ -75,12 +345,14 @@ function navigate(route, options = {}) {
         }
     };
 
-    if (replace) {
-        history.replaceState(newState, "", url);
-    } else {
-        history.pushState(newState, "", url);
+    if (typeof history !== 'undefined') {
+        if (replace && typeof history.replaceState === 'function') {
+            history.replaceState(newState, "", url);
+        } else if (!replace && typeof history.pushState === 'function') {
+            history.pushState(newState, "", url);
+        }
     }
-    
+
     window._justNavigated = true;
     window.isHistoryRestoration = false;
     currentRouterIndex = currentIndex;
@@ -88,122 +360,196 @@ function navigate(route, options = {}) {
     handleRoute({ searchFilterChange });
 }
 
-function parseRoute() {
-    const hash = window.location.hash.slice(1);
+function parseRoute({ readOnly = false } = {}) {
+    const rawHash = typeof window !== 'undefined' && window.location?.hash
+        ? window.location.hash.slice(1)
+        : '';
 
-    if (!hash) {
-        return { page: "home" };
-    }
+    if (rawHash && rawHash !== 'main-content') {
+        const { pathname: hashPathOnly, queryString: hashQuery } = splitPathAndQuery(rawHash);
+        const cleanedHashPath = hashPathOnly.replace(/^\/+|\/+$/g, '');
 
-    const querySeparator = hash.indexOf("?");
-    const path = querySeparator === -1
-        ? hash
-        : hash.slice(0, querySeparator);
-    const queryString = querySeparator === -1
-        ? ""
-        : hash.slice(querySeparator + 1);
-
-    if (path.startsWith("movie/")) {
-        const parts = path.split("/");
-        const id = parts[1];
-        const type = parts[2];
-        if (type === 'movie' || type === 'tv') {
-            return {
-                page: "movie",
-                id: id,
-                mediaType: type
-            };
-        } else if (type) {
-            return { page: "invalid" };
-        }
-        return {
-            page: "movie",
-            id: id,
-            mediaType: null
-        };
-    }
-
-    if (path.startsWith("film/")) {
-        const id = path.split("/")[1];
-
-        if (isValidRouteId(id)) {
-            window.history.replaceState(
-                window.history.state,
-                "",
-                `#movie/${id}`
-            );
-
-            return {
-                page: "movie",
-                id
-            };
+        let targetUrl = buildAppUrl(rawHash);
+        if (cleanedHashPath.startsWith('film/')) {
+            const id = cleanedHashPath.split('/')[1] || '';
+            targetUrl = isValidRouteId(id) ? `/film/${id}` : '/nerede-izlerim';
+        } else if (cleanedHashPath.startsWith('movie/')) {
+            const parts = cleanedHashPath.split('/');
+            const id = parts[1] || '';
+            const type = parts[2];
+            if (parts.length === 3 && type !== 'movie' && type !== 'tv') {
+                targetUrl = `/movie/${id}/${type}`;
+            }
+        } else if (cleanedHashPath === 'search' && hashQuery && typeof URLSearchParams === 'function') {
+            const params = new URLSearchParams(hashQuery);
+            if (!params.has('q')) {
+                targetUrl = '/nerede-izlerim';
+            }
         }
 
-        window.history.replaceState(
-            window.history.state,
-            "",
-            "#platform"
-        );
-
-        return {
-            page: "platform",
-            platformQuery: ""
-        };
+        if (!readOnly) {
+            replaceAppUrl(targetUrl);
+        } else {
+            return parseCleanUrl(targetUrl, { readOnly: true });
+        }
     }
 
-    if (path.startsWith("actor/")) {
-        return {
-            page: "actor",
-            id: path.split("/")[1]
-        };
+    return parseCleanUrl(getCurrentAppUrl(), { readOnly });
+}
+
+function parseCleanUrl(appUrl, { readOnly = false } = {}) {
+    const { pathname: rawPathname, queryString } = splitPathAndQuery(appUrl);
+    const pathname = normalizePathname(rawPathname);
+    const path = pathname === '/' ? '' : pathname.slice(1);
+
+    if (!path || path === 'index.html' || path === 'home' || path === 'now-playing') {
+        if (!readOnly && path) {
+            replaceAppUrl('/');
+        }
+        return { page: 'home' };
     }
 
-    if (path === "search") {
-        const params = new URLSearchParams(queryString);
-
-        return {
-            page: "search",
-            query: params.get("q"),
-            filterQuery: queryString
-        };
+    if (path === 'vizyon' || path === 'upcoming') {
+        if (!readOnly && path === 'upcoming') {
+            replaceAppUrl('/vizyon');
+        }
+        return { page: 'vizyon' };
     }
 
-    if (path === "platform") {
+    if (path === 'nerede-izlerim' || path === 'platform' || path === 'search') {
+        const params = typeof URLSearchParams === 'function' ? new URLSearchParams(queryString) : null;
+        if (!readOnly && (path === 'platform' || path === 'search')) {
+            replaceAppUrl(queryString ? `/nerede-izlerim?${queryString}` : '/nerede-izlerim');
+        }
+        if (params && params.has('q')) {
+            return {
+                page: 'search',
+                query: params.get('q'),
+                filterQuery: queryString
+            };
+        }
+        if (path === 'search') {
+            return {
+                page: 'search',
+                query: null,
+                filterQuery: queryString
+            };
+        }
         return {
-            page: "platform",
+            page: 'platform',
             platformQuery: queryString
         };
     }
 
-    if (path === "list") {
-        return { page: "list", listQuery: queryString, listPath: "" };
+    if (path === 'profilim' || path === 'profile') {
+        if (!readOnly && path === 'profile') {
+            replaceAppUrl('/profilim');
+        }
+        return { page: 'profile' };
     }
 
-    if (path === "s" || path.startsWith("s/")) {
-        return { page: "list", listQuery: queryString, listPath: "", shortId: path.slice("s".length).replace(/^\/+|\/+$/g, "") };
+    if (path === 'oyunlar' || path === 'games') {
+        if (!readOnly && path === 'games') {
+            replaceAppUrl('/oyunlar');
+        }
+        return { page: 'games' };
     }
 
-    if (path === "secki" || path.startsWith("secki/")) {
+    if (path === 'imax') {
+        return { page: 'imax' };
+    }
+
+    if (path.startsWith('film/')) {
+        const parts = path.split('/');
+        if (parts.length !== 2) {
+            return { page: 'invalid' };
+        }
         return {
-            page: "list",
-            listQuery: queryString,
-            listPath: path.slice("secki".length).replace(/^\/+/, "")
+            page: 'movie',
+            id: parts[1],
+            mediaType: 'movie'
         };
     }
 
-    if (path === "upcoming") {
-        history.replaceState(history.state, "", "#vizyon");
-        return { page: "vizyon" };
+    if (path.startsWith('dizi/')) {
+        const parts = path.split('/');
+        if (parts.length !== 2) {
+            return { page: 'invalid' };
+        }
+        return {
+            page: 'movie',
+            id: parts[1],
+            mediaType: 'tv'
+        };
     }
 
-    return {
-        page: path
-    };
+    if (path.startsWith('movie/')) {
+        const parts = path.split('/');
+        if (parts.length > 3) {
+            return { page: 'invalid' };
+        }
+        const id = parts[1];
+        const type = parts[2];
+        if (type === 'movie') {
+            if (!readOnly && isValidRouteId(id)) replaceAppUrl(`/film/${id}`);
+            return { page: 'movie', id, mediaType: 'movie' };
+        }
+        if (type === 'tv') {
+            if (!readOnly && isValidRouteId(id)) replaceAppUrl(`/dizi/${id}`);
+            return { page: 'movie', id, mediaType: 'tv' };
+        }
+        if (type) {
+            return { page: 'invalid' };
+        }
+        return {
+            page: 'movie',
+            id,
+            mediaType: null
+        };
+    }
+
+    if (path.startsWith('oyuncu/') || path.startsWith('actor/')) {
+        const parts = path.split('/');
+        if (parts.length !== 2) {
+            return { page: 'invalid' };
+        }
+        const id = parts[1];
+        if (!readOnly && path.startsWith('actor/') && isValidRouteId(id)) {
+            replaceAppUrl(`/oyuncu/${id}`);
+        }
+        return {
+            page: 'actor',
+            id
+        };
+    }
+
+    if (path === 'list') {
+        return { page: 'list', listQuery: queryString, listPath: '' };
+    }
+
+    if (path === 's' || path.startsWith('s/')) {
+        return {
+            page: 'list',
+            listQuery: queryString,
+            listPath: '',
+            shortId: path.slice('s'.length).replace(/^\/+|\/+$/g, '')
+        };
+    }
+
+    if (path === 'secki' || path.startsWith('secki/')) {
+        return {
+            page: 'list',
+            listQuery: queryString,
+            listPath: path.slice('secki'.length).replace(/^\/+/, '')
+        };
+    }
+
+    return { page: 'not-found' };
 }
 
 window.isHistoryRestoration = false;
 let currentRouterIndex = -1;
-let lastRenderedHash = null;
+let lastRenderedRoute = null;
 
 function handleRoute({ searchFilterChange = false } = {}) {
     if (window.location.hash === '#main-content') {
@@ -211,27 +557,19 @@ function handleRoute({ searchFilterChange = false } = {}) {
         if (mainEl) {
             mainEl.focus();
         }
-        const restoreHash =
-            lastRenderedHash && lastRenderedHash !== '#main-content'
-                ? lastRenderedHash
-                : '';
-        if (restoreHash) {
-            history.replaceState(history.state, '', restoreHash);
-        }
+        replaceAppUrl(getCurrentAppUrl());
         return;
     }
 
     const route = parseRoute();
+    const currentUrl = getCurrentAppUrl();
 
-    const currentHash =
-        window.location.hash || "#home";
-
-    if (lastRenderedHash === currentHash && !searchFilterChange) {
+    if (lastRenderedRoute === currentUrl && !searchFilterChange) {
         return;
     }
 
     const newIndex =
-        history.state?.filmRehberiRouter?.index ?? 0;
+        (typeof history !== 'undefined' && history.state?.filmRehberiRouter?.index) ?? 0;
 
     if (currentRouterIndex === -1) {
         currentRouterIndex = newIndex;
@@ -250,21 +588,22 @@ function handleRoute({ searchFilterChange = false } = {}) {
 
     window.isNavigatingBack = false;
 
-    lastRenderedHash = currentHash;
+    lastRenderedRoute = currentUrl;
 
     if (currentAbortController) {
         currentAbortController.abort();
     }
 
-    currentAbortController =
-        new AbortController();
+    if (typeof AbortController === 'function') {
+        currentAbortController = new AbortController();
+    }
 
     const generation =
         ++routeGeneration;
 
     const routeContext = {
         generation,
-        signal: currentAbortController.signal,
+        signal: currentAbortController?.signal,
         platformQuery: route.page === 'platform'
             ? (route.platformQuery || '')
             : null,
@@ -393,7 +732,7 @@ function handleRoute({ searchFilterChange = false } = {}) {
             document.getElementById('details-poster');
 
         if (detailsPoster) {
-            detailsPoster.src = "";
+            detailsPoster.removeAttribute('src');
         }
 
         const detailsCast =
@@ -468,6 +807,8 @@ function handleRoute({ searchFilterChange = false } = {}) {
             'auto';
     }
 
+    updateRouteSeoMeta(getDefaultRouteSeoMeta(route));
+
     switch (route.page) {
         case "movie":
             if (!isValidRouteId(route.id)) {
@@ -488,7 +829,7 @@ function handleRoute({ searchFilterChange = false } = {}) {
         case "actor":
             if (!isValidRouteId(route.id)) {
                 navigate(
-                    '',
+                    'home',
                     { replace: true }
                 );
                 break;
@@ -601,6 +942,11 @@ function handleRoute({ searchFilterChange = false } = {}) {
 
         case "list":
             renderSection("list", routeContext);
+            break;
+
+        case "invalid":
+        case "not-found":
+            renderSection("not-found", routeContext);
             break;
 
         case "vizyon":

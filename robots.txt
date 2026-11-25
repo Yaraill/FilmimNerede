@@ -1,0 +1,25 @@
+User-agent: Googlebot
+Allow: /
+Disallow: /.netlify/
+
+User-agent: OAI-SearchBot
+Allow: /
+Disallow: /.netlify/
+
+User-agent: Claude-SearchBot
+Allow: /
+Disallow: /.netlify/
+
+User-agent: PerplexityBot
+Allow: /
+Disallow: /.netlify/
+
+User-agent: Applebot
+Allow: /
+Disallow: /.netlify/
+
+User-agent: *
+Allow: /
+Disallow: /.netlify/
+
+Sitemap: https://filmimnerede.netlify.app/sitemap.xml

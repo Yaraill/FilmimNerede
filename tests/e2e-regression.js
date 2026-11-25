@@ -32,7 +32,8 @@ async function runE2E() {
         console.log('Starting local static HTTP server for E2E...');
         server = http.createServer((req, res) => {
             const urlPath = req.url.split('?')[0].split('#')[0];
-            let filePath = path.join(ROOT_DIR, urlPath === '/' ? 'index.html' : urlPath);
+            const isSpaRoute = urlPath === '/' || !path.extname(urlPath);
+            let filePath = path.join(ROOT_DIR, isSpaRoute ? 'index.html' : urlPath);
             
             if (!filePath.startsWith(ROOT_DIR)) {
                 res.writeHead(403);
@@ -414,7 +415,7 @@ if (collectionMatch) {
                 
                 // C. OPEN MOVIE
                 // Capture pre-movie state for exact Back assertions
-                const preMovieHash = window.location.hash;
+                const preMovieUrl = window.location.pathname + window.location.search;
                 const preMovieRouterIndex = history.state?.filmRehberiRouter?.index ?? null;
                 
                 const poster = movieCard.querySelector('.movie-poster');
@@ -424,11 +425,11 @@ if (collectionMatch) {
                 if (_errors.length > 0) return _errors;
                 
                 for(let i=0; i<50; i++){
-                    if(window.location.hash === '#movie/70001/movie') break;
+                    if(window.location.pathname === '/film/70001') break;
                     await wait(100);
                 }
                 await waitRender();
-                check(window.location.hash === '#movie/70001/movie', 'Movie: Route updated to typed movie');
+                check(window.location.pathname === '/film/70001', 'Movie: Route updated to typed movie');
                 check(
                     getComputedStyle(document.getElementById('details-modal')).display === 'flex',
                     'Movie: Modal open'
@@ -454,14 +455,14 @@ if (collectionMatch) {
                 // D. BACK to Search
                 window.history.back();
                 for(let i=0; i<50; i++){
-                    if(window.location.hash === preMovieHash) break;
+                    if((window.location.pathname + window.location.search) === preMovieUrl) break;
                     await wait(100);
                 }
                 await waitRender();
                 check(document.querySelectorAll('#search-results .movie-card').length >= 2, 'Back: Search results restored');
                 check(document.getElementById('details-modal').style.display === 'none' || document.getElementById('details-modal').style.display === '', 'Back: Modal hidden');
                 // Exact route/history restore assertions
-                check(window.location.hash === preMovieHash, 'Back: Hash restored to pre-movie hash (expected: ' + preMovieHash + ', actual: ' + window.location.hash + ')');
+                check((window.location.pathname + window.location.search) === preMovieUrl, 'Back: URL restored to pre-movie URL (expected: ' + preMovieUrl + ', actual: ' + (window.location.pathname + window.location.search) + ')');
                 const postBackRouterIndex = history.state?.filmRehberiRouter?.index ?? null;
                 check(postBackRouterIndex === preMovieRouterIndex, 'Back: Router index restored (expected: ' + preMovieRouterIndex + ', actual: ' + postBackRouterIndex + ')');
                 
@@ -479,11 +480,11 @@ if (collectionMatch) {
                 if (_errors.length > 0) return _errors;
                 
                 for(let i=0; i<50; i++){
-                    if(window.location.hash === '#movie/80001/tv') break;
+                    if(window.location.pathname === '/dizi/80001') break;
                     await wait(100);
                 }
                 await waitRender();
-                check(window.location.hash === '#movie/80001/tv', 'TV: Route updated to typed tv');
+                check(window.location.pathname === '/dizi/80001', 'TV: Route updated to typed tv');
                 check(
                     getComputedStyle(document.getElementById('details-modal')).display === 'flex',
                     'TV: Modal open'
@@ -506,14 +507,14 @@ if (collectionMatch) {
                     window.navigate("actor/90001");
                 }
                 for(let i=0; i<20; i++){
-                    if(window.location.hash === '#actor/90001') break;
+                    if(window.location.pathname === '/oyuncu/90001') break;
                     await wait(100);
                 }
 
                 await waitRender();
 
                 check(
-                    window.location.hash === '#actor/90001',
+                    window.location.pathname === '/oyuncu/90001',
                     'Actor: Route updated'
                 );
 
@@ -543,29 +544,29 @@ if (collectionMatch) {
                     window.navigate("platform");
                 }
                 for(let i=0; i<20; i++){
-                    if(window.location.hash === '#platform') break;
+                    if(window.location.pathname === '/nerede-izlerim') break;
                     await wait(100);
                 }
                 await waitRender();
-                check(window.location.hash === '#platform', 'Platform: Route updated');
+                check(window.location.pathname === '/nerede-izlerim', 'Platform: Route updated');
                 check(document.getElementById('platform').classList.contains('active-tab'), 'Platform: Tab active');
                 check(window.isHistoryRestoration === false, 'Platform: Fresh navigation sees isHistoryRestoration=false');
                 check(document.getElementById('searchInput').value === '', 'Platform: Fresh Platform reset behavior restored');
                 check(document.getElementById('actor-modal').style.display === 'none' || document.getElementById('actor-modal').style.display === '', 'Platform: Actor modal hidden');
 
                 // H2. PROFILE/WATCHLIST ROUTE
-                const profileNav = document.querySelector('nav a[href="#profile"]');
+                const profileNav = document.querySelector('nav a[href="/profilim"]');
                 if (profileNav) {
                     profileNav.click();
                 } else {
                     window.navigate("profile");
                 }
                 for(let i=0; i<20; i++){
-                    if(window.location.hash === '#profile') break;
+                    if(window.location.pathname === '/profilim') break;
                     await wait(100);
                 }
                 await waitRender();
-                check(window.location.hash === '#profile', 'Profile: Route updated');
+                check(window.location.pathname === '/profilim', 'Profile: Route updated');
                 check(document.getElementById('profile').classList.contains('active-tab'), 'Profile: Tab active');
                 check(document.querySelectorAll('#profile-watchlist .movie-card').length > 0, 'Profile: Watchlist item rendered');
 
@@ -610,7 +611,7 @@ if (collectionMatch) {
 
             try {
                 // Ensure profile route was kept
-                check(window.location.hash === '#profile', 'Refresh: Route hash persists');
+                check(window.location.pathname === '/profilim', 'Refresh: Route pathname persists');
                 check(document.getElementById('profile').classList.contains('active-tab'), 'Refresh: Tab persists');
                 check(document.querySelectorAll('#profile-watchlist .movie-card').length > 0, 'Refresh: Watchlist item rendered from localStorage');
                 
@@ -619,22 +620,22 @@ if (collectionMatch) {
                 
                 window.history.back();
                 for(let i=0; i<20; i++){
-                    if(window.location.hash === '#platform') break;
+                    if(window.location.pathname === '/nerede-izlerim') break;
                     await wait(100);
                 }
                 await waitRender();
-                check(window.location.hash === '#platform', 'Refresh-Back: Navigated to platform');
+                check(window.location.pathname === '/nerede-izlerim', 'Refresh-Back: Navigated to platform');
                 check(document.getElementById('platform').classList.contains('active-tab'), 'Refresh-Back: Platform active');
                 const backIndex = history.state && history.state.filmRehberiRouter ? history.state.filmRehberiRouter.index : -1;
                 check(backIndex === initialIndex - 1, 'Refresh-Back: History index decremented correctly');
                 
                 window.history.forward();
                 for(let i=0; i<20; i++){
-                    if(window.location.hash === '#profile') break;
+                    if(window.location.pathname === '/profilim') break;
                     await wait(100);
                 }
                 await waitRender();
-                check(window.location.hash === '#profile', 'Refresh-Forward: Navigated to profile');
+                check(window.location.pathname === '/profilim', 'Refresh-Forward: Navigated to profile');
                 check(document.getElementById('profile').classList.contains('active-tab'), 'Refresh-Forward: Profile active');
                 
             } catch(e) {

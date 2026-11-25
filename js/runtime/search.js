@@ -907,7 +907,7 @@ async function handleSearchInput(event) {
                             getSafeTmdbImageUrl(
                                 imagePath,
                                 IMAGE_BASE,
-                                'assets/placeholder.svg'
+                                '/assets/placeholder.svg'
                             );
 
                         let typeStr =

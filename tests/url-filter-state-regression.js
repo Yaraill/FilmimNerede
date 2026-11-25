@@ -354,7 +354,7 @@ async function testMyPlatforms(page, discoverRequests) {
     await clickToggle();
     await waitForDiscover('11|337', countFrom);
     assert(await page.evaluate(() =>
-        location.hash === '#platform' &&
+        (location.pathname + location.search) === '/nerede-izlerim' &&
         document.querySelector('#providerFilter').value === '0' &&
         !document.querySelector('.provider-filter-btn.active') &&
         JSON.parse(localStorage.getItem('myPlatformsFilterActive')) === true
@@ -367,7 +367,7 @@ async function testMyPlatforms(page, discoverRequests) {
     countFrom = discoverRequests.length;
     await clickChip(11);
     await waitForDiscover('337', countFrom);
-    assert(await page.evaluate(() => location.hash) === '#platform', 'Changing subscriptions should refresh the same platform route');
+    assert(await page.evaluate(() => location.pathname + location.search) === '/nerede-izlerim', 'Changing subscriptions should refresh the same platform route');
 
     countFrom = discoverRequests.length;
     await clickToggle();
@@ -377,7 +377,7 @@ async function testMyPlatforms(page, discoverRequests) {
     await waitForDiscover('337', countFrom);
     await clickControl('#btn-prov-11', readProvActive);
     await page.waitForFunction(() =>
-        location.hash === '#platform?provider=11' &&
+        (location.pathname + location.search) === '/nerede-izlerim?provider=11' &&
         !!document.querySelector('#btn-prov-11.active') &&
         document.querySelector('#my-platforms-toggle-btn').getAttribute('aria-pressed') === 'false' &&
         JSON.parse(localStorage.getItem('myPlatformsFilterActive')) === false &&
@@ -386,7 +386,7 @@ async function testMyPlatforms(page, discoverRequests) {
     const providerGridRowCounts = await page.evaluate(() => {
         const rows = new Map();
         document.querySelectorAll('.provider-logos-filter .provider-filter-btn').forEach(btn => {
-            const topKey = Math.round(btn.getBoundingClientRect().top);
+            const topKey = btn.offsetTop;
             rows.set(topKey, (rows.get(topKey) || 0) + 1);
         });
         return Array.from(rows.values());
@@ -402,7 +402,7 @@ async function testMyPlatforms(page, discoverRequests) {
     await waitForTitles(['Disney Film']);
     await clickChip(11);
     await waitForTitles(['MUBI Film', 'Disney Film']);
-    assert(await page.evaluate(() => location.hash) === '#search?q=subscriptions', 'Changing subscriptions should refresh the same search route');
+    assert(await page.evaluate(() => location.pathname + location.search) === '/nerede-izlerim?q=subscriptions', 'Changing subscriptions should refresh the same search route');
 
     await page.reload({ waitUntil: 'domcontentloaded' });
     await waitForTitles(['MUBI Film', 'Disney Film']);
@@ -501,9 +501,10 @@ async function runTest() {
     try {
         server = http.createServer((req, res) => {
             const urlPath = req.url.split('?')[0].split('#')[0];
+            const isSpaRoute = urlPath === '/' || !path.extname(urlPath);
             const filePath = path.join(
                 ROOT_DIR,
-                urlPath === '/' ? 'index.html' : urlPath
+                isSpaRoute ? 'index.html' : urlPath
             );
 
             if (!filePath.startsWith(ROOT_DIR)) {
@@ -696,6 +697,8 @@ async function runTest() {
 
         const directHash =
             '#platform?media=movie&genres=35%2C18&year=2024&rating=7&runtime=120&sort=vote_average.desc&provider=8';
+        const expectedDirectUrl =
+            '/nerede-izlerim?media=movie&genres=35%2C18&year=2024&rating=7&runtime=120&sort=vote_average.desc&provider=8';
         await page.goto(
             `http://127.0.0.1:${port}/${directHash}`,
             { waitUntil: 'domcontentloaded', timeout: 30000 }
@@ -716,10 +719,10 @@ async function runTest() {
             { timeout: 10000 }
         );
 
-        const directHashAfterLoad = await page.evaluate(() => window.location.hash);
+        const directUrlAfterLoad = await page.evaluate(() => window.location.pathname + window.location.search);
         assert(
-            directHashAfterLoad === directHash,
-            `Direct platform URL should remain canonical (was ${directHashAfterLoad})`
+            directUrlAfterLoad === expectedDirectUrl,
+            `Direct platform URL should remain canonical (was ${directUrlAfterLoad})`
         );
 
         const directDiscoverUrl = discoverRequests
@@ -760,7 +763,7 @@ async function runTest() {
             activeGenres: ['35', '18']
         });
         assert(
-            await page.evaluate(() => window.location.hash) === directHash,
+            await page.evaluate(() => window.location.pathname + window.location.search) === expectedDirectUrl,
             'Refresh should preserve the platform filter URL'
         );
 
@@ -797,8 +800,8 @@ async function runTest() {
             activeGenres: ['35']
         });
         assert(
-            decodeURIComponent(await page.evaluate(() => window.location.hash)) ===
-                '#platform?media=movie&genres=35&year=2024&provider=8',
+            decodeURIComponent(await page.evaluate(() => window.location.pathname + window.location.search)) ===
+                '/nerede-izlerim?media=movie&genres=35&year=2024&provider=8',
             'Filter interactions should update the shareable platform URL'
         );
 
@@ -811,7 +814,7 @@ async function runTest() {
         await page.waitForFunction(
             () =>
                 document.getElementById('yearFilter')?.value === '2024' &&
-                window.location.hash.includes('year=2024'),
+                window.location.search.includes('year=2024'),
             { timeout: 10000 }
         );
         const documentYear = await page.evaluate(
@@ -823,7 +826,7 @@ async function runTest() {
         await page.waitForFunction(
             () =>
                 document.getElementById('yearFilter')?.value === '2023' &&
-                window.location.hash.includes('year=2023'),
+                window.location.search.includes('year=2023'),
             { timeout: 10000 }
         );
 
@@ -833,7 +836,7 @@ async function runTest() {
         });
         await page.waitForFunction(
             () =>
-                window.location.hash === '#platform' &&
+                (window.location.pathname + window.location.search) === '/nerede-izlerim' &&
                 document.getElementById('mediaTypeFilter')?.value === 'all' &&
                 document.getElementById('genreFilter')?.value === '' &&
                 document.getElementById('yearFilter')?.value === '' &&
@@ -849,7 +852,7 @@ async function runTest() {
         });
         await page.waitForFunction(
             () =>
-                window.location.hash === '#search?q=Matrix' &&
+                (window.location.pathname + window.location.search) === '/nerede-izlerim?q=Matrix' &&
                 document.getElementById('searchInput')?.value === 'Matrix',
             { timeout: 10000 }
         );
@@ -889,15 +892,15 @@ async function runTest() {
         );
 
         const searchHistoryLength = await page.evaluate(() => history.length);
-        const yearSearchHash = '#search?q=matrix&year=2020&rating=7&sort=vote_count.desc';
+        const yearSearchUrl = '/nerede-izlerim?q=matrix&year=2020&rating=7&sort=vote_count.desc';
         await page.evaluate(() => {
             document.getElementById('yearFilter').value = '2020';
             applyPlatformFilters();
         });
-        await page.waitForFunction(hash =>
-            location.hash === hash &&
+        await page.waitForFunction(url =>
+            (location.pathname + location.search) === url &&
             document.querySelector('#search-results .loading')?.textContent.includes('Sonuç bulunamadı'),
-        {}, yearSearchHash);
+        {}, yearSearchUrl);
         assert(countMatrixSearches() === 2, 'Applying the year should issue exactly one new search request');
         assert(
             await page.evaluate(() => history.length) === searchHistoryLength,
@@ -917,20 +920,20 @@ async function runTest() {
         );
         await page.click('#btn-prov-119');
         await page.waitForFunction(() =>
-            location.hash === '#search?q=matrix' &&
+            (location.pathname + location.search) === '/nerede-izlerim?q=matrix' &&
             document.querySelector('#search-results .movie-title')?.textContent.includes('Matrix Search Result')
         );
         await page.evaluate(() => history.back());
-        await page.waitForFunction(hash =>
-            location.hash === hash &&
+        await page.waitForFunction(url =>
+            (location.pathname + location.search) === url &&
             document.getElementById('yearFilter').value === '2020' &&
             document.querySelector('#search-results .loading')?.textContent.includes('Sonuç bulunamadı'),
-        {}, yearSearchHash);
+        {}, yearSearchUrl);
 
         await page.$eval('#searchInput', input => { input.value = 'arrival & friends'; });
         await page.click('.search-submit-btn');
         await page.waitForFunction(() =>
-            location.hash === '#search?q=arrival%20%26%20friends' &&
+            (location.pathname + location.search) === '/nerede-izlerim?q=arrival%20%26%20friends' &&
             document.getElementById('yearFilter').value === '' &&
             document.getElementById('ratingFilter').value === '0' &&
             document.getElementById('sortByFilter').value === 'popularity.desc' &&
@@ -976,7 +979,7 @@ async function runTest() {
             'A stale filtered request must not overwrite the latest route results'
         );
         assert(
-            decodeURIComponent(await page.evaluate(() => window.location.hash)).includes('year=2023'),
+            decodeURIComponent(await page.evaluate(() => window.location.search)).includes('year=2023'),
             'Latest filter URL should remain on the fresh 2023 state'
         );
 
@@ -996,7 +999,7 @@ async function testCustomYearRangeFilter(page, discoverRequests) {
     await page.$eval('#yearToInput', el => { el.value = ''; });
     await clickAdvancedControl(page, '#yearRangeApplyBtn');
     await page.waitForFunction(() =>
-        location.hash === '#platform?year=1994' &&
+        (location.pathname + location.search) === '/nerede-izlerim?year=1994' &&
         document.getElementById('yearFilter')?.value === '1994' &&
         document.getElementById('yearFromInput')?.value === '1994' &&
         document.getElementById('yearToInput')?.value === '' &&
@@ -1011,7 +1014,7 @@ async function testCustomYearRangeFilter(page, discoverRequests) {
     await page.$eval('#yearToInput', el => { el.value = '1999'; });
     await clickAdvancedControl(page, '#yearRangeApplyBtn');
     await page.waitForFunction(() =>
-        location.hash === '#platform?year=1990-1999' &&
+        (location.pathname + location.search) === '/nerede-izlerim?year=1990-1999' &&
         document.getElementById('yearFilter')?.value === '1990-1999' &&
         document.getElementById('yearFromInput')?.value === '1990' &&
         document.getElementById('yearToInput')?.value === '1999'
@@ -1026,7 +1029,7 @@ async function testCustomYearRangeFilter(page, discoverRequests) {
 
     await clickAdvancedControl(page, '#yearRangeClearBtn');
     await page.waitForFunction(() =>
-        location.hash === '#platform' &&
+        (location.pathname + location.search) === '/nerede-izlerim' &&
         document.getElementById('yearFilter')?.value === '' &&
         document.getElementById('yearFromInput')?.value === '' &&
         document.getElementById('yearRangeClearBtn')?.hidden === true

@@ -1,5 +1,6 @@
 const fs = require('fs');
 const path = require('path');
+const vm = require('node:vm');
 
 const ROOT_DIR = path.resolve(__dirname, '..');
 
@@ -7,6 +8,80 @@ function assert(condition, message) {
     if (!condition) {
         throw new Error(message);
     }
+}
+
+async function checkServiceWorker(swContent, swPath) {
+    const origin = 'https://filmimnerede.netlify.app';
+    const listeners = new Map();
+
+    class MockResponse {
+        constructor(body, options) {
+            this.body = body;
+            Object.assign(this, options);
+        }
+    }
+
+    const imaxPage = new MockResponse('IMAX');
+    const indexPage = new MockResponse('FilmimNerede');
+    const cachedResponses = new Map([
+        ['/imax.html', imaxPage],
+        ['/index.html', indexPage]
+    ]);
+    let precachedAssets = [];
+
+    vm.runInNewContext(swContent, {
+        self: {
+            addEventListener: (type, listener) => listeners.set(type, listener),
+            location: { origin },
+            skipWaiting: () => {},
+            clients: { claim: () => Promise.resolve() }
+        },
+        caches: {
+            match: async key => cachedResponses.get(key),
+            open: async name => {
+                assert(name === 'filmimnerede-v133', 'Service worker cache name must be filmimnerede-v133');
+                return {
+                    addAll: async assets => { precachedAssets = assets; }
+                };
+            }
+        },
+        fetch: async () => { throw new Error('Offline'); },
+        Response: MockResponse,
+        URL
+    }, { filename: swPath });
+
+    let installPromise;
+    listeners.get('install')({
+        waitUntil: promise => { installPromise = promise; }
+    });
+    assert(installPromise, 'Service worker install must wait for precaching');
+    await installPromise;
+    assert(precachedAssets.includes('/imax.html'), 'Service worker must precache /imax.html');
+    assert(precachedAssets.includes('/assets/placeholder.svg'), 'Service worker must precache /assets/placeholder.svg');
+
+    function navigate(pathname) {
+        let responsePromise;
+        listeners.get('fetch')({
+            request: { method: 'GET', mode: 'navigate', url: origin + pathname },
+            respondWith: promise => { responsePromise = promise; }
+        });
+        return responsePromise;
+    }
+
+    const imaxPaths = ['/imax', '/imax/', '/imax.html'];
+    for (const pathname of imaxPaths) {
+        assert(await navigate(pathname) === imaxPage, `Offline ${pathname} must serve cached /imax.html`);
+    }
+    cachedResponses.delete('/imax.html');
+    for (const pathname of imaxPaths) {
+        assert(await navigate(pathname) === indexPage, `Offline ${pathname} must fall back to /index.html when /imax.html is missing`);
+    }
+    assert(await navigate('/nerede-izlerim') === indexPage, 'Offline /nerede-izlerim must serve cached /index.html');
+
+    listeners.get('fetch')({
+        request: { method: 'GET', mode: 'cors', url: origin + '/.netlify/functions/omdb' },
+        respondWith: () => { throw new Error('Netlify function requests must bypass respondWith'); }
+    });
 }
 
 async function runTest() {
@@ -65,7 +140,7 @@ async function runTest() {
     // 3. index.html
     const indexPath = path.join(ROOT_DIR, 'index.html');
     const indexContent = fs.readFileSync(indexPath, 'utf8');
-    assert(indexContent.includes('<link rel="manifest" href="manifest.json">'), 'index.html must have correct manifest link');
+    assert(indexContent.includes('<link rel="manifest" href="/manifest.json">'), 'index.html must have correct manifest link');
     assert(indexContent.includes('<meta name="theme-color"'), 'index.html must have theme-color meta tag');
 
     // 4. service-worker.js
@@ -78,6 +153,8 @@ async function runTest() {
     for (const icon of manifest.icons) {
         assert(swContent.includes(`/${icon.src}`), `Service worker must precache /${icon.src}`);
     }
+
+    await checkServiceWorker(swContent, swPath);
 
     console.log('[PASS] PWA regression tests passed.');
 }

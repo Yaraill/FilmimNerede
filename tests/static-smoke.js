@@ -18,6 +18,7 @@ const activeScripts = [
     'js/runtime/actor.js',
     'js/runtime/home.js',
     'js/runtime/profile.js',
+    'js/runtime/importer.js',
     'js/runtime/misc.js',
     'app.js',
     'service-worker.js'
@@ -66,15 +67,16 @@ try {
 
     // 3. Assert inactive scripts are not referenced
     const scriptTags = Array.from(document.querySelectorAll('script')).map(s => s.getAttribute('src')).filter(Boolean).filter(src => !src.startsWith('http'));
+    const normalizedScriptTags = scriptTags.map(src => src.replace(/^\/+/, ''));
     for (const script of inactiveScripts) {
-        const isReferenced = scriptTags.some(src => src === script || src.startsWith(script + '?'));
+        const isReferenced = normalizedScriptTags.some(src => src === script || src.startsWith(script + '?'));
         assert(!isReferenced, `Inactive script ${script} should not be referenced in index.html`);
         console.log(`[PASS] Inactive script ${script} is not referenced`);
     }
 
     // 4. Assert active app scripts are referenced exactly once
     const appScripts = activeScripts.filter(s => s !== 'service-worker.js');
-    const scriptSrcWithoutVersion = scriptTags.map(src => src.split('?')[0]);
+    const scriptSrcWithoutVersion = normalizedScriptTags.map(src => src.split('?')[0]);
     
     for (const script of appScripts) {
         const count = scriptSrcWithoutVersion.filter(src => src === script).length;
@@ -85,9 +87,9 @@ try {
     // 5. Read service-worker.js and assert cache matching
     const swContent = fs.readFileSync(path.join(ROOT_DIR, 'service-worker.js'), 'utf8');
     
-    for (const tag of scriptTags) {
-        // Tag is exactly what's in index.html, e.g. "js/runtime/actor.js?v=7"
-        // In SW, it is typically "/js/runtime/actor.js?v=7" or similar
+    for (const tag of normalizedScriptTags) {
+        // Tag is normalized without leading slash, e.g. "js/runtime/actor.js?v=7"
+        // In SW, it is "/js/runtime/actor.js?v=7"
         const expectedInSW = `/${tag}`;
         assert(swContent.includes(expectedInSW), `Service worker is missing cache entry for ${expectedInSW}`);
         console.log(`[PASS] SW contains entry for ${expectedInSW}`);

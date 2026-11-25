@@ -1,0 +1,20 @@
+# FilmimNerede
+
+> FilmimNerede, Türkiye’de vizyondaki ve yakında vizyona girecek filmleri keşfetmek için bir film rehberidir.
+> Film ve dizilerin Türkiye’de hangi dijital platformlarda izlenebildiğini aramaya da yardımcı olur.
+
+## Ana Sayfalar
+
+- [Ana Sayfa](https://filmimnerede.netlify.app/): Şu an vizyondaki filmler, özel koleksiyonlar ve gündemdeki isimler
+- [Yakında Vizyonda](https://filmimnerede.netlify.app/vizyon): Türkiye sinemalarına yakında gelecek filmler
+- [Nerede İzlerim?](https://filmimnerede.netlify.app/nerede-izlerim): Netflix, Amazon Prime Video, Disney+, Max, MUBI, TOD TV, TV+, tabii, Exxen ve puhutv katalog arama ve filtreleme aracı
+- [Türkiye IMAX Salonları Rehberi](https://filmimnerede.netlify.app/imax): 5 ilde 11 IMAX salonu (4 IMAX Lazer, 7 Dijital IMAX)
+- [Oyunlar ve Öneri Araçları](https://filmimnerede.netlify.app/oyunlar): Afiş tahmin oyunu ve rastgele film seçici
+
+## Veri Kaynakları
+
+- **TMDB API** film, dizi ve oyuncu bilgilerini sağlar.
+- **JustWatch TR** Türkiye’deki dijital platform verilerini TMDB API’nin
+  `watch/providers` uç noktaları üzerinden sağlar.
+- **IMDb / OMDb** entegrasyonu, IMDb kimliklerini kullanarak puan bilgilerini eşleştirir.
+  Puan önce yerel IMDb verisinde aranır. Bulunamazsa OMDb API kullanılır.

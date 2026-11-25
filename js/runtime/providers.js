@@ -1,7 +1,8 @@
-const PROVIDER_CACHE_TTL_MS = 10 * 60 * 1000;
-const PROVIDER_CACHE_MAX_SIZE = 300;
-const PROVIDER_MAX_CONCURRENT_REQUESTS = 5;
-const PROVIDER_VIEWPORT_MARGIN_PX = 150;
+const PROVIDER_CACHE_TTL_MS = 12 * 60 * 60 * 1000;
+const PROVIDER_CACHE_MAX_SIZE = 500;
+const PROVIDER_MAX_CONCURRENT_REQUESTS = 6;
+const PROVIDER_VIEWPORT_MARGIN_PX = 400;
+const PROVIDER_PERSIST_STORAGE_KEY = 'filmimnerede_provider_cache_v1';
 
 const providerDataCache = new Map();
 const providerDataCacheTimestamps = new Map();
@@ -16,6 +17,161 @@ let activeProviderRequestCount = 0;
 let providerQueueDrainScheduled = false;
 let providerQueueSequence = 0;
 let providerVisibilityObserver = null;
+let providerRateLimitUntil = 0;
+let providerRateLimitTimer = null;
+let deferredProviderObserver = null;
+let providerPersistenceHydrated = false;
+let providerPersistTimer = null;
+const deferredProviderCallbacks =
+    typeof WeakMap === 'function' ? new WeakMap() : new Map();
+
+function compactProviderEntriesList(list) {
+    if (!Array.isArray(list)) return [];
+    const compact = [];
+    for (const entry of list) {
+        const pid = typeof normalizeTmdbId === 'function'
+            ? normalizeTmdbId(entry?.provider_id)
+            : (Number(entry?.provider_id) || null);
+        if (!pid) continue;
+        compact.push({
+            provider_id: pid,
+            provider_name: String(entry?.provider_name || 'Platform').slice(0, 80),
+            logo_path: typeof entry?.logo_path === 'string' ? entry.logo_path : ''
+        });
+    }
+    return compact;
+}
+
+function compactTrProviderPayload(data) {
+    const tr = data && typeof data.results === 'object' && data.results?.TR && typeof data.results.TR === 'object'
+        ? data.results.TR
+        : null;
+    if (!tr) return {};
+    const compactTr = {};
+    ['flatrate', 'free', 'ads', 'rent', 'buy'].forEach(bucket => {
+        const items = compactProviderEntriesList(tr[bucket]);
+        if (items.length > 0) {
+            compactTr[bucket] = items;
+        }
+    });
+    return compactTr;
+}
+
+function hydratePersistedProviderCache() {
+    if (providerPersistenceHydrated) return;
+    providerPersistenceHydrated = true;
+    try {
+        if (typeof localStorage === 'undefined' || typeof localStorage.getItem !== 'function') return;
+        const raw = localStorage.getItem(PROVIDER_PERSIST_STORAGE_KEY);
+        if (!raw) return;
+        const parsed = JSON.parse(raw);
+        if (!parsed || !Array.isArray(parsed.entries)) return;
+        const now = Date.now();
+        for (const item of parsed.entries) {
+            if (!Array.isArray(item) || item.length < 3) continue;
+            const [key, cachedAt, compactTr] = item;
+            if (typeof key !== 'string' || !/^(?:movie|tv):\d+$/.test(key)) continue;
+            if (typeof cachedAt !== 'number' || now - cachedAt > PROVIDER_CACHE_TTL_MS) continue;
+            if (!compactTr || typeof compactTr !== 'object') continue;
+            if (providerDataCache.size >= PROVIDER_CACHE_MAX_SIZE) break;
+            providerDataCache.set(key, { results: { TR: compactTr } });
+            providerDataCacheTimestamps.set(key, cachedAt);
+        }
+    } catch {
+        // Corrupt or unavailable persistent provider cache is safely ignored.
+    }
+}
+
+function flushPersistedProviderCache() {
+    providerPersistTimer = null;
+    try {
+        if (typeof localStorage === 'undefined' || typeof localStorage.setItem !== 'function') return;
+        const now = Date.now();
+        const entries = [];
+        for (const [key, data] of providerDataCache.entries()) {
+            const cachedAt = providerDataCacheTimestamps.get(key) || now;
+            if (now - cachedAt > PROVIDER_CACHE_TTL_MS) continue;
+            entries.push([key, cachedAt, compactTrProviderPayload(data)]);
+        }
+        const sliceStart = Math.max(0, entries.length - PROVIDER_CACHE_MAX_SIZE);
+        const recentEntries = entries.slice(sliceStart);
+        try {
+            localStorage.setItem(PROVIDER_PERSIST_STORAGE_KEY, JSON.stringify({ v: 1, entries: recentEntries }));
+        } catch {
+            // Quota exceeded: retry with half the most recent entries.
+            const halved = recentEntries.slice(Math.floor(recentEntries.length / 2));
+            try {
+                localStorage.setItem(PROVIDER_PERSIST_STORAGE_KEY, JSON.stringify({ v: 1, entries: halved }));
+            } catch {
+                // Storage write failure leaves in-memory cache intact.
+            }
+        }
+    } catch {
+        // Ignore unexpected storage failures.
+    }
+}
+
+function schedulePersistProviderCache() {
+    if (providerPersistTimer !== null) return;
+    if (typeof setTimeout !== 'function') {
+        flushPersistedProviderCache();
+        return;
+    }
+    providerPersistTimer = setTimeout(flushPersistedProviderCache, 350);
+}
+
+function parseProviderRetryAfterSeconds(response) {
+    const rawHeader = typeof response?.headers?.get === 'function'
+        ? response.headers.get('Retry-After')
+        : '';
+    if (!rawHeader) return 5;
+    const numeric = Number(rawHeader);
+    if (Number.isFinite(numeric) && numeric > 0) {
+        return Math.min(65, Math.max(1, Math.ceil(numeric)));
+    }
+    const parsedDate = Date.parse(rawHeader);
+    if (Number.isFinite(parsedDate)) {
+        const diffSeconds = Math.ceil((parsedDate - Date.now()) / 1000);
+        return Math.min(65, Math.max(1, diffSeconds));
+    }
+    return 5;
+}
+
+function scheduleProviderRateLimitResume() {
+    if (providerRateLimitTimer !== null) return;
+    const delayMs = Math.max(200, providerRateLimitUntil - Date.now());
+    providerRateLimitTimer = setTimeout(() => {
+        providerRateLimitTimer = null;
+        drainProviderQueue();
+    }, delayMs);
+}
+
+function getDeferredProviderObserver() {
+    if (deferredProviderObserver) return deferredProviderObserver;
+    if (typeof IntersectionObserver !== 'function') return null;
+    deferredProviderObserver = new IntersectionObserver(
+        entries => {
+            entries.forEach(entry => {
+                const el = entry.target;
+                if (!el.isConnected) {
+                    deferredProviderObserver.unobserve(el);
+                    deferredProviderCallbacks.delete(el);
+                    return;
+                }
+                if (entry.isIntersecting) {
+                    const callback = deferredProviderCallbacks.get(el);
+                    deferredProviderObserver.unobserve(el);
+                    deferredProviderCallbacks.delete(el);
+                    if (typeof callback === 'function') {
+                        callback();
+                    }
+                }
+            });
+        },
+        { rootMargin: '500px' }
+    );
+    return deferredProviderObserver;
+}
 
 function createProviderAbortError() {
     if (typeof DOMException === 'function') {
@@ -27,6 +183,7 @@ function createProviderAbortError() {
 }
 
 function getCachedProviderData(cacheKey) {
+    hydratePersistedProviderCache();
     if (!providerDataCache.has(cacheKey)) {
         return null;
     }
@@ -49,6 +206,7 @@ function getCachedProviderData(cacheKey) {
 }
 
 function setCachedProviderData(cacheKey, data) {
+    hydratePersistedProviderCache();
     if (providerDataCache.has(cacheKey)) {
         providerDataCache.delete(cacheKey);
         providerDataCacheTimestamps.delete(cacheKey);
@@ -61,8 +219,10 @@ function setCachedProviderData(cacheKey, data) {
         providerDataCacheTimestamps.delete(oldestKey);
     }
 
-    providerDataCache.set(cacheKey, data);
+    const compacted = { results: { TR: compactTrProviderPayload(data) } };
+    providerDataCache.set(cacheKey, compacted);
     providerDataCacheTimestamps.set(cacheKey, Date.now());
+    schedulePersistProviderCache();
 }
 
 function isProviderContainerNearViewport(el) {
@@ -274,10 +434,22 @@ function pickNextQueuedProviderTask() {
 function drainProviderQueue() {
     providerQueueDrainScheduled = false;
 
+    if (Date.now() < providerRateLimitUntil) {
+        if (providerRequestQueue.length > 0) {
+            scheduleProviderRateLimitResume();
+        }
+        return;
+    }
+
     while (
         activeProviderRequestCount < PROVIDER_MAX_CONCURRENT_REQUESTS &&
         providerRequestQueue.length > 0
     ) {
+        if (Date.now() < providerRateLimitUntil) {
+            scheduleProviderRateLimitResume();
+            break;
+        }
+
         const task = pickNextQueuedProviderTask();
         if (!task) break;
 
@@ -306,8 +478,29 @@ function drainProviderQueue() {
             ? { signal: task.controller.signal }
             : undefined;
 
+        let requeuedFor429 = false;
         const inflightPromise = fetch(task.url, fetchOptions)
             .then(async res => {
+                if (res.status === 429) {
+                    const waitSeconds = parseProviderRetryAfterSeconds(res);
+                    providerRateLimitUntil = Math.max(
+                        providerRateLimitUntil,
+                        Date.now() + waitSeconds * 1000
+                    );
+                    if (
+                        !task.aborted &&
+                        task.callers.size > 0 &&
+                        !task.controller?.signal?.aborted &&
+                        (task.retries || 0) < 2
+                    ) {
+                        task.retries = (task.retries || 0) + 1;
+                        requeuedFor429 = true;
+                        const retryErr = new Error('Watch providers rate limited (429)');
+                        retryErr.isRetry429 = true;
+                        throw retryErr;
+                    }
+                    throw new Error('Watch providers HTTP 429');
+                }
                 if (!res.ok) {
                     throw new Error(`Watch providers HTTP ${res.status}`);
                 }
@@ -324,6 +517,9 @@ function drainProviderQueue() {
                     return json;
                 },
                 err => {
+                    if (requeuedFor429 && err?.isRetry429) {
+                        return null;
+                    }
                     task.reject(err);
                     throw err;
                 }
@@ -339,6 +535,12 @@ function drainProviderQueue() {
                     0,
                     activeProviderRequestCount - 1
                 );
+                if (requeuedFor429 && !task.aborted && task.callers.size > 0 && !task.controller?.signal?.aborted) {
+                    providerQueuedTasks.set(task.cacheKey, task);
+                    providerRequestQueue.unshift(task);
+                    scheduleProviderRateLimitResume();
+                    return;
+                }
                 drainProviderQueue();
             });
 
@@ -422,11 +624,143 @@ function enqueueProviderFetch(cacheKey, url, containers, routeContext) {
     return callerPromise;
 }
 
+function dedupeProvidersList(providersList) {
+    const visibleProviders = [];
+    const seenProviders = new Set();
+    providersList.forEach(provider => {
+        const pid = normalizeTmdbId(provider?.provider_id);
+        const key = pid ? `id:${pid}` : `name:${String(provider?.provider_name || '')}`;
+        if (!seenProviders.has(key)) {
+            seenProviders.add(key);
+            visibleProviders.push(provider);
+        }
+    });
+    return visibleProviders;
+}
+
+function resolveProviderDisplayModel(data) {
+    const results =
+        data && typeof data.results === 'object'
+            ? data.results
+            : null;
+    const tr =
+        results && results.TR && typeof results.TR === 'object'
+            ? results.TR
+            : null;
+
+    const rawFilterProvId =
+        typeof document !== 'undefined'
+            ? (document.getElementById('providerFilter')?.value || '0')
+            : '0';
+
+    const filterProvId =
+        rawFilterProvId === '0'
+            ? 0
+            : normalizeTmdbId(rawFilterProvId);
+
+    if (filterProvId === null) {
+        return null;
+    }
+
+    const flatRate = Array.isArray(tr?.flatrate) ? tr.flatrate : [];
+    const freeProviders = [
+        ...(Array.isArray(tr?.free) ? tr.free : []),
+        ...(Array.isArray(tr?.ads) ? tr.ads : [])
+    ];
+    const rentBuyProviders = [];
+    const seenRentBuy = new Set();
+    [
+        ...(Array.isArray(tr?.rent) ? tr.rent : []),
+        ...(Array.isArray(tr?.buy) ? tr.buy : [])
+    ].forEach(p => {
+        const pid = normalizeTmdbId(p?.provider_id);
+        if (pid && !seenRentBuy.has(pid)) {
+            seenRentBuy.add(pid);
+            rentBuyProviders.push(p);
+        }
+    });
+
+    const subscribedIds = filterProvId === 0 && typeof isMyPlatformsModeActive === 'function' && isMyPlatformsModeActive()
+        ? getSubscribedProviderIds()
+        : [];
+    const matchesSubscription = provider =>
+        subscribedIds.includes(normalizeTmdbId(provider?.provider_id));
+    const categories = [
+        [flatRate, null],
+        [freeProviders, 'Ücretsiz'],
+        [rentBuyProviders, 'Kiralık / Satın Al']
+    ];
+    for (const [providers, badgeText] of categories) {
+        if (providers.length === 0) continue;
+        if (subscribedIds.length > 0) {
+            const subscribed = providers.filter(matchesSubscription);
+            if (subscribed.length === 0) continue;
+            return {
+                type: 'logos',
+                providers: dedupeProvidersList([...subscribed, ...providers.filter(p => !matchesSubscription(p))]),
+                badgeText
+            };
+        }
+        if (filterProvId > 0 && !providers.some(p => normalizeTmdbId(p?.provider_id) === filterProvId)) {
+            continue;
+        }
+        return {
+            type: 'logos',
+            providers: dedupeProvidersList(providers),
+            badgeText
+        };
+    }
+
+    return {
+        type: 'message',
+        text: subscribedIds.length > 0
+            ? 'Seçili aboneliklerde yayını yok'
+            : filterProvId > 0
+                ? 'Seçili platformda yayını yok'
+                : "Türkiye'de dijital yayını bulunamadı"
+    };
+}
+
+function getSyncCachedProvidersHtml(itemId, mediaType) {
+    const safeItemId = typeof normalizeTmdbId === 'function' ? normalizeTmdbId(itemId) : (Number(itemId) || null);
+    const safeMediaType = typeof normalizeMediaType === 'function'
+        ? normalizeMediaType(mediaType)
+        : (mediaType === 'tv' ? 'tv' : (mediaType === 'movie' ? 'movie' : null));
+    if (!safeItemId || !safeMediaType) return null;
+
+    const data = getCachedProviderData(`${safeMediaType}:${safeItemId}`);
+    if (data === null) return null;
+
+    const model = resolveProviderDisplayModel(data);
+    if (!model) return null;
+
+    const safeEscHtml = typeof escapeHtml === 'function' ? escapeHtml : value => String(value ?? '');
+    const safeEscAttr = typeof escapeAttr === 'function' ? escapeAttr : safeEscHtml;
+
+    if (model.type === 'message') {
+        return `<span class="no-provider">${safeEscHtml(model.text)}</span>`;
+    }
+
+    const logosHtml = model.providers.map(provider => {
+        const providerName = String(provider?.provider_name || 'Platform');
+        const label = model.badgeText ? `${providerName} (${model.badgeText})` : providerName;
+        const logoUrl = getSafeTmdbImageUrl(provider?.logo_path, IMAGE_BASE, '/assets/placeholder.svg');
+        return `<img src="${safeEscAttr(logoUrl)}" alt="${safeEscAttr(label)}" title="${safeEscAttr(label)}" loading="lazy" class="provider-logo">`;
+    }).join('');
+
+    const badgeHtml = model.badgeText
+        ? `<span class="no-provider provider-access-badge" style="margin-left:6px;font-size:0.72rem">${safeEscHtml(model.badgeText)}</span>`
+        : '';
+
+    return `${logosHtml}${badgeHtml}`;
+}
+
 async function fetchAndInjectProviders(
     itemId,
     mediaType,
     itemData = null,
-    routeContext = null
+    routeContext = null,
+    options = null
 ) {
     const safeItemId =
         normalizeTmdbId(
@@ -519,7 +853,7 @@ async function fetchAndInjectProviders(
                 const logoUrl = getSafeTmdbImageUrl(
                     provider?.logo_path,
                     IMAGE_BASE,
-                    'assets/placeholder.svg'
+                    '/assets/placeholder.svg'
                 );
                 const image = document.createElement('img');
                 image.src = logoUrl;
@@ -554,6 +888,29 @@ async function fetchAndInjectProviders(
 
         if (data === null) {
             const containers = getContainers();
+            if (options?.deferUntilVisible === true) {
+                if (containers.length === 0) {
+                    return;
+                }
+                const nearViewport = Array.from(containers).some(isProviderContainerNearViewport);
+                if (!nearViewport) {
+                    const deferredObserver = getDeferredProviderObserver();
+                    if (deferredObserver) {
+                        containers.forEach(container => {
+                            if (!container || container.isConnected === false) return;
+                            if (deferredProviderCallbacks.has(container)) return;
+                            deferredProviderCallbacks.set(container, () => {
+                                if (routeContext?.signal?.aborted) return;
+                                fetchAndInjectProviders(safeItemId, safeMediaType, itemData, routeContext, {
+                                    deferUntilVisible: false
+                                });
+                            });
+                            deferredObserver.observe(container);
+                        });
+                        return;
+                    }
+                }
+            }
             const requestUrl = `${BASE_URL}/${safeMediaType}/${safeItemId}/watch/providers`;
             data = await enqueueProviderFetch(
                 cacheKey,
@@ -573,21 +930,6 @@ async function fetchAndInjectProviders(
             return;
         }
 
-        const results =
-            data &&
-            typeof data.results ===
-                'object'
-                ? data.results
-                : null;
-
-        const tr =
-            results &&
-            results.TR &&
-            typeof results.TR ===
-                'object'
-                ? results.TR
-                : null;
-
         const els =
             getContainers();
 
@@ -595,76 +937,17 @@ async function fetchAndInjectProviders(
             return;
         }
 
-        const rawFilterProvId =
-            document.getElementById(
-                'providerFilter'
-            )?.value || '0';
-
-        const filterProvId =
-            rawFilterProvId === '0'
-                ? 0
-                : normalizeTmdbId(
-                    rawFilterProvId
-                );
-
-        if (filterProvId === null) {
+        const displayModel = resolveProviderDisplayModel(data);
+        if (!displayModel) {
             return;
         }
 
-        const flatRate =
-            Array.isArray(tr?.flatrate)
-                ? tr.flatrate
-                : [];
-        const freeProviders = [
-            ...(Array.isArray(tr?.free) ? tr.free : []),
-            ...(Array.isArray(tr?.ads) ? tr.ads : [])
-        ];
-        const rentBuyProviders = [];
-        const seenRentBuy = new Set();
-        [
-            ...(Array.isArray(tr?.rent) ? tr.rent : []),
-            ...(Array.isArray(tr?.buy) ? tr.buy : [])
-        ].forEach(p => {
-            const pid = normalizeTmdbId(p?.provider_id);
-            if (pid && !seenRentBuy.has(pid)) {
-                seenRentBuy.add(pid);
-                rentBuyProviders.push(p);
-            }
-        });
-
-        const subscribedIds = filterProvId === 0 && isMyPlatformsModeActive()
-            ? getSubscribedProviderIds()
-            : [];
-        const matchesSubscription = provider =>
-            subscribedIds.includes(normalizeTmdbId(provider?.provider_id));
-        const categories = [
-            [flatRate, null],
-            [freeProviders, 'Ücretsiz'],
-            [rentBuyProviders, 'Kiralık / Satın Al']
-        ];
-        for (const [providers, badge] of categories) {
-            if (providers.length === 0) continue;
-            if (subscribedIds.length > 0) {
-                const subscribed = providers.filter(matchesSubscription);
-                if (subscribed.length === 0) continue;
-                renderProviderLogos(els, [...subscribed, ...providers.filter(p => !matchesSubscription(p))], badge);
-            } else {
-                if (filterProvId > 0 && !providers.some(p => normalizeTmdbId(p?.provider_id) === filterProvId)) {
-                    continue;
-                }
-                renderProviderLogos(els, providers, badge);
-            }
+        if (displayModel.type === 'logos') {
+            renderProviderLogos(els, displayModel.providers, displayModel.badgeText);
             return;
         }
 
-        renderStaticMessage(
-            els,
-            subscribedIds.length > 0
-                ? 'Seçili aboneliklerde yayını yok'
-                : filterProvId > 0
-                    ? 'Seçili platformda yayını yok'
-                    : "Türkiye'de dijital yayını bulunamadı"
-        );
+        renderStaticMessage(els, displayModel.text);
     } catch (err) {
         if (
             err.name ===

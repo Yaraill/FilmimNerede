@@ -291,7 +291,7 @@ function renderRecentlyViewed(routeContext = null) {
         }).join('');
         recent.forEach(item => {
             const mType = resolveProfileItemMediaType(item, null);
-            fetchAndInjectProviders(item.id, mType, item, routeContext);
+            fetchAndInjectProviders(item.id, mType, item, routeContext, { deferUntilVisible: true });
         });
     }
 }
@@ -380,6 +380,21 @@ function normalizeBackupMovieItem(item) {
     const exactRuntime = Number(item.exact_runtime_mins_v2);
     if (Number.isFinite(exactRuntime) && exactRuntime > 0 && exactRuntime <= 1000000) {
         normalized.exact_runtime_mins_v2 = exactRuntime;
+    }
+
+    const rawImdbRating = Number(item.imdb_rating);
+    if (Number.isFinite(rawImdbRating) && rawImdbRating >= 0.1 && rawImdbRating <= 10) {
+        normalized.imdb_rating = rawImdbRating.toFixed(1);
+    }
+
+    if (typeof item.imdb_id === 'string') {
+        const trimmedImdbId = item.imdb_id.trim();
+        const validImdbId = typeof isValidImdbId === 'function'
+            ? isValidImdbId(trimmedImdbId)
+            : /^tt\d{7,10}$/.test(trimmedImdbId);
+        if (validImdbId) {
+            normalized.imdb_id = trimmedImdbId;
+        }
     }
 
     return normalized;
@@ -930,6 +945,12 @@ function switchProfileTab(tabId, btnElem) {
         btnElem.style.borderColor = '';
     }
 
+    if (tabId === 'profile-watchlist') {
+        ensureProfileSectionProvidersLoaded('watchlist');
+    }
+    if (tabId === 'profile-rated') {
+        ensureProfileSectionProvidersLoaded('rated');
+    }
     if (tabId === 'profile-smart-recs' && typeof loadSmartRecommendations === 'function') {
         loadSmartRecommendations();
     }
@@ -1012,7 +1033,7 @@ function renderTvTrackerSection() {
 
         const poster = document.createElement('img');
         poster.className = 'tv-tracker-poster';
-        poster.src = getSafeTmdbImageUrl(show.poster_path, getSizedTmdbImageBase('w185', IMAGE_BASE), 'assets/placeholder.svg');
+        poster.src = getSafeTmdbImageUrl(show.poster_path, getSizedTmdbImageBase('w185', IMAGE_BASE), '/assets/placeholder.svg');
         poster.alt = '';
         poster.loading = 'lazy';
         const title = document.createElement('span');
@@ -1195,23 +1216,379 @@ function refreshProfileWatchStats(routeContext = null, persistTrackedTvRuntime =
     }
 }
 
+const PROFILE_PAGE_SIZE = 28;
+let lastProfileRouteContext = null;
+const profileListState = {
+    watchlist: { query: '', media: 'all', sort: 'recent', limit: PROFILE_PAGE_SIZE, lastRenderedEntries: [] },
+    rated: { query: '', media: 'all', sort: 'rating-desc', limit: PROFILE_PAGE_SIZE, lastRenderedEntries: [] }
+};
+
+function getProfileItemYearNumber(item) {
+    const raw = String(item?.release_date || item?.first_air_date || '').trim();
+    const match = /^(\d{4})/.exec(raw);
+    return match ? Number(match[1]) : 0;
+}
+
+function getProfileItemRatingValue(item, mediaType, savedRatings) {
+    if (typeof getUserRatingForMedia === 'function') {
+        const val = getUserRatingForMedia(savedRatings, item?.id, mediaType);
+        return val !== null ? val : -1;
+    }
+    return -1;
+}
+
+function getProfileItemScore(item) {
+    const directImdb = Number(item?.imdb_rating);
+    if (Number.isFinite(directImdb) && directImdb > 0 && directImdb <= 10) {
+        return directImdb;
+    }
+    const rawImdbId = typeof item?.imdb_id === 'string' ? item.imdb_id.trim() : '';
+    if (rawImdbId && /^tt\d{7,10}$/.test(rawImdbId)) {
+        try {
+            const cachedImdb = Number(localStorage.getItem('imdb_' + rawImdbId));
+            if (Number.isFinite(cachedImdb) && cachedImdb > 0 && cachedImdb <= 10) {
+                return cachedImdb;
+            }
+        } catch {
+            // Storage read failure falls back cleanly to vote_average.
+        }
+    }
+    const voteAvg = Number(item?.vote_average);
+    return Number.isFinite(voteAvg) && voteAvg > 0 ? voteAvg : 0;
+}
+
+function syncImdbRatingToProfileStorage(itemId, mediaType, imdbId, rating) {
+    const safeId = typeof normalizeTmdbId === 'function' ? normalizeTmdbId(itemId) : (Number(itemId) || null);
+    const safeType = mediaType === 'tv' ? 'tv' : (mediaType === 'movie' ? 'movie' : null);
+    const numRating = Number(rating);
+    if (!safeId || !safeType || !Number.isFinite(numRating) || numRating < 0.1 || numRating > 10) {
+        return false;
+    }
+    const normalizedRating = numRating.toFixed(1);
+    const safeImdbId = typeof imdbId === 'string' && /^tt\d{7,10}$/.test(imdbId.trim())
+        ? imdbId.trim()
+        : null;
+
+    let anyUpdated = false;
+    ['watchlist', 'ratedMovies'].forEach(storageKey => {
+        const list = typeof safeReadStorage === 'function'
+            ? safeReadStorage(storageKey, [])
+            : [];
+        if (!Array.isArray(list) || list.length === 0) return;
+        let listChanged = false;
+        const nextList = list.map(entry => {
+            const entryId = typeof normalizeTmdbId === 'function' ? normalizeTmdbId(entry?.id) : Number(entry?.id);
+            const entryType = resolveProfileItemMediaType(entry, null);
+            if (entryId !== safeId || entryType !== safeType) return entry;
+            const nextImdbId = safeImdbId || entry.imdb_id;
+            if (entry.imdb_rating === normalizedRating && (!nextImdbId || entry.imdb_id === nextImdbId)) {
+                return entry;
+            }
+            listChanged = true;
+            return {
+                ...entry,
+                imdb_rating: normalizedRating,
+                ...(nextImdbId ? { imdb_id: nextImdbId } : {})
+            };
+        });
+        if (listChanged && typeof safeWriteStorage === 'function') {
+            safeWriteStorage(storageKey, nextList);
+            anyUpdated = true;
+        }
+    });
+
+    if (typeof getCachedMedia === 'function' && typeof setCachedMedia === 'function') {
+        const cached = getCachedMedia(safeId, safeType);
+        if (cached) {
+            cached.imdb_rating = normalizedRating;
+            if (safeImdbId) cached.imdb_id = safeImdbId;
+            setCachedMedia(cached, safeType);
+        }
+    }
+    return anyUpdated;
+}
+
+function filterAndSortProfileItems(rawItems, section, savedRatings) {
+    const state = profileListState[section];
+    const queryNorm = String(state.query || '').trim().toLocaleLowerCase('tr-TR');
+
+    const indexed = (Array.isArray(rawItems) ? rawItems : []).map((item, index) => ({
+        item,
+        mediaType: resolveProfileItemMediaType(item, null),
+        index
+    }));
+
+    const queried = queryNorm
+        ? indexed.filter(({ item }) => {
+            const haystack = [
+                item?.title,
+                item?.name,
+                item?.original_title,
+                item?.original_name,
+                item?.release_date,
+                item?.first_air_date
+            ].filter(Boolean).join(' ').toLocaleLowerCase('tr-TR');
+            return haystack.includes(queryNorm);
+        })
+        : indexed;
+
+    let movieCount = 0;
+    let tvCount = 0;
+    for (const entry of queried) {
+        if (entry.mediaType === 'tv') tvCount += 1;
+        else movieCount += 1;
+    }
+
+    const filtered = state.media === 'all'
+        ? queried
+        : queried.filter(entry => entry.mediaType === state.media);
+
+    filtered.sort((a, b) => {
+        if (state.sort === 'rating-desc') {
+            const ra = getProfileItemRatingValue(a.item, a.mediaType, savedRatings);
+            const rb = getProfileItemRatingValue(b.item, b.mediaType, savedRatings);
+            if (rb !== ra) return rb - ra;
+            return b.index - a.index;
+        }
+        if (state.sort === 'rating-asc') {
+            const ra = getProfileItemRatingValue(a.item, a.mediaType, savedRatings);
+            const rb = getProfileItemRatingValue(b.item, b.mediaType, savedRatings);
+            const normA = ra < 0 ? 999 : ra;
+            const normB = rb < 0 ? 999 : rb;
+            if (normA !== normB) return normA - normB;
+            return b.index - a.index;
+        }
+        if (state.sort === 'title-asc') {
+            const ta = String(a.item?.title || a.item?.name || '').trim();
+            const tb = String(b.item?.title || b.item?.name || '').trim();
+            return ta.localeCompare(tb, 'tr');
+        }
+        if (state.sort === 'year-desc') {
+            return getProfileItemYearNumber(b.item) - getProfileItemYearNumber(a.item) || (b.index - a.index);
+        }
+        if (state.sort === 'year-asc') {
+            const ya = getProfileItemYearNumber(a.item) || 9999;
+            const yb = getProfileItemYearNumber(b.item) || 9999;
+            return ya - yb || (b.index - a.index);
+        }
+        if (state.sort === 'score-desc' || state.sort === 'tmdb-desc') {
+            const va = getProfileItemScore(a.item);
+            const vb = getProfileItemScore(b.item);
+            return vb - va || (b.index - a.index);
+        }
+        return b.index - a.index;
+    });
+
+    return {
+        entries: filtered,
+        totalCount: indexed.length,
+        queryMatchedCount: queried.length,
+        movieCount,
+        tvCount
+    };
+}
+
+function triggerProfileSliceProviders(entries, routeContext) {
+    if (typeof fetchAndInjectProviders !== 'function' || !Array.isArray(entries)) return;
+    entries.forEach(({ item, mediaType }) => {
+        fetchAndInjectProviders(item.id, mediaType, item, routeContext, { deferUntilVisible: true });
+    });
+}
+
+function ensureProfileSectionProvidersLoaded(section, routeContext = lastProfileRouteContext) {
+    const state = profileListState[section];
+    if (!state || !Array.isArray(state.lastRenderedEntries) || !state.lastRenderedEntries.length) return;
+    triggerProfileSliceProviders(state.lastRenderedEntries, routeContext);
+}
+
+function updateProfileToolbarUi(section, { totalCount, queryMatchedCount, movieCount, tvCount, filteredCount, shownCount }) {
+    const state = profileListState[section];
+    const tabBtnId = section === 'watchlist' ? 'tab-profile-watchlist' : 'tab-profile-rated';
+    const baseTabLabel = section === 'watchlist' ? 'İzleme Listesi' : 'Puanladıklarım';
+    const tabBtn = document.getElementById(tabBtnId);
+    if (tabBtn) {
+        const nextLabel = totalCount > 0 ? `${baseTabLabel} (${totalCount})` : baseTabLabel;
+        if (tabBtn.textContent !== nextLabel) tabBtn.textContent = nextLabel;
+    }
+
+    document.querySelectorAll(`.profile-toolbar-pill[data-profile-section="${section}"]`).forEach(btn => {
+        const media = btn.dataset.profileMedia;
+        const count = media === 'movie' ? movieCount : (media === 'tv' ? tvCount : queryMatchedCount);
+        const base = media === 'movie' ? 'Filmler' : (media === 'tv' ? 'Diziler' : 'Tümü');
+        btn.textContent = `${base} (${count})`;
+        const isActive = state.media === media;
+        btn.classList.toggle('active', isActive);
+        btn.setAttribute('aria-pressed', String(isActive));
+    });
+
+    const countEl = document.getElementById(`${section}-filter-count`);
+    if (countEl) {
+        if (totalCount === 0) {
+            countEl.textContent = '';
+        } else if (shownCount < filteredCount) {
+            countEl.textContent = `${shownCount} / ${filteredCount} yapım gösteriliyor`;
+        } else if (filteredCount < totalCount) {
+            countEl.textContent = `${filteredCount} / ${totalCount} yapım eşleşti`;
+        } else {
+            countEl.textContent = `${totalCount} yapım`;
+        }
+    }
+
+    const resetBtn = document.getElementById(`${section}-filter-reset-btn`);
+    if (resetBtn) {
+        const isFiltered = Boolean(String(state.query || '').trim()) || state.media !== 'all';
+        resetBtn.hidden = !isFiltered;
+    }
+}
+
+function renderProfileCollectionSection(section, routeContext = lastProfileRouteContext, { appendFrom = 0 } = {}) {
+    if (typeof document === 'undefined' || typeof document.getElementById !== 'function') return;
+    const isWatchlist = section === 'watchlist';
+    const grid = document.getElementById(isWatchlist ? 'watchlist-grid' : 'rated-grid');
+    if (!grid) return;
+
+    const rawItems = typeof safeReadStorage === 'function'
+        ? safeReadStorage(isWatchlist ? 'watchlist' : 'ratedMovies', [])
+        : [];
+    const savedRatings = isWatchlist
+        ? {}
+        : (typeof safeReadStorage === 'function' ? safeReadStorage('movieRatings', {}) : {});
+
+    const state = profileListState[section];
+    const result = filterAndSortProfileItems(rawItems, section, savedRatings);
+    const sliceStart = appendFrom > 0 ? appendFrom : 0;
+    const visibleEntries = result.entries.slice(0, state.limit);
+    const renderBatch = result.entries.slice(sliceStart, state.limit);
+
+    updateProfileToolbarUi(section, {
+        totalCount: result.totalCount,
+        queryMatchedCount: result.queryMatchedCount,
+        movieCount: result.movieCount,
+        tvCount: result.tvCount,
+        filteredCount: result.entries.length,
+        shownCount: visibleEntries.length
+    });
+
+    const loadMoreBtn = document.getElementById(`${section}-load-more-btn`);
+    const tabPanel = document.getElementById(isWatchlist ? 'profile-watchlist' : 'profile-rated');
+    const isTabActive = Boolean(tabPanel && !tabPanel.hidden && tabPanel.classList.contains('active-tab'));
+
+    if (result.entries.length === 0) {
+        state.lastRenderedEntries = [];
+        const hasFilter = Boolean(String(state.query || '').trim()) || state.media !== 'all';
+        const emptyMessage = hasFilter
+            ? 'Arama veya filtreye uygun yapım bulunamadı.'
+            : (isWatchlist ? 'İzleme listeniz boş.' : 'Henüz puanladığınız veya izlediğiniz bir yapım yok.');
+        grid.innerHTML = `<div class='no-provider profile-grid-empty'>${emptyMessage}</div>`;
+        if (loadMoreBtn) loadMoreBtn.hidden = true;
+        return;
+    }
+
+    const tabContext = isWatchlist ? '' : 'rated';
+    const html = typeof createMovieCardsBatch === 'function'
+        ? (() => {
+            const renderOptions = {
+                watchlistSnapshot: typeof getWatchlistLookupSnapshot === 'function' ? getWatchlistLookupSnapshot() : undefined,
+                savedRatings: typeof getMovieRatingsSnapshot === 'function' ? getMovieRatingsSnapshot() : undefined,
+                tvProgressMap: typeof getTvProgressSnapshot === 'function' ? getTvProgressSnapshot() : undefined
+            };
+            return renderBatch.map(({ item, mediaType }, idx) =>
+                createMovieCard(item, mediaType, tabContext, { ...renderOptions, cardIndex: sliceStart + idx })
+            ).join('');
+        })()
+        : renderBatch.map(({ item, mediaType }) => createMovieCard(item, mediaType, tabContext)).join('');
+
+    if (appendFrom > 0 && grid.children.length > 0 && typeof grid.insertAdjacentHTML === 'function') {
+        grid.insertAdjacentHTML('beforeend', html);
+    } else {
+        grid.innerHTML = html;
+    }
+
+    state.lastRenderedEntries = visibleEntries;
+
+    if (loadMoreBtn) {
+        const remaining = result.entries.length - visibleEntries.length;
+        loadMoreBtn.hidden = remaining <= 0;
+        if (remaining > 0) {
+            loadMoreBtn.textContent = `Daha Fazla Göster (${remaining} kaldı)`;
+        }
+    }
+
+    if (isTabActive) {
+        triggerProfileSliceProviders(renderBatch, routeContext);
+    }
+}
+
+function bindProfileListControls() {
+    if (typeof document === 'undefined' || typeof document.getElementById !== 'function') return;
+
+    ['watchlist', 'rated'].forEach(section => {
+        const searchInput = document.getElementById(`${section}-search-input`);
+        const sortSelect = document.getElementById(`${section}-sort-select`);
+        const resetBtn = document.getElementById(`${section}-filter-reset-btn`);
+        const loadMoreBtn = document.getElementById(`${section}-load-more-btn`);
+
+        if (searchInput) {
+            let timer = null;
+            searchInput.addEventListener('input', () => {
+                clearTimeout(timer);
+                timer = setTimeout(() => {
+                    profileListState[section].query = searchInput.value;
+                    profileListState[section].limit = PROFILE_PAGE_SIZE;
+                    renderProfileCollectionSection(section, lastProfileRouteContext);
+                }, 120);
+            });
+        }
+
+        if (sortSelect) {
+            sortSelect.addEventListener('change', () => {
+                profileListState[section].sort = sortSelect.value;
+                profileListState[section].limit = PROFILE_PAGE_SIZE;
+                renderProfileCollectionSection(section, lastProfileRouteContext);
+            });
+        }
+
+        document.querySelectorAll(`.profile-toolbar-pill[data-profile-section="${section}"]`).forEach(btn => {
+            btn.addEventListener('click', () => {
+                profileListState[section].media = btn.dataset.profileMedia || 'all';
+                profileListState[section].limit = PROFILE_PAGE_SIZE;
+                renderProfileCollectionSection(section, lastProfileRouteContext);
+            });
+        });
+
+        if (resetBtn) {
+            resetBtn.addEventListener('click', () => {
+                profileListState[section].query = '';
+                profileListState[section].media = 'all';
+                profileListState[section].limit = PROFILE_PAGE_SIZE;
+                if (searchInput) searchInput.value = '';
+                renderProfileCollectionSection(section, lastProfileRouteContext);
+            });
+        }
+
+        if (loadMoreBtn) {
+            loadMoreBtn.addEventListener('click', () => {
+                const previousLimit = profileListState[section].limit;
+                profileListState[section].limit = previousLimit + PROFILE_PAGE_SIZE;
+                renderProfileCollectionSection(section, lastProfileRouteContext, { appendFrom: previousLimit });
+            });
+        }
+    });
+}
+
+if (typeof document !== 'undefined' && typeof document.addEventListener === 'function') {
+    document.addEventListener('DOMContentLoaded', bindProfileListControls);
+}
+
 function loadProfile(routeContext = null, { refreshCollectionSections = true, persistTrackedTvRuntime = true } = {}) {
     if (typeof document === 'undefined' || typeof document.getElementById !== 'function') return;
+    lastProfileRouteContext = routeContext;
     if (refreshCollectionSections) {
         renderTvTrackerSection();
         renderSavedSharedListsSection();
     }
     refreshProfileWatchStats(routeContext, persistTrackedTvRuntime);
-    const watchlistGrid = document.getElementById('watchlist-grid');
-    const ratedTvGrid = document.getElementById('rated-tv-grid');
-    const ratedMovieGrid = document.getElementById('rated-movie-grid');
     const actorsGrid = document.getElementById('favorite-actors-grid');
-    const watchlist = typeof safeReadStorage === 'function'
-        ? safeReadStorage('watchlist', [])
-        : [];
-    const ratedMovies = typeof safeReadStorage === 'function'
-        ? safeReadStorage('ratedMovies', [])
-        : [];
     let favoriteActors = [];
 
     try {
@@ -1224,40 +1601,9 @@ function loadProfile(routeContext = null, { refreshCollectionSections = true, pe
     // Render Recently Viewed
     renderRecentlyViewed(routeContext);
 
-    // Render Watchlist
-    if (watchlist.length === 0) {
-        watchlistGrid.innerHTML = "<div class='no-provider profile-grid-empty'>İzleme listeniz boş.</div>";
-    } else {
-        watchlistGrid.innerHTML = watchlist.map(item => {
-            let type = item.media_type;
-            if (!type || type === "undefined") type = item.first_air_date ? "tv" : "movie";
-            return createMovieCard(item, type, "");
-        }).join('');
-    }
-    
-    // Render Rated
-    let ratedTvs = [];
-    let ratedMoviesOnly = [];
-    ratedMovies.forEach(item => {
-        let type = item.media_type;
-        if (!type || type === "undefined") {
-            type = (item.first_air_date || (item.name && !item.title)) ? "tv" : "movie";
-        }
-        if (type === "tv") ratedTvs.push(item);
-        else ratedMoviesOnly.push(item);
-    });
-
-    if (ratedTvs.length === 0) {
-        ratedTvGrid.innerHTML = "<div class='no-provider profile-grid-empty'>Puanladığınız dizi yok.</div>";
-    } else {
-        ratedTvGrid.innerHTML = ratedTvs.map(item => createMovieCard(item, "tv", "rated")).join('');
-    }
-
-    if (ratedMoviesOnly.length === 0) {
-        ratedMovieGrid.innerHTML = "<div class='no-provider profile-grid-empty'>Puanladığınız film yok.</div>";
-    } else {
-        ratedMovieGrid.innerHTML = ratedMoviesOnly.map(item => createMovieCard(item, "movie", "rated")).join('');
-    }
+    // Render Watchlist & Rated with search/filter/sort/28-item pagination & lazy visible providers
+    renderProfileCollectionSection('watchlist', routeContext);
+    renderProfileCollectionSection('rated', routeContext);
     
     // Render Actors
     const validFavoriteActors =
@@ -1301,7 +1647,7 @@ function loadProfile(routeContext = null, { refreshCollectionSections = true, pe
                     getSafeTmdbImageUrl(
                         profilePath,
                         IMAGE_BASE,
-                        'assets/placeholder.svg'
+                        '/assets/placeholder.svg'
                     );
 
                 const card =
@@ -1443,12 +1789,6 @@ function loadProfile(routeContext = null, { refreshCollectionSections = true, pe
         );
     }
     
-    [...watchlist, ...ratedMovies].forEach(item => {
-        let type = item.media_type;
-        if (!type || type === "undefined") type = item.first_air_date ? "tv" : "movie";
-        fetchAndInjectProviders(item.id, type, item, routeContext);
-    });
-
     if (typeof loadSmartRecommendations === 'function') {
         loadSmartRecommendations(routeContext, 'profile');
     }
@@ -1684,12 +2024,17 @@ async function calculateExactWatchTime(
     // içinde mediaType:id dedup.
     const detailRequests =
         new Map();
+    let rateLimited = false;
 
     const fetchDetail =
         (
             mediaType,
             itemId
         ) => {
+            if (rateLimited) {
+                return Promise.resolve(null);
+            }
+
             const key =
                 `${mediaType}:${itemId}`;
 
@@ -1712,6 +2057,10 @@ async function calculateExactWatchTime(
                 )
                     .then(
                         async response => {
+                            if (response.status === 429) {
+                                rateLimited = true;
+                                return null;
+                            }
                             if (
                                 !response.ok
                             ) {
@@ -2310,7 +2659,7 @@ function buildSharedListUrl(title, items) {
 }
 
 function getSharedListRouteUrl(route) {
-    return window.location.origin + window.location.pathname + '#' + route;
+    return window.location.origin + '/' + String(route || '').replace(/^\/+/, '');
 }
 
 function normalizeShortlinkId(value) {
@@ -2532,12 +2881,17 @@ async function loadSharedList(routeContext = null) {
         typeof window === 'undefined') return;
     const grid = document.getElementById('shared-list-grid');
     if (!grid) return;
-    const hash = window.location.hash;
-    const rawRoute = hash.startsWith('#') ? hash.slice(1) : '';
-    const queryStart = hash.indexOf('?');
+    const currentUrl = typeof getCurrentAppUrl === 'function'
+        ? getCurrentAppUrl()
+        : ((window.location?.pathname || '/') + (window.location?.search || ''));
+    const rawRoute = currentUrl.replace(/^\/+/, '');
+    const queryStart = currentUrl.indexOf('?');
     const routePath = rawRoute.split('?')[0];
     const generation = ++sharedListLoadGeneration;
-    const isCurrentLoad = () => generation === sharedListLoadGeneration && window.location.hash === hash &&
+    const isCurrentLoad = () => generation === sharedListLoadGeneration &&
+        (typeof getCurrentAppUrl === 'function'
+            ? getCurrentAppUrl()
+            : ((window.location?.pathname || '/') + (window.location?.search || ''))) === currentUrl &&
         (!routeContext || typeof isRouteContextCurrent !== 'function' || isRouteContextCurrent(routeContext, 'list'));
     const actions = document.getElementById('shared-list-actions');
     const notice = document.getElementById('shared-list-notice');
@@ -2586,7 +2940,7 @@ async function loadSharedList(routeContext = null) {
             ? parseSharedListPath(routeContext.listPath)
             : parseSharedListRoute(rawRoute);
     } else {
-        parsed = parseSharedListQuery(routeContext?.listQuery ?? (queryStart === -1 ? '' : hash.slice(queryStart + 1)));
+        parsed = parseSharedListQuery(routeContext?.listQuery ?? (queryStart === -1 ? '' : currentUrl.slice(queryStart + 1)));
     }
 
     const state = {
@@ -2595,11 +2949,19 @@ async function loadSharedList(routeContext = null) {
         entries: parsed.items,
         route: buildSharedListRoute(parsed.hasCustomTitle ? parsed.title : '', parsed.items),
         shortId,
-        hash
+        routeUrl: currentUrl
     };
     currentSharedListState = state;
 
     setSharedListStatus('shared-list-title', parsed.title);
+    if (typeof updateRouteSeoMeta === 'function') {
+        updateRouteSeoMeta({
+            title: `${parsed.title} | FilmimNerede`,
+            description: `${parsed.title} — FilmimNerede üzerinden paylaşılan film ve dizi seçkisi.`,
+            canonical: `https://filmimnerede.netlify.app${currentUrl}`,
+            robots: 'noindex, follow'
+        });
+    }
     actions.hidden = !state.route;
     syncSharedListSaveButton();
     if (!state.route) {
@@ -2668,7 +3030,10 @@ async function loadSharedList(routeContext = null) {
 }
 
 function getCurrentSharedList() {
-    return typeof window !== 'undefined' && currentSharedListState?.hash === window.location.hash
+    const currentUrl = typeof getCurrentAppUrl === 'function'
+        ? getCurrentAppUrl()
+        : ((window.location?.pathname || '/') + (window.location?.search || ''));
+    return typeof window !== 'undefined' && currentSharedListState?.routeUrl === currentUrl
         ? currentSharedListState : null;
 }
 
@@ -2995,7 +3360,7 @@ function createShareListImage(path, size, className, usePlaceholder = true) {
     const base = typeof getSizedTmdbImageBase === 'function'
         ? getSizedTmdbImageBase(size, typeof IMAGE_BASE === 'string' ? IMAGE_BASE : undefined)
         : `https://image.tmdb.org/t/p/${size}`;
-    const fallback = usePlaceholder ? 'assets/placeholder.svg' : '';
+    const fallback = usePlaceholder ? '/assets/placeholder.svg' : '';
     const url = typeof getSafeTmdbImageUrl === 'function'
         ? getSafeTmdbImageUrl(path, base, fallback)
         : fallback;

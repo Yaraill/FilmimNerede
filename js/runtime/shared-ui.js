@@ -584,6 +584,15 @@ function buildGoogleCalendarUrl(title, releaseDate, overview = '') {
     return url === '#' ? null : url;
 }
 
+function handleMovieLinkClick(event, movieId, mediaType) {
+    if (typeof shouldHandleLinkClickInSpa === 'function' && !shouldHandleLinkClickInSpa(event)) {
+        return true;
+    }
+    if (event) event.preventDefault();
+    openDetails(movieId, mediaType);
+    return false;
+}
+
 function createMovieCard(item, mediaType = "movie", tabContext = "", renderOptions = null) {
     if (!item || typeof item !== 'object') {
         return '';
@@ -632,7 +641,7 @@ function createMovieCard(item, mediaType = "movie", tabContext = "", renderOptio
         getSafeTmdbImageUrl(
             item.poster_path,
             posterBase,
-            'assets/placeholder.svg'
+            '/assets/placeholder.svg'
         );
 
     const normalizedGenreIds = Array.isArray(item.genre_ids) && item.genre_ids.length > 0
@@ -724,15 +733,19 @@ function createMovieCard(item, mediaType = "movie", tabContext = "", renderOptio
             </div>
         `;
     } else {
+        const syncProviderHtml = typeof getSyncCachedProvidersHtml === 'function'
+            ? getSyncCachedProvidersHtml(itemId, normalizedMediaType)
+            : null;
         dateOrProviderHtml = `
             <div
                 class="movie-date providers-container providers-${normalizedMediaType}-${itemId} providers-${itemId}" data-media-type="${normalizedMediaType}"
             >
-                <span
-                    style="font-size:0.8rem; color:var(--text-muted)"
-                >
-                    Platformlar aranıyor...
-                </span>
+                ${syncProviderHtml !== null ? syncProviderHtml : `
+                <span class="provider-loading-shimmer" role="status">
+                    <span class="provider-shimmer-dot" aria-hidden="true"></span>
+                    <span class="provider-shimmer-dot" aria-hidden="true"></span>
+                    <span class="sr-only">Platformlar aranıyor...</span>
+                </span>`}
             </div>
         `;
     }
@@ -845,16 +858,16 @@ function createMovieCard(item, mediaType = "movie", tabContext = "", renderOptio
                 </div>
 
                 <div class="movie-title">
-                    <button
-                        type="button"
+                    <a
+                        href="/${normalizedMediaType === 'tv' ? 'dizi' : 'film'}/${itemId}"
                         class="movie-title-btn"
                         onfocus="if (typeof scheduleMediaDetailPrefetch === 'function') scheduleMediaDetailPrefetch(${escapeAttr(itemId)}, '${escapeAttr(normalizedMediaType)}')"
                         onblur="if (typeof cancelMediaDetailPrefetch === 'function') cancelMediaDetailPrefetch()"
-                        onclick="openDetails(${itemId}, '${normalizedMediaType}')"
+                        onclick="return handleMovieLinkClick(event, ${itemId}, '${normalizedMediaType}')"
                         aria-label="${escapeHtml(titleWithYear)} detayları"
                     >
                         ${escapeHtml(titleWithYear)}
-                    </button>
+                    </a>
                 </div>
 
                 <div class="list-view-overview">

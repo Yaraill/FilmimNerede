@@ -32,7 +32,8 @@ async function runTest() {
         console.log('Starting local static HTTP server...');
         server = http.createServer((req, res) => {
             const urlPath = req.url.split('?')[0].split('#')[0];
-            let filePath = path.join(ROOT_DIR, urlPath === '/' ? 'index.html' : urlPath);
+            const isSpaRoute = urlPath === '/' || !path.extname(urlPath);
+            let filePath = path.join(ROOT_DIR, isSpaRoute ? 'index.html' : urlPath);
             
             // Prevent directory traversal
             if (!filePath.startsWith(ROOT_DIR)) {
@@ -264,7 +265,7 @@ async function runTest() {
             cardPoster.click();
             await waitRender();
             
-            check(window.location.hash === '#movie/94997/tv', 'S1: hash should be #movie/94997/tv but was ' + window.location.hash);
+            check(window.location.pathname === '/dizi/94997', 'S1: pathname should be /dizi/94997 but was ' + window.location.pathname);
             await waitForTitle('House of the Dragon');
             const title1 = document.getElementById('details-title') ? document.getElementById('details-title').innerText : '';
             check(title1 === 'House of the Dragon', 'S1: Should render TV fixture, not movie collision, was: ' + title1);
@@ -310,7 +311,7 @@ async function runTest() {
             suggestion.click();
             await waitRender();
             
-            check(window.location.hash === '#movie/12345/tv', 'S2: hash should be #movie/12345/tv but was ' + window.location.hash);
+            check(window.location.pathname === '/dizi/12345', 'S2: pathname should be /dizi/12345 but was ' + window.location.pathname);
             await waitForTitle('Generic TV Fixture');
             const title2 = document.getElementById('details-title') ? document.getElementById('details-title').innerText : '';
             check(title2 === 'Generic TV Fixture', 'S2: Should render TV fixture, was: ' + title2);
@@ -336,7 +337,7 @@ async function runTest() {
             top10Card.click();
             await waitRender();
             
-            check(window.location.hash === '#movie/23456/tv', 'S3: hash should be #movie/23456/tv but was ' + window.location.hash);
+            check(window.location.pathname === '/dizi/23456', 'S3: pathname should be /dizi/23456 but was ' + window.location.pathname);
             await waitForTitle('Top10 TV Fixture');
             const title3 = document.getElementById('details-title') ? document.getElementById('details-title').innerText : '';
             check(title3 === 'Top10 TV Fixture', 'S3: Should render TV fixture, was: ' + title3);
@@ -354,7 +355,7 @@ async function runTest() {
             if (typeof movieDetailCache !== 'undefined') movieDetailCache.delete('tv:94997');
             window.openDetails(94997, 'tv');
             await waitRender();
-            check(window.location.hash === '#movie/94997/tv', 'S3.5: hash should be #movie/94997/tv but was ' + window.location.hash);
+            check(window.location.pathname === '/dizi/94997', 'S3.5: pathname should be /dizi/94997 but was ' + window.location.pathname);
             await waitForTitle('House of the Dragon');
             const title35 = document.getElementById('details-title') ? document.getElementById('details-title').innerText : '';
             check(title35 === 'House of the Dragon', 'S3.5: Should render TV fixture, was: ' + title35);
@@ -368,7 +369,7 @@ async function runTest() {
             // SCENARIO 4 — normal movie control
             window.openDetails(550, 'movie');
             await waitRender();
-            check(window.location.hash === '#movie/550/movie', 'S4: hash should be #movie/550/movie');
+            check(window.location.pathname === '/film/550', 'S4: pathname should be /film/550');
             await waitForTitle('Fight Club Fixture');
             const title4 = document.getElementById('details-title') ? document.getElementById('details-title').innerText : '';
             check(title4 === 'Fight Club Fixture', 'S4: Should render movie fixture, was: ' + title4);
@@ -421,35 +422,35 @@ async function runTest() {
 
             // A) DIRECT ROUTE MATRIX
             window.location.hash = "#platform"; await waitRender();
-            check(window.location.hash === '#platform', 'A1: hash #platform');
+            check(window.location.pathname === '/nerede-izlerim', 'A1: pathname /nerede-izlerim');
             check(document.getElementById('platform').classList.contains('active-tab'), 'A1: platform tab active');
 
             window.location.hash = "#search?q=TEST"; await waitRender();
-            check(window.location.hash === '#search?q=TEST', 'A2: search hash active');
+            check((window.location.pathname + window.location.search) === '/nerede-izlerim?q=TEST', 'A2: search route active');
             check(document.getElementById('searchInput').value === 'TEST', 'A2: search input populated');
             check(document.getElementById('platform').classList.contains('active-tab'), 'A2: platform tab is used for search');
 
             window.location.hash = "#movie/77777/movie"; await waitRender();
-            check(window.location.hash === '#movie/77777/movie', 'A3: movie direct hash');
+            check(window.location.pathname === '/film/77777', 'A3: movie direct pathname');
             check(getComputedStyle(document.getElementById('details-modal')).display === 'flex', 'A3: movie modal open');
             document.getElementById('details-modal').style.display = 'none';
 
             window.location.hash = "#actor/77777"; await waitRender();
-            check(window.location.hash === '#actor/77777', 'A4: actor direct hash');
+            check(window.location.pathname === '/oyuncu/77777', 'A4: actor direct pathname');
             check(document.getElementById('platform').classList.contains('active-tab'), 'A4: platform tab active for actor mode');
             check(document.getElementById('searchInput').value === 'Valid Actor', 'A4: searchInput got actor name');
 
             window.location.hash = "#movie/bad/movie"; await waitRender();
-            check(window.location.hash === '#platform', 'A5: invalid movie ID normalizes to platform');
+            check(window.location.pathname === '/nerede-izlerim', 'A5: invalid movie ID normalizes to /nerede-izlerim');
             check(document.getElementById('platform').classList.contains('active-tab'), 'A5: platform tab active');
 
             window.location.hash = "#film/77777"; await waitRender();
-            check(window.location.hash === '#movie/77777', 'A6: legacy film route normalized without type');
+            check(window.location.pathname === '/film/77777', 'A6: legacy film route normalized to /film/77777');
             check(getComputedStyle(document.getElementById('details-modal')).display === 'flex', 'A6: modal opened from legacy film route');
             document.getElementById('details-modal').style.display = 'none';
 
             window.location.hash = "#actor/bad"; await waitRender();
-            check(window.location.hash === '', 'A7: invalid actor normalizes to empty/home hash');
+            check(window.location.pathname === '/', 'A7: invalid actor normalizes to /');
             check(document.getElementById('now-playing').classList.contains('active-tab'), 'A7: now-playing (home) tab active');
 
             // B) REAL BACK/FORWARD NAVIGATION
@@ -469,40 +470,40 @@ async function runTest() {
             // 3. FIRST REAL BACK
             history.back();
             for(let i=0; i<20; i++){
-                if(window.location.hash === '#movie/77777/movie') break;
+                if(window.location.pathname === '/film/77777') break;
                 await wait(100);
             }
             await waitRender(); // Wait for DOM condition/title
-            check(window.location.hash === '#movie/77777/movie', 'B: First Back expected hash');
+            check(window.location.pathname === '/film/77777', 'B: First Back expected pathname');
             check(getComputedStyle(document.getElementById('details-modal')).display === 'flex', 'B: First Back modal open');
             check(document.getElementById('details-title').innerText === 'Fast Movie', 'B: First Back title restored');
             
             // 4. SECOND REAL BACK
             history.back();
             for(let i=0; i<20; i++){
-                if(window.location.hash === '#platform') break;
+                if(window.location.pathname === '/nerede-izlerim') break;
                 await wait(100);
             }
             await waitRender();
-            check(window.location.hash === '#platform', 'B: Second Back expected hash');
+            check(window.location.pathname === '/nerede-izlerim', 'B: Second Back expected pathname');
             check(document.getElementById('platform').classList.contains('active-tab'), 'B: Second Back route DOM restored');
             check(document.getElementById('details-modal').style.display === 'none' || document.getElementById('details-modal').style.display === '', 'B: Second Back stale modal hidden');
             
             // 5. REAL FORWARD
             history.forward();
             for(let i=0; i<20; i++){
-                if(window.location.hash === '#movie/77777/movie') break;
+                if(window.location.pathname === '/film/77777') break;
                 await wait(100);
             }
             await waitRender();
-            check(window.location.hash === '#movie/77777/movie', 'B: Forward expected hash restored');
+            check(window.location.pathname === '/film/77777', 'B: Forward expected pathname restored');
             check(document.getElementById('details-title').innerText === 'Fast Movie', 'B: Forward title restored');
             const fwIndex = history.state && history.state.filmRehberiRouter ? history.state.filmRehberiRouter.index : -1;
             check(fwIndex === initialIndex - 1, 'B: Forward index matches expected entry');
             
             // 6. No loop / no phantom navigation
             await wait(1000); // settling period
-            check(window.location.hash === '#movie/77777/movie', 'B: No phantom navigation after settle');
+            check(window.location.pathname === '/film/77777', 'B: No phantom navigation after settle');
             const settleIndex = history.state && history.state.filmRehberiRouter ? history.state.filmRehberiRouter.index : -1;
             check(settleIndex === fwIndex, 'B: No state changes after settle');
             
@@ -511,11 +512,11 @@ async function runTest() {
             await wait(100); 
             history.back(); 
             for(let i=0; i<20; i++){
-                if(window.location.hash === '#movie/77777/movie') break;
+                if(window.location.pathname === '/film/77777') break;
                 await wait(100);
             }
             await wait(1000); // wait for slow to resolve
-            check(window.location.hash === '#movie/77777/movie', 'B: Stale overwrite safety preserved hash');
+            check(window.location.pathname === '/film/77777', 'B: Stale overwrite safety preserved pathname');
             check(document.getElementById('details-title').innerText === 'Fast Movie', 'B: Stale overwrite safety preserved DOM');
             document.getElementById('details-modal').style.display = 'none';
 
@@ -524,10 +525,10 @@ async function runTest() {
             await wait(100); 
             window.location.hash = "#home"; // fast
             await waitRender();
-            check(window.location.hash === '#home', 'C: hash is #home');
+            check(window.location.pathname === '/', 'C: pathname is /');
             await wait(1000); // Wait for slow route A to finish
             check(document.getElementById('details-modal').style.display === 'none' || document.getElementById('details-modal').style.display === '', 'C: aborted route did not open modal');
-            check(window.location.hash === '#home', 'C: hash remained #home');
+            check(window.location.pathname === '/', 'C: pathname remained /');
 
             // D) SEARCH A -> B LATEST-WINS
             window.location.hash = "#search"; await waitRender();
@@ -605,7 +606,7 @@ async function runTest() {
             await wait(100);
             window.location.hash = "#platform";
             await wait(1000); // Wait for slow movie to resolve
-            check(window.location.hash === '#platform', 'H: Hash is platform');
+            check(window.location.pathname === '/nerede-izlerim', 'H: Pathname is /nerede-izlerim');
             check(document.getElementById('details-modal').style.display === 'none' || document.getElementById('details-modal').style.display === '', 'H: Details modal stayed closed');
             
             return { pass, msgs };

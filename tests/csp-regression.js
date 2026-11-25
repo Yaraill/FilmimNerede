@@ -166,7 +166,9 @@ function createServer(headers, omdbRequests) {
             return res.end();
         }
 
-        const file = path.resolve(ROOT_DIR, url.pathname === '/' ? 'index.html' : `.${decodeURIComponent(url.pathname)}`);
+        const requestedPath = decodeURIComponent(url.pathname);
+        const isSpaRoute = requestedPath === '/' || !path.extname(requestedPath);
+        const file = path.resolve(ROOT_DIR, isSpaRoute ? 'index.html' : `.${requestedPath}`);
         const extension = path.extname(file).toLowerCase();
         if (!file.startsWith(ROOT_DIR + path.sep) || !MIME_TYPES[extension]) {
             res.writeHead(404);

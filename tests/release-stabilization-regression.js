@@ -42,7 +42,7 @@ async function runTest() {
     assert(fs.existsSync(path.join(ROOT_DIR, 'assets', 'placeholder.svg')), 'assets/placeholder.svg must exist');
 
     // 3. PWA
-    assert(indexHTML.includes('<link rel="apple-touch-icon" href="assets/icons/icon-192.png">'), 'apple-touch-icon link must exist in index.html');
+    assert(indexHTML.includes('<link rel="apple-touch-icon" href="/assets/icons/icon-192.png">'), 'apple-touch-icon link must exist in index.html');
     assert(fs.existsSync(path.join(ROOT_DIR, 'assets', 'icons', 'icon-192.png')), 'icon-192.png must exist');
 
     // 4. Dead legacy code cleanup (Section 9.5) & behavioral delegate check

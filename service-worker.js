@@ -1,23 +1,26 @@
-const CACHE_NAME = 'filmimnerede-v124';
+const CACHE_NAME = 'filmimnerede-v133';
 const ASSETS_TO_CACHE = [
   '/',
   '/index.html',
-  '/style.css?v=70',
+  '/style.css?v=77',
+  '/imax.html',
   '/js/runtime/config.js?v=2',
-  '/js/runtime/security.js?v=6',
+  '/js/runtime/security.js?v=7',
   '/js/runtime/state.js?v=1',
-  '/js/runtime/router.js?v=10',
-  '/js/runtime/shared-ui.js?v=17',
-  '/js/runtime/providers.js?v=6',
-  '/js/runtime/platform.js?v=14',
-  '/js/runtime/search.js?v=7',
-  '/js/runtime/movie.js?v=16',
-  '/js/runtime/actor.js?v=13',
-  '/js/runtime/home.js?v=14',
-  '/js/runtime/profile.js?v=21',
-  '/js/runtime/misc.js?v=14',
-  '/app.js?v=79',
+  '/js/runtime/router.js?v=11',
+  '/js/runtime/shared-ui.js?v=19',
+  '/js/runtime/providers.js?v=9',
+  '/js/runtime/platform.js?v=16',
+  '/js/runtime/search.js?v=8',
+  '/js/runtime/movie.js?v=18',
+  '/js/runtime/actor.js?v=14',
+  '/js/runtime/home.js?v=15',
+  '/js/runtime/profile.js?v=24',
+  '/js/runtime/importer.js?v=6',
+  '/js/runtime/misc.js?v=15',
+  '/app.js?v=81',
   '/turkey-inline.svg',
+  '/assets/placeholder.svg',
   '/assets/icons/icon-192.png',
   '/assets/icons/icon-512.png',
   '/assets/icons/icon-maskable-192.png',
@@ -62,14 +65,19 @@ self.addEventListener('fetch', event => {
         }
         return response;
       })
-      .catch(() => {
-        return caches.match(event.request.mode === 'navigate' ? '/index.html' : event.request).then(cached => {
-          if (cached) return cached;
-          return new Response('Çevrimdışı: İçerik önbellekte bulunamadı.', {
-            status: 503,
-            statusText: 'Service Unavailable',
-            headers: { 'Content-Type': 'text/plain; charset=utf-8' }
-          });
+      .catch(async () => {
+        const isNavigation = event.request.mode === 'navigate';
+        if (isNavigation && (requestUrl.pathname === '/imax' || requestUrl.pathname === '/imax/' || requestUrl.pathname === '/imax.html')) {
+          const imaxPage = await caches.match('/imax.html');
+          if (imaxPage) return imaxPage;
+        }
+
+        const cached = await caches.match(isNavigation ? '/index.html' : event.request);
+        if (cached) return cached;
+        return new Response('Çevrimdışı: İçerik önbellekte bulunamadı.', {
+          status: 503,
+          statusText: 'Service Unavailable',
+          headers: { 'Content-Type': 'text/plain; charset=utf-8' }
         });
       })
   );

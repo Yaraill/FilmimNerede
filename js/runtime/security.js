@@ -671,7 +671,7 @@ function installTmdbSmartFallback() {
                     if (target.dataset) {
                         target.dataset.tmdbProxyFallbackApplied = 'done';
                     }
-                    target.src = 'assets/placeholder.svg';
+                    target.src = '/assets/placeholder.svg';
                 }
             },
             true

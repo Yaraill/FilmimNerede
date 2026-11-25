@@ -539,6 +539,9 @@ async function renderMovie(
 
     if (!isRouteContextCurrent(routeContext, 'movie', movieId)) return;
     window.currentMediaType = item.media_type;
+    if (typeof syncResolvedMediaRoute === 'function') {
+        syncResolvedMediaRoute(movieId, item.media_type);
+    }
 
     fullDataPromise ??= extendedData
         ? Promise.resolve(extendedData)
@@ -548,6 +551,21 @@ async function renderMovie(
 
     const detailTitle = String(item.title || item.name || 'Bilinmiyor');
     detailsTitle.textContent = detailTitle;
+    if (typeof updateRouteSeoMeta === 'function') {
+        const releaseDateStr = String(item.release_date || item.first_air_date || '');
+        const releaseYear = releaseDateStr ? releaseDateStr.split('-')[0] : '';
+        const titleWithYear = releaseYear ? `${detailTitle} (${releaseYear})` : detailTitle;
+        const canonicalSlug = item.media_type === 'tv' ? 'dizi' : 'film';
+        const rawOverview = String(item.overview || '').trim();
+        const seoDesc = rawOverview
+            ? rawOverview.slice(0, 155) + (rawOverview.length > 155 ? '…' : '')
+            : `${titleWithYear} hangi dijital platformda izlenir? Türkiye yayın bilgileri, IMDb puanı ve fragmanı FilmimNerede'de.`;
+        updateRouteSeoMeta({
+            title: `${titleWithYear} Hangi Platformda? | FilmimNerede`,
+            description: seoDesc,
+            canonical: `https://filmimnerede.netlify.app/${canonicalSlug}/${movieId}`
+        });
+    }
 
     const overview = document.getElementById('details-overview');
     overview.textContent = item.overview || 'Bu yapım için konu özeti bulunmuyor.';
@@ -605,7 +623,7 @@ async function renderMovie(
         if (ambilightEl) ambilightEl.style.backgroundImage = background;
     };
 
-    let posterUrl = getSafeTmdbImageUrl(initialPosterPath, IMAGE_BASE, 'assets/placeholder.svg');
+    let posterUrl = getSafeTmdbImageUrl(initialPosterPath, IMAGE_BASE, '/assets/placeholder.svg');
     showPoster(posterUrl);
     showBackdrop(initialBackdropPath, posterUrl);
 
@@ -630,6 +648,9 @@ async function renderMovie(
             localStorage.setItem('imdb_' + imdbId, rating);
         } catch {
             // The badge remains usable when storage is unavailable.
+        }
+        if (typeof syncImdbRatingToProfileStorage === 'function') {
+            syncImdbRatingToProfileStorage(movieId, item.media_type, imdbId, rating);
         }
     };
 
@@ -860,7 +881,7 @@ async function renderMovie(
                         getSafeTmdbImageUrl(
                             provider?.logo_path,
                             IMAGE_BASE,
-                            'assets/placeholder.svg'
+                            '/assets/placeholder.svg'
                         );
 
                     const wrapper =
@@ -1493,7 +1514,7 @@ async function renderMovie(
                         getSafeTmdbImageUrl(
                             actor.profile_path,
                             IMAGE_BASE,
-                            'assets/placeholder.svg'
+                            '/assets/placeholder.svg'
                         );
 
                     const card =
@@ -1658,7 +1679,7 @@ async function renderMovie(
                         getSafeTmdbImageUrl(
                             rec.poster_path,
                             IMAGE_BASE,
-                            'assets/placeholder.svg'
+                            '/assets/placeholder.svg'
                         );
 
                     const recItem = {
@@ -2031,7 +2052,7 @@ async function renderMovie(
                                     getSafeTmdbImageUrl(
                                         part.poster_path,
                                         IMAGE_BASE,
-                                        'assets/placeholder.svg'
+                                        '/assets/placeholder.svg'
                                     );
 
                                 const partItem = {
@@ -2765,22 +2786,23 @@ function closeDetails(event, force = false) {
     if (force || isBackdropClick) {
         if (window.isNavigatingBack) return;
 
-        const hash = window.location.hash || "";
-        if (hash.startsWith('#movie/')) {
+        const currentPath = (window.location?.pathname || '/').replace(/\/+$/, '') || '/';
+        if (currentPath.startsWith('/film/') || currentPath.startsWith('/dizi/') || currentPath.startsWith('/movie/')) {
             const state = history.state;
             if (state && state.filmRehberiRouter && state.filmRehberiRouter.index > 0) {
                 window.isNavigatingBack = true;
 
-                const navigatingFromHash =
-                    window.location.hash;
+                const navigatingFromUrl = typeof getCurrentAppUrl === 'function'
+                    ? getCurrentAppUrl()
+                    : currentPath;
 
                 history.back();
 
                 setTimeout(() => {
-                    if (
-                        window.location.hash ===
-                        navigatingFromHash
-                    ) {
+                    const activeUrl = typeof getCurrentAppUrl === 'function'
+                        ? getCurrentAppUrl()
+                        : ((window.location?.pathname || '/').replace(/\/+$/, '') || '/');
+                    if (activeUrl === navigatingFromUrl) {
                         window.isNavigatingBack = false;
                     }
                 }, 300);
@@ -2875,7 +2897,7 @@ function createTvEpisodeCard(episode, episodeNumber, tvId, seasonNumber, imdbId)
     stillLink.setAttribute('aria-label', `${seasonNumber}. sezon ${episodeNumber}. bölüm: ${episodeName} (${imdbId ? 'IMDb' : 'TMDB'})`);
 
     const image = document.createElement('img');
-    image.src = getSafeTmdbImageUrl(episode.still_path, IMAGE_BASE, 'assets/placeholder.svg');
+    image.src = getSafeTmdbImageUrl(episode.still_path, IMAGE_BASE, '/assets/placeholder.svg');
     image.alt = '';
     image.loading = 'lazy';
     stillLink.appendChild(image);
@@ -3082,12 +3104,12 @@ function shareMovie(id, mediaType = null) {
         normalizeMediaType(window.currentMediaType) ||
         normalizeMediaType(cachedItem?.media_type);
 
-    const routeSuffix = resolvedMediaType
-        ? `#movie/${safeId}/${resolvedMediaType}`
-        : `#movie/${safeId}`;
+    const routePath = resolvedMediaType === 'tv'
+        ? `/dizi/${safeId}`
+        : `/film/${safeId}`;
 
     const url =
-        `${window.location.origin}${window.location.pathname}${routeSuffix}`;
+        `${window.location.origin}${routePath}`;
 
     if (navigator.share) {
         navigator.share({

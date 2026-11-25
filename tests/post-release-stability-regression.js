@@ -17,7 +17,7 @@ const MOCK_MOVIES = [
 const server = http.createServer((req, res) => {
     const parsedUrl = urlMod.parse(req.url);
     let pathname = parsedUrl.pathname || '/';
-    if (pathname === '/') pathname = '/index.html';
+    if (pathname === '/' || !path.extname(pathname)) pathname = '/index.html';
     const extname = String(path.extname(pathname)).toLowerCase();
     const mimeTypes = {
         '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css',
@@ -560,11 +560,11 @@ async function runTest() {
             { timeout: 8000 }
         );
 
-        let currentHash = await page.evaluate(() => window.location.hash);
+        let currentUrl = await page.evaluate(() => window.location.pathname + window.location.search);
         let currentMode = await page.evaluate(() => typeof currentMode !== 'undefined' ? currentMode : 'undefined');
         let sInputVal = await page.evaluate(() => document.getElementById('searchInput').value);
 
-        if (currentHash !== '#search?q=dune') throw new Error('Search button click did not route to #search?q=dune, got: ' + currentHash);
+        if (currentUrl !== '/nerede-izlerim?q=dune') throw new Error('Search button click did not route to /nerede-izlerim?q=dune, got: ' + currentUrl);
         if (currentMode !== 'search') throw new Error('Mode not search after search button, got: ' + currentMode);
         if (sInputVal !== 'dune') throw new Error('Input value lost: ' + sInputVal);
 
@@ -594,12 +594,12 @@ async function runTest() {
         await page.type('#searchInput', 'test2');
         await page.keyboard.press('Enter');
         await page.waitForFunction(
-            () => window.location.hash === '#search?q=test2',
+            () => (window.location.pathname + window.location.search) === '/nerede-izlerim?q=test2',
             { timeout: 5000 }
         );
 
-        currentHash = await page.evaluate(() => window.location.hash);
-        if (currentHash !== '#search?q=test2') throw new Error('Enter key did not route correctly, got: ' + currentHash);
+        currentUrl = await page.evaluate(() => window.location.pathname + window.location.search);
+        if (currentUrl !== '/nerede-izlerim?q=test2') throw new Error('Enter key did not route correctly, got: ' + currentUrl);
 
         // --- 6.E REAL PLATFORM RESET (A2) ---
         // Click "Nerede İzlerim?" (Navbar)
@@ -612,7 +612,7 @@ async function runTest() {
             });
         }
         await page.evaluate(() => {
-            if (window.location.hash !== '#platform') {
+            if ((window.location.pathname + window.location.search) !== '/nerede-izlerim') {
                 const nav = document.querySelector('.nav-links a[onclick*="platform"]');
                 if (nav) nav.click();
             }
@@ -626,7 +626,7 @@ async function runTest() {
                 );
 
             return (
-                window.location.hash === '#platform' &&
+                (window.location.pathname + window.location.search) === '/nerede-izlerim' &&
                 typeof currentMode !== 'undefined' &&
                 currentMode === 'platform' &&
                 document.getElementById('searchInput').value === '' &&
@@ -645,7 +645,7 @@ async function runTest() {
                 );
 
             return {
-                hash: window.location.hash,
+                url: window.location.pathname + window.location.search,
                 mode:
                     typeof currentMode !== 'undefined'
                         ? currentMode
@@ -665,7 +665,7 @@ async function runTest() {
             };
         });
 
-        if (pResetState.hash !== '#platform') throw new Error('Platform navbar link failed to reset hash, got: ' + pResetState.hash);
+        if (pResetState.url !== '/nerede-izlerim') throw new Error('Platform navbar link failed to reset URL, got: ' + pResetState.url);
         if (pResetState.mode !== 'platform') throw new Error('currentMode did not revert to platform, got: ' + pResetState.mode);
         if (pResetState.searchVal !== '') throw new Error('searchInput not cleared, got: ' + pResetState.searchVal);
         if (
@@ -709,8 +709,8 @@ async function runTest() {
 
         const hardRefreshState =
             await page.evaluate(() => ({
-                hash:
-                    window.location.hash,
+                pathname:
+                    window.location.pathname,
                 top10Count:
                     document
                         .querySelectorAll(
@@ -726,12 +726,12 @@ async function runTest() {
             }));
 
         if (
-            hardRefreshState.hash !==
-            '#platform'
+            hardRefreshState.pathname !==
+            '/nerede-izlerim'
         ) {
             throw new Error(
                 'Platform hard refresh changed route: ' +
-                hardRefreshState.hash
+                hardRefreshState.pathname
             );
         }
 
@@ -1051,8 +1051,8 @@ async function runTest() {
 
         await page.waitForFunction(
             () =>
-                window.location.hash ===
-                    '#search?q=test' &&
+                (window.location.pathname + window.location.search) ===
+                    '/nerede-izlerim?q=test' &&
                 document.querySelectorAll(
                     '#search-results .movie-card:not(.skeleton-card)'
                 ).length >= 3,
@@ -1087,8 +1087,8 @@ async function runTest() {
 
         const providerFilteredState =
             await page.evaluate(() => ({
-                hash:
-                    window.location.hash,
+                url:
+                    window.location.pathname + window.location.search,
                 provider:
                     document
                         .getElementById(
@@ -1104,13 +1104,13 @@ async function runTest() {
             }));
 
         if (
-            providerFilteredState.hash !==
-            '#search?q=test&provider=337'
+            providerFilteredState.url !==
+            '/nerede-izlerim?q=test&provider=337'
         ) {
             throw new Error(
                 'Provider filtering left search route: ' +
                 providerFilteredState
-                    .hash
+                    .url
             );
         }
 
@@ -1160,19 +1160,19 @@ async function runTest() {
             }
         );
 
-        const providerClearedHash =
+        const providerClearedUrl =
             await page.evaluate(
                 () =>
-                    window.location.hash
+                    window.location.pathname + window.location.search
             );
 
         if (
-            providerClearedHash !==
-            '#search?q=test'
+            providerClearedUrl !==
+            '/nerede-izlerim?q=test'
         ) {
             throw new Error(
                 'Clearing provider filter changed search route: ' +
-                providerClearedHash
+                providerClearedUrl
             );
         }
 
@@ -1191,8 +1191,8 @@ async function runTest() {
 
         await page.waitForFunction(
             () =>
-                window.location.hash ===
-                    '#platform?genres=14' &&
+                (window.location.pathname + window.location.search) ===
+                    '/nerede-izlerim?genres=14' &&
                 document
                     .getElementById(
                         'genreFilter'
@@ -1219,8 +1219,8 @@ async function runTest() {
                         );
 
                 return {
-                    hash:
-                        window.location.hash,
+                    url:
+                        window.location.pathname + window.location.search,
                     genre:
                         document
                             .getElementById(
@@ -1263,8 +1263,8 @@ async function runTest() {
 
         await page.waitForFunction(
             () =>
-                window.location.hash ===
-                '#profile',
+                window.location.pathname ===
+                '/profilim',
             {
                 timeout: 5000
             }
@@ -1281,8 +1281,8 @@ async function runTest() {
 
         await page.waitForFunction(
             () =>
-                window.location.hash ===
-                '#home',
+                window.location.pathname ===
+                '/',
             {
                 timeout: 5000
             }
@@ -1290,16 +1290,16 @@ async function runTest() {
 
         const logoState =
             await page.evaluate(() => ({
-                hash:
-                    window.location.hash,
+                pathname:
+                    window.location.pathname,
                 sentinel:
                     window
                         .__logoSpaSentinel
             }));
 
         if (
-            logoState.hash !==
-                '#home' ||
+            logoState.pathname !==
+                '/' ||
             logoState.sentinel !==
                 'still-alive'
         ) {

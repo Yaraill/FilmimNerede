@@ -220,7 +220,10 @@ function refreshMyPlatformsResults() {
         const state = getPlatformFilterStateFromUi();
         const searchRoute = buildSearchRoute(route.query, state);
         saveSearchFilterStateToSession(route.query, state);
-        if (location.hash !== `#${searchRoute}`) {
+        const isCurrentSearch = typeof isCurrentAppRoute === 'function'
+            ? isCurrentAppRoute(searchRoute)
+            : location.hash === `#${searchRoute}`;
+        if (!isCurrentSearch) {
             navigate(searchRoute, { replace: true, searchFilterChange: true });
         } else {
             document.getElementById('searchInput').value = route.query;
@@ -228,7 +231,10 @@ function refreshMyPlatformsResults() {
         }
     } else if (route.page === 'platform') {
         const platformRoute = buildPlatformRoute();
-        if (location.hash !== `#${platformRoute}`) {
+        const isCurrentPlatform = typeof isCurrentAppRoute === 'function'
+            ? isCurrentAppRoute(platformRoute)
+            : location.hash === `#${platformRoute}`;
+        if (!isCurrentPlatform) {
             navigate(platformRoute);
         } else {
             loadPlatformMovies(0, true, true, activeRouteContext);
@@ -463,6 +469,9 @@ function renderActiveFilterChips() {
             if (clear() === false) return;
             renderActiveFilterChips();
             refreshPlatformFilterResults();
+            if (typeof announceA11y === 'function') {
+                announceA11y(`${label} filtresi kaldırıldı.`);
+            }
         });
 
         chip.append(text, removeButton);
@@ -928,7 +937,10 @@ function resetPlatformView(routeContext = null) {
     restorePlatformFilterState(state);
 
     const canonicalRoute = buildPlatformRoute(state);
-    if (window.location.hash.slice(1) !== canonicalRoute) {
+    const isCanonicalActive = typeof isCurrentAppRoute === 'function'
+        ? isCurrentAppRoute(canonicalRoute)
+        : window.location.hash.slice(1) === canonicalRoute;
+    if (!isCanonicalActive) {
         navigate(canonicalRoute, { replace: true });
         return;
     }
@@ -989,7 +1001,12 @@ function applyPlatformFilters({ refreshUnchangedPlatform = false } = {}) {
         const state = getPlatformFilterStateFromUi();
         saveSearchFilterStateToSession(query, state);
         navigate(buildSearchRoute(query, state), { replace: true, searchFilterChange: true });
-    } else if (refreshUnchangedPlatform && location.hash === '#' + buildPlatformRoute()) {
+    } else if (
+        refreshUnchangedPlatform &&
+        (typeof isCurrentAppRoute === 'function'
+            ? isCurrentAppRoute(buildPlatformRoute())
+            : location.hash === '#' + buildPlatformRoute())
+    ) {
         refreshMyPlatformsResults();
     } else {
         navigateToCurrentPlatformFilters();
@@ -1423,6 +1440,9 @@ function clearAllFilters() {
 function resetAllPlatformFilters() {
     clearAllFilters();
     refreshPlatformFilterResults();
+    if (typeof announceA11y === 'function') {
+        announceA11y('Tüm filtreler temizlendi.');
+    }
 }
 
 function resetPlatformFilterControls() {

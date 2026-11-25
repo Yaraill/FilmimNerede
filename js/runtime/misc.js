@@ -7,7 +7,7 @@ async function loadImaxMap() {
 
     imaxMapLoadPromise = (async () => {
         try {
-            const response = await fetch('./turkey-inline.svg');
+            const response = await fetch('/turkey-inline.svg');
             if (!response.ok) throw new Error(`HTTP ${response.status}`);
 
             const svgText = await response.text();

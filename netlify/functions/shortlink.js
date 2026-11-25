@@ -35,7 +35,7 @@ function _resetRateLimit(options = {}) {
 
 function getClientKey(headers) {
     const normalizedHeaders = Object.fromEntries(
-        Object.entries(headers ?? {}).map(([name, value]) => [name.toLowerCase(), value])
+        Object.entries(headers ?? {}).map(([name, value]) => [name.toLowerCase(), typeof value === 'string' ? value : ''])
     );
     return normalizedHeaders['x-nf-client-connection-ip']?.trim() ||
         normalizedHeaders['x-forwarded-for']?.split(',', 1)[0]?.trim() ||
@@ -90,6 +90,9 @@ function jsonResponse(statusCode, payload, extraHeaders = NO_STORE_HEADERS) {
 async function handlePost(event) {
     const body = typeof event.body === 'string' ? event.body : '';
     if (event.isBase64Encoded && body.length > SHORTLINK_MAX_BASE64_LENGTH) {
+        return jsonResponse(413, { error: 'İstek gövdesi çok büyük.' });
+    }
+    if (!event.isBase64Encoded && body.length > SHORTLINK_MAX_BODY_BYTES) {
         return jsonResponse(413, { error: 'İstek gövdesi çok büyük.' });
     }
     const rawText = event.isBase64Encoded ? Buffer.from(body, 'base64').toString('utf8') : body;
