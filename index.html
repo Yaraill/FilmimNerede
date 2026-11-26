@@ -78,7 +78,7 @@
     </style>
     <!-- Google Fonts: Modern ve okunaklı bir font (Inter) -->
     <!-- Kendi CSS dosyamız -->
-    <link rel="stylesheet" href="/style.css?v=79">
+    <link rel="stylesheet" href="/style.css?v=80">
     <!-- Font Awesome (İkonlar için) -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" integrity="sha512-9usAa10IRO0HhonpyAIVpjrylPvoDwiPUiKdWk5t3PyolY1cOd4DSE0Ga+ri4AuTroPR5aQvXU9xC6qOPnzFeg==" crossorigin="anonymous" media="print" onload="this.media='all'">
     <noscript><link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" integrity="sha512-9usAa10IRO0HhonpyAIVpjrylPvoDwiPUiKdWk5t3PyolY1cOd4DSE0Ga+ri4AuTroPR5aQvXU9xC6qOPnzFeg==" crossorigin="anonymous"></noscript>
@@ -546,6 +546,9 @@
                             <input type="file" id="profile-import-file" class="sr-only" accept=".json,application/json">
                             <button type="button" id="profile-import-btn" class="profile-backup-btn secondary">
                                 <i class="fas fa-file-import" aria-hidden="true"></i> Yedeği Geri Yükle
+                            </button>
+                            <button type="button" id="profile-sync-open-btn" class="profile-backup-btn secondary" onclick="openProfileSyncModal()">
+                                <i class="fas fa-sync-alt" aria-hidden="true"></i> Cihaz Aktarımı (Kod)
                             </button>
                         </div>
                     </div>
@@ -1117,6 +1120,46 @@
         <div id="external-import-poster-preview" class="external-import-poster-preview" aria-hidden="true" hidden></div>
     </div>
 
+    <div id="profile-sync-modal" class="modal" onclick="closeProfileSyncModal(event)" role="dialog" aria-modal="true" aria-labelledby="profile-sync-modal-title" aria-hidden="true" inert>
+        <div class="modal-content glass profile-sync-modal-content">
+            <button type="button" class="close-btn" onclick="closeProfileSyncModal(null, true)" aria-label="Kapat">
+                <span aria-hidden="true">&times;</span>
+            </button>
+            <h2 id="profile-sync-modal-title">Cihazlar Arası Profil Aktarımı</h2>
+            <p class="profile-sync-subtitle">Profil verilerini 10 dakika geçerli tek kullanımlık 6 haneli kod ile diğer cihazına güvenle aktar.</p>
+            <div class="profile-sync-grid">
+                <section class="profile-sync-card" aria-labelledby="profile-sync-send-title">
+                    <h3 id="profile-sync-send-title"><i class="fas fa-paper-plane" aria-hidden="true"></i> Bu Cihazdan Gönder</h3>
+                    <p class="profile-sync-card-desc">İzleme listen, puanların, dizi takibin ve kayıtlı seçkilerin için geçici kod üret.</p>
+                    <button type="button" id="profile-sync-create-btn" class="profile-backup-btn">Aktarım Kodu Oluştur</button>
+                    <div id="profile-sync-code-box" class="profile-sync-code-box" hidden>
+                        <code id="profile-sync-code-display" class="profile-sync-code-display"></code>
+                        <div class="profile-sync-code-meta">
+                            <span id="profile-sync-countdown" class="profile-sync-countdown"></span>
+                            <button type="button" id="profile-sync-copy-btn" class="profile-backup-btn secondary">Kodu Kopyala</button>
+                        </div>
+                    </div>
+                </section>
+                <section class="profile-sync-card" aria-labelledby="profile-sync-receive-title">
+                    <h3 id="profile-sync-receive-title"><i class="fas fa-download" aria-hidden="true"></i> Başka Cihazdan Al</h3>
+                    <div class="profile-backup-field">
+                        <label for="profile-sync-code-input">6 Haneli Aktarım Kodu</label>
+                        <input type="text" id="profile-sync-code-input" class="profile-sync-code-input" placeholder="Örn: K7M-4PX" maxlength="9" autocomplete="off" spellcheck="false">
+                    </div>
+                    <div class="profile-backup-field">
+                        <label for="profile-sync-mode">Aktarım Modu</label>
+                        <select id="profile-sync-mode" class="profile-backup-select">
+                            <option value="merge">Birleştir (önerilen)</option>
+                            <option value="replace">Mevcut verilerin yerine koy</option>
+                        </select>
+                    </div>
+                    <button type="button" id="profile-sync-redeem-btn" class="profile-backup-btn">Profili Aktar</button>
+                </section>
+            </div>
+            <p id="profile-sync-status" class="profile-backup-status" role="status" aria-live="polite" aria-atomic="true"></p>
+        </div>
+    </div>
+
     <!-- Detaylar Penceresi (Modal) -->
     <div id="details-modal" class="modal details-modal-wrapper" onclick="closeDetails(event)" role="dialog" aria-modal="true" aria-labelledby="details-title" aria-hidden="true">
         <div id="ambilight-bg" class="ambilight-bg"></div>
@@ -1286,10 +1329,10 @@
     <script src="/js/runtime/movie.js?v=21" defer></script>
     <script src="/js/runtime/actor.js?v=14" defer></script>
     <script src="/js/runtime/home.js?v=15" defer></script>
-    <script src="/js/runtime/profile.js?v=27" defer></script>
+    <script src="/js/runtime/profile.js?v=28" defer></script>
     <script src="/js/runtime/importer.js?v=6" defer></script>
     <script src="/js/runtime/misc.js?v=16" defer></script>
-    <script src="/app.js?v=81" defer></script>
+    <script src="/app.js?v=82" defer></script>
     <script>
         if ('serviceWorker' in navigator) {
             window.addEventListener('load', () => {

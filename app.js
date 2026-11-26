@@ -96,6 +96,8 @@ document.addEventListener('DOMContentLoaded', () => {
                         closeActor(null, true);
                     } else if (topModal.id === 'external-import-modal') {
                         closeExternalImportModal(null, true);
+                    } else if (topModal.id === 'profile-sync-modal') {
+                        closeProfileSyncModal(null, true);
                     } else {
                         window.ModalManager.closeModal(topModal.element);
                     }

@@ -7,7 +7,7 @@
 
 - [Ana Sayfa](https://filmimnerede.netlify.app/): Şu an vizyondaki filmler, özel koleksiyonlar ve gündemdeki isimler
 - [Yakında Vizyonda](https://filmimnerede.netlify.app/vizyon): Türkiye sinemalarına yakında gelecek filmler
-- [Nerede İzlerim?](https://filmimnerede.netlify.app/nerede-izlerim): Netflix, Amazon Prime Video, Disney+, Max, MUBI, TOD TV, TV+, tabii, Exxen ve puhutv katalog arama ve filtreleme aracı
+- [Nerede İzlerim?](https://filmimnerede.netlify.app/nerede-izlerim): Netflix, Amazon Prime Video, Disney+, HBO Max, MUBI, TOD TV, TV+, tabii, Exxen ve puhutv katalog arama ve filtreleme aracı
 - [Türkiye IMAX Salonları Rehberi](https://filmimnerede.netlify.app/imax): 5 ilde 11 IMAX salonu (4 IMAX Lazer, 7 Dijital IMAX)
 - [Oyunlar ve Öneri Araçları](https://filmimnerede.netlify.app/oyunlar): Afiş tahmin oyunu ve rastgele film seçici
 
@@ -18,3 +18,10 @@
   `watch/providers` uç noktaları üzerinden sağlar.
 - **IMDb / OMDb** entegrasyonu, IMDb kimliklerini kullanarak puan bilgilerini eşleştirir.
   Puan önce yerel IMDb verisinde aranır. Bulunamazsa OMDb API kullanılır.
+
+## Profil ve Liste Araçları
+
+- İzleme listesi platform ve abonelik filtreleri sunar; listedeki yapımlar arasından rastgele seçim yapılabilir.
+- IMDb ve Letterboxd dışa aktarma dosyaları CSV/ZIP biçimlerinde içe aktarılabilir.
+- Sinema Karnem puan dağılımını ve tür/dönem istatistiklerini gösterir.
+- Tek kullanımlık 6 karakterlik kodla profili cihazlar arasında geçici olarak aktarabilirsiniz.

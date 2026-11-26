@@ -295,6 +295,16 @@ async function runBrowserTests() {
         );
         assert.ok(providerRequests.includes(1102), 'Uncached watchlist entries should be scanned');
         assert.equal(await page.$eval('#watchlist-filter-reset-btn', el => el.hidden), false);
+        assert.equal(
+            await page.$eval('#watchlist-filter-count', el => el.textContent.trim()),
+            '2 / 3 yapım eşleşti'
+        );
+        assert.deepEqual(
+            await page.$$eval('.profile-toolbar-pill[data-profile-section="watchlist"]', buttons =>
+                buttons.map(button => button.textContent.trim())
+            ),
+            ['Tümü (2)', 'Filmler (2)', 'Diziler (0)']
+        );
 
         await page.click('#watchlist-filter-reset-btn');
         assert.equal(await page.$eval('#watchlist-provider-select', el => el.value), 'all');

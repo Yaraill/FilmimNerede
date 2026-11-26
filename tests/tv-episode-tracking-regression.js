@@ -320,6 +320,7 @@ async function run() {
         const trackerText = await page.$eval('#tv-tracker-grid', grid => grid.textContent);
         assert.match(trackerText, /Test Breaking Series/);
         assert.match(trackerText, /S2 • B2/);
+        assert.match(trackerText, /S2 • B2\s+1 \/ 10 bölüm \(%10\)/);
         assert.match(trackerText, /1 \/ 10 bölüm \(%10\)/);
         assert.match(await page.$eval('#tab-profile-tv-tracker', tab => tab.textContent), /Dizi Takibim \(1\)/);
         assert.deepEqual(await page.evaluate(() => safeReadStorage('ratedMovies', [])), []);

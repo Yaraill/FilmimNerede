@@ -732,6 +732,13 @@ const PROFILE_BACKUP_APP = 'FilmimNerede';
 const PROFILE_BACKUP_VERSION = 2;
 const PROFILE_BACKUP_SUPPORTED_VERSIONS = new Set([1, 2]);
 const PROFILE_BACKUP_MAX_FILE_BYTES = 5 * 1024 * 1024;
+const PROFILE_SYNC_ENDPOINT = '/.netlify/functions/profile-sync';
+const PROFILE_SYNC_TIMEOUT_MS = 10000;
+const PROFILE_SYNC_CODE_REGEX = /^[23456789ABCDEFGHJKMNPQRSTUVWXYZ]{6}$/;
+let profileSyncCountdownTimer = null;
+let profileSyncAbortController = null;
+let lastGeneratedSyncCode = '';
+let lastGeneratedSyncExpiresAt = 0;
 const PROFILE_BACKUP_V1_STORAGE_KEYS = [
     'watchlist',
     'ratedMovies',
@@ -1236,6 +1243,226 @@ function setProfileBackupStatus(message, state = '') {
     status.dataset.state = state;
 }
 
+function setProfileSyncStatus(message, state = '') {
+    const status = document.getElementById('profile-sync-status');
+    if (!status) return;
+    status.textContent = String(message || '');
+    status.dataset.state = state;
+}
+
+function clearProfileSyncCountdown() {
+    if (profileSyncCountdownTimer !== null) {
+        clearInterval(profileSyncCountdownTimer);
+        profileSyncCountdownTimer = null;
+    }
+    if (profileSyncAbortController) {
+        profileSyncAbortController.abort();
+        profileSyncAbortController = null;
+    }
+}
+
+function startProfileSyncCountdown() {
+    const codeBox = document.getElementById('profile-sync-code-box');
+    const codeDisplay = document.getElementById('profile-sync-code-display');
+    const countdown = document.getElementById('profile-sync-countdown');
+    if (!codeBox || !codeDisplay || !countdown || !lastGeneratedSyncCode || !lastGeneratedSyncExpiresAt) return;
+
+    if (profileSyncCountdownTimer !== null) {
+        clearInterval(profileSyncCountdownTimer);
+        profileSyncCountdownTimer = null;
+    }
+    codeBox.hidden = false;
+    codeDisplay.textContent = lastGeneratedSyncCode;
+    let remaining = Math.max(0, Math.ceil((lastGeneratedSyncExpiresAt - Date.now()) / 1000));
+    const updateCountdown = () => {
+        remaining = Math.max(0, Math.ceil((lastGeneratedSyncExpiresAt - Date.now()) / 1000));
+        countdown.textContent = remaining > 0
+            ? formatProfileSyncCountdown(remaining)
+            : 'Süre doldu';
+        if (remaining === 0) {
+            if (profileSyncCountdownTimer !== null) {
+                clearInterval(profileSyncCountdownTimer);
+                profileSyncCountdownTimer = null;
+            }
+            setProfileSyncStatus('Kodun süresi doldu; yeni kod oluşturabilirsin.', 'error');
+        }
+    };
+
+    updateCountdown();
+    if (Date.now() < lastGeneratedSyncExpiresAt) {
+        profileSyncCountdownTimer = setInterval(updateCountdown, 1000);
+    }
+}
+
+function openProfileSyncModal() {
+    const modal = document.getElementById('profile-sync-modal');
+    if (!modal) return;
+    setProfileSyncStatus('');
+    if (lastGeneratedSyncCode && lastGeneratedSyncExpiresAt > 0) {
+        startProfileSyncCountdown();
+    }
+    if (window.ModalManager && typeof window.ModalManager.openModal === 'function') {
+        window.ModalManager.openModal(modal, document.getElementById('profile-sync-open-btn'));
+        return;
+    }
+    modal.classList.add('active');
+    modal.removeAttribute('aria-hidden');
+    modal.inert = false;
+}
+
+function closeProfileSyncModal(event, force = false) {
+    const modal = document.getElementById('profile-sync-modal');
+    if (!modal || (!force && (!event || event.target !== modal))) return;
+    clearProfileSyncCountdown();
+    if (window.ModalManager && typeof window.ModalManager.closeModal === 'function') {
+        window.ModalManager.closeModal(modal);
+        return;
+    }
+    modal.classList.remove('active');
+    modal.setAttribute('aria-hidden', 'true');
+    modal.inert = true;
+}
+
+async function postProfileSyncRequest(payload) {
+    const controller = new AbortController();
+    profileSyncAbortController = controller;
+    let timedOut = false;
+    const timeout = setTimeout(() => {
+        timedOut = true;
+        controller.abort();
+    }, PROFILE_SYNC_TIMEOUT_MS);
+    try {
+        const response = await fetch(PROFILE_SYNC_ENDPOINT, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload),
+            signal: controller.signal
+        });
+        let data = null;
+        try {
+            data = await response.json();
+        } catch {
+            data = null;
+        }
+        return { response, data };
+    } catch (error) {
+        if (timedOut) {
+            throw new Error('İstek zaman aşımına uğradı. Lütfen tekrar deneyin.');
+        }
+        throw error;
+    } finally {
+        clearTimeout(timeout);
+        if (profileSyncAbortController === controller) profileSyncAbortController = null;
+    }
+}
+
+function formatProfileSyncCountdown(seconds) {
+    const minutes = Math.floor(seconds / 60);
+    const remainingSeconds = seconds % 60;
+    return `Kalan süre: ${String(minutes).padStart(2, '0')}:${String(remainingSeconds).padStart(2, '0')}`;
+}
+
+async function createProfileSyncCode() {
+    if (window.location?.protocol === 'file:') {
+        setProfileSyncStatus('Cihaz aktarımı yalnızca canlı sunucu (http/https) üzerinde çalışır.', 'error');
+        return;
+    }
+    const button = document.getElementById('profile-sync-create-btn');
+    const codeBox = document.getElementById('profile-sync-code-box');
+    const codeDisplay = document.getElementById('profile-sync-code-display');
+    const countdown = document.getElementById('profile-sync-countdown');
+    if (!button || !codeBox || !codeDisplay || !countdown) return;
+
+    clearProfileSyncCountdown();
+    button.disabled = true;
+    codeBox.hidden = true;
+    lastGeneratedSyncCode = '';
+    lastGeneratedSyncExpiresAt = 0;
+    setProfileSyncStatus('Aktarım kodu oluşturuluyor…');
+    try {
+        const { response, data } = await postProfileSyncRequest({
+            action: 'create',
+            backup: createProfileBackupPayload()
+        });
+        if (response.status !== 201) {
+            throw new Error(data?.error || 'Aktarım kodu oluşturulamadı. Lütfen tekrar deneyin.');
+        }
+        if (typeof data?.formattedCode !== 'string' ||
+            !PROFILE_SYNC_CODE_REGEX.test(data.formattedCode.replace('-', '')) ||
+            typeof data.expiresAt !== 'number') {
+            throw new Error('Aktarım servisi geçersiz bir yanıt verdi.');
+        }
+
+        codeBox.hidden = false;
+        codeDisplay.textContent = data.formattedCode;
+        lastGeneratedSyncCode = data.formattedCode;
+        lastGeneratedSyncExpiresAt = data.expiresAt;
+        setProfileSyncStatus('Aktarım kodu hazır. Diğer cihazında 10 dakika içinde kullan.', 'success');
+        startProfileSyncCountdown();
+        if (typeof announceA11y === 'function') announceA11y('Aktarım kodu oluşturuldu.');
+    } catch (error) {
+        setProfileSyncStatus(error.message || 'Aktarım kodu oluşturulamadı. Lütfen tekrar deneyin.', 'error');
+    } finally {
+        button.disabled = false;
+    }
+}
+
+async function copyProfileSyncCode() {
+    if (!lastGeneratedSyncCode) {
+        setProfileSyncStatus('Kopyalanacak geçerli bir aktarım kodu yok.', 'error');
+        return;
+    }
+    const copied = await copyTextToClipboard(lastGeneratedSyncCode);
+    if (!copied) {
+        setProfileSyncStatus('Aktarım kodu kopyalanamadı.', 'error');
+        return;
+    }
+    setProfileSyncStatus('Aktarım kodu panoya kopyalandı.', 'success');
+}
+
+async function redeemProfileSyncCode() {
+    const input = document.getElementById('profile-sync-code-input');
+    const redeemButton = document.getElementById('profile-sync-redeem-btn');
+    const code = String(input?.value || '').trim().toUpperCase().replace(/[\s-]+/g, '');
+    if (!PROFILE_SYNC_CODE_REGEX.test(code)) {
+        setProfileSyncStatus('Lütfen 6 karakterlik geçerli bir aktarım kodu girin.', 'error');
+        return;
+    }
+    if (window.location?.protocol === 'file:') {
+        setProfileSyncStatus('Cihaz aktarımı yalnızca canlı sunucu (http/https) üzerinde çalışır.', 'error');
+        return;
+    }
+    const mode = document.getElementById('profile-sync-mode')?.value === 'replace' ? 'replace' : 'merge';
+    if (mode === 'replace' && !window.confirm(
+        'Bu işlem mevcut FilmimNerede verilerinizi aktarılan profille değiştirecek. Devam edilsin mi?'
+    )) {
+        setProfileSyncStatus('Profil aktarımı iptal edildi.');
+        return;
+    }
+
+    if (redeemButton) redeemButton.disabled = true;
+    setProfileSyncStatus('Profil aktarılıyor…');
+    try {
+        const { response, data } = await postProfileSyncRequest({ action: 'redeem', code });
+        if (response.status !== 200) {
+            throw new Error(data?.error || 'Aktarım kodu geçersiz veya süresi dolmuş.');
+        }
+        const importedData = validateProfileBackupPayload(data?.backup);
+        const nextData = mode === 'merge'
+            ? mergeProfileBackupData(collectCurrentProfileBackupData(), importedData)
+            : importedData;
+        writeProfileBackupData(nextData);
+        loadProfile();
+        if (typeof syncMyPlatformsUi === 'function') syncMyPlatformsUi();
+        setProfileSyncStatus('Profil başarıyla aktarıldı!', 'success');
+        if (typeof announceA11y === 'function') announceA11y('Profil başarıyla aktarıldı.');
+    } catch (error) {
+        setProfileSyncStatus(error.message || 'Aktarım kodu geçersiz veya süresi dolmuş.', 'error');
+    } finally {
+        if (redeemButton) redeemButton.disabled = false;
+    }
+}
+
 function exportProfileData() {
     try {
         const payload = createProfileBackupPayload();
@@ -1480,7 +1707,7 @@ function renderTvTrackerSection() {
         position.textContent = `Kaldığın Yer: ${summary.positionLabel}`;
         const count = document.createElement('span');
         count.textContent = summary.countLabel;
-        progress.append(position, count);
+        progress.append(position, ' ', count);
         if (summary.totalEpisodes) {
             progress.appendChild(createTvProgressBar(
                 summary.watchedCount, summary.totalEpisodes, `İzleme ilerlemesi %${summary.percent}`
@@ -1816,20 +2043,10 @@ function filterAndSortProfileItems(rawItems, section, savedRatings) {
         })
         : indexed;
 
-    let movieCount = 0;
-    let tvCount = 0;
-    for (const entry of queried) {
-        if (entry.mediaType === 'tv') tvCount += 1;
-        else movieCount += 1;
-    }
-
-    const filtered = state.media === 'all'
-        ? queried
-        : queried.filter(entry => entry.mediaType === state.media);
-
     let uncachedCount = 0;
     let missingSubscriptions = false;
-    let providerFiltered = filtered;
+    let providerMatched = queried;
+    const providerFilteringActive = section === 'watchlist' && state.provider && state.provider !== 'all';
     if (section === 'watchlist' && state.provider && state.provider !== 'all') {
         const subscribedIds = state.provider === 'subscribed'
             ? getWatchlistSubscribedProviderIds()
@@ -1837,18 +2054,41 @@ function filterAndSortProfileItems(rawItems, section, savedRatings) {
         missingSubscriptions = state.provider === 'subscribed' && subscribedIds.length === 0;
         const subscribedSet = new Set(subscribedIds);
         const providerId = /^\d+$/.test(state.provider) ? Number(state.provider) : null;
-        providerFiltered = filtered.filter(({ item, mediaType }) => {
+        const matchesProvider = ({ item, mediaType }) => {
             const info = typeof getCachedTrProviderIds === 'function'
                 ? getCachedTrProviderIds(item?.id, mediaType)
                 : { cached: false, streamIds: new Set(), allIds: new Set() };
-            if (!info.cached) uncachedCount += 1;
             if (state.provider === 'subscribed') {
                 return !missingSubscriptions && [...subscribedSet].some(id => info.allIds.has(id));
             }
             if (state.provider === 'available') return info.streamIds.size > 0;
             return providerId !== null && info.allIds.has(providerId);
-        });
+        };
+        providerMatched = queried.filter(matchesProvider);
+
+        const uncachedScanEntries = state.media === 'all'
+            ? queried
+            : queried.filter(entry => entry.mediaType === state.media);
+        for (const { item, mediaType } of uncachedScanEntries) {
+            const info = typeof getCachedTrProviderIds === 'function'
+                ? getCachedTrProviderIds(item?.id, mediaType)
+                : { cached: false };
+            if (!info.cached) uncachedCount += 1;
+        }
     }
+
+    const countSource = providerFilteringActive ? providerMatched : queried;
+    let movieCount = 0;
+    let tvCount = 0;
+    for (const entry of countSource) {
+        if (entry.mediaType === 'tv') tvCount += 1;
+        else movieCount += 1;
+    }
+
+    const filtered = state.media === 'all'
+        ? providerMatched
+        : providerMatched.filter(entry => entry.mediaType === state.media);
+    const providerFiltered = filtered;
 
     providerFiltered.sort((a, b) => {
         if (state.sort === 'rating-desc') {
@@ -1889,7 +2129,7 @@ function filterAndSortProfileItems(rawItems, section, savedRatings) {
     return {
         entries: providerFiltered,
         totalCount: indexed.length,
-        queryMatchedCount: queried.length,
+        queryMatchedCount: countSource.length,
         movieCount,
         tvCount,
         uncachedCount,
@@ -2269,6 +2509,28 @@ function bindProfileListControls() {
     document.getElementById('watchlist-provider-scan-more-btn')?.addEventListener('click', () => {
         triggerWatchlistProviderScan({ batchLimit: 40 });
     });
+
+    const syncBindings = [
+        ['profile-sync-create-btn', createProfileSyncCode],
+        ['profile-sync-copy-btn', copyProfileSyncCode],
+        ['profile-sync-redeem-btn', redeemProfileSyncCode]
+    ];
+    syncBindings.forEach(([id, handler]) => {
+        const button = document.getElementById(id);
+        if (!button || button.dataset.bound === 'true') return;
+        button.dataset.bound = 'true';
+        button.addEventListener('click', handler);
+    });
+    const syncCodeInput = document.getElementById('profile-sync-code-input');
+    if (syncCodeInput && syncCodeInput.dataset.bound !== 'true') {
+        syncCodeInput.dataset.bound = 'true';
+        syncCodeInput.addEventListener('keydown', event => {
+            if (event.key === 'Enter') {
+                event.preventDefault();
+                redeemProfileSyncCode();
+            }
+        });
+    }
 }
 
 if (typeof document !== 'undefined' && typeof document.addEventListener === 'function') {
