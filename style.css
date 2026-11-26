@@ -5868,6 +5868,7 @@ body.light-theme .imax-geo-section li {
     overflow-x: auto;
     border: 1px solid var(--glass-border);
     border-radius: 12px;
+    container-type: inline-size;
 }
 
 .imax-summary-table {
@@ -6003,6 +6004,55 @@ body.light-theme .imax-geo-section li {
     color: #fff;
 }
 
+@media (prefers-color-scheme: light) {
+    body.imax-static-page {
+        --bg-color: #f1f5f9;
+        --text-color: #0f172a;
+        --text-muted: #475569;
+        --primary-color: #2563eb;
+        --accent-color: #059669;
+        --glass-bg: rgba(255, 255, 255, 0.78);
+        --glass-border: rgba(15, 23, 42, 0.12);
+        --card-bg: #ffffff;
+        --nav-bg: rgba(255, 255, 255, 0.95);
+    }
+
+    body.imax-static-page .imax-static-hero .imax-direct-answer,
+    body.imax-static-page .imax-geo-section {
+        background: #ffffff;
+        border-color: #dbe4f0;
+        box-shadow: 0 8px 24px rgba(15, 23, 42, 0.05);
+    }
+
+    body.imax-static-page .imax-static-hero .imax-direct-answer {
+        border-left-color: var(--primary-color);
+        color: #475569;
+    }
+
+    body.imax-static-page .imax-geo-section li {
+        background: #f8fafc;
+        border-color: #e2e8f0;
+    }
+
+    body.imax-static-page .imax-static-actions .action-btn:not(.btn-buy-ticket) {
+        background: #ffffff;
+        color: #0f172a;
+        border-color: #cbd5e1;
+    }
+
+    body.imax-static-page .imax-static-nav,
+    body.imax-static-page .imax-static-nav .logo,
+    body.imax-static-page .imax-static-nav .nav-links a,
+    body.imax-static-page .site-footer {
+        color: #0f172a;
+    }
+
+    body.imax-static-page .imax-static-nav .nav-links a,
+    body.imax-static-page .site-footer {
+        color: #475569;
+    }
+}
+
 @media (max-width: 900px) {
     .home-faq-grid {
         grid-template-columns: 1fr;
@@ -6044,6 +6094,17 @@ body.light-theme .imax-geo-section li {
     .imax-static-main {
         padding: 1rem;
         scroll-margin-top: 0;
+    }
+
+    .imax-summary-table caption {
+        position: sticky;
+        left: 0;
+        max-width: calc(100vw - 4.5rem);
+        max-width: 100cqi;
+        box-sizing: border-box;
+        white-space: normal;
+        background: transparent;
+        border-bottom: none;
     }
 
     .imax-summary-table {

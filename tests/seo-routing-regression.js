@@ -284,6 +284,21 @@ async function run() {
         assert.match(imaxBrowser.directAnswer, /4\s+IMAX Lazer/i);
         assert.match(imaxBrowser.directAnswer, /7\s+Dijital IMAX/i);
 
+        await page.setViewport({ width: 390, height: 844 });
+        await page.emulateMediaFeatures([{ name: 'prefers-color-scheme', value: 'light' }]);
+        await page.reload({ waitUntil: 'domcontentloaded' });
+        await page.waitForSelector('h1');
+        const imaxMobileLight = await page.evaluate(() => ({
+            backgroundColor: getComputedStyle(document.body).backgroundColor,
+            documentOverflow: document.documentElement.scrollWidth <= document.documentElement.clientWidth,
+            captionRight: document.querySelector('.imax-summary-table caption')?.getBoundingClientRect().right
+        }));
+        assert.equal(imaxMobileLight.backgroundColor, 'rgb(241, 245, 249)');
+        assert(imaxMobileLight.documentOverflow, 'IMAX page must not overflow horizontally at 390px');
+        assert(imaxMobileLight.captionRight <= 390, 'IMAX table caption must stay within the 390px viewport');
+        await page.setViewport({ width: 1280, height: 720 });
+        await page.emulateMediaFeatures([]);
+
         // 3. Card titles must be <a href="/film/..."> and Ctrl+Click must not hijack
         await page.goto(`${origin}/`, { waitUntil: 'domcontentloaded' });
         const homeSeo = await page.evaluate(() => ({
