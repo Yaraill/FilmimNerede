@@ -1,5 +1,436 @@
 let profileMutationGeneration = 0;
 
+const PROFILE_FALLBACK_GENRE_NAMES = Object.freeze({
+    28: 'Aksiyon',
+    12: 'Macera',
+    16: 'Animasyon',
+    35: 'Komedi',
+    80: 'Suç',
+    99: 'Belgesel',
+    18: 'Dram',
+    10751: 'Aile',
+    14: 'Fantastik',
+    36: 'Tarih',
+    27: 'Korku',
+    10402: 'Müzik',
+    9648: 'Gizem',
+    10749: 'Romantik',
+    878: 'Bilim Kurgu',
+    10770: 'TV Film',
+    53: 'Gerilim',
+    10752: 'Savaş',
+    37: 'Vahşi Batı',
+    10759: 'Aksiyon & Macera',
+    10762: 'Çocuk',
+    10763: 'Haber',
+    10764: 'Reality',
+    10765: 'Bilim Kurgu & Fantazi',
+    10766: 'Pembe Dizi',
+    10767: 'Talk Show',
+    10768: 'Savaş & Politik'
+});
+
+function resolveProfileGenreName(genreId, items = []) {
+    const safeId = normalizeTmdbId(genreId);
+    if (!safeId) return null;
+    const readName = value => typeof value === 'string' && value.trim() ? value.trim() : null;
+    const genresCache = typeof window !== 'undefined' ? window.genresCache : null;
+    const cachedGenres = genresCache && typeof genresCache === 'object'
+        ? Object.values(genresCache).filter(Array.isArray).flat()
+        : [];
+    const cachedName = cachedGenres.find(genre => normalizeTmdbId(genre?.id) === safeId)?.name;
+    if (readName(cachedName)) return readName(cachedName);
+
+    const localGenreMap = typeof genreMap !== 'undefined' && genreMap && typeof genreMap === 'object'
+        ? genreMap
+        : null;
+    const globalGenreMap = typeof window !== 'undefined' && window.genreMap && typeof window.genreMap === 'object'
+        ? window.genreMap
+        : null;
+    const mappedName = readName(localGenreMap?.[safeId]) || readName(globalGenreMap?.[safeId]);
+    if (mappedName) return mappedName;
+
+    for (const item of Array.isArray(items) ? items : []) {
+        const embeddedName = (Array.isArray(item?.genres) ? item.genres : [])
+            .find(genre => normalizeTmdbId(genre?.id) === safeId)?.name;
+        if (readName(embeddedName)) return readName(embeddedName);
+    }
+    return readName(PROFILE_FALLBACK_GENRE_NAMES[safeId]);
+}
+
+function buildProfileCinemaReport({
+    watchlist = [],
+    ratedMovies = [],
+    savedRatings = {},
+    trackedTvShows = []
+} = {}) {
+    const dedupeMedia = items => {
+        const seen = new Set();
+        return (Array.isArray(items) ? items : []).filter(item => {
+            const id = normalizeTmdbId(item?.id);
+            if (!id) return false;
+            const key = `${resolveProfileItemMediaType(item, null)}:${id}`;
+            if (seen.has(key)) return false;
+            seen.add(key);
+            return true;
+        });
+    };
+    const uniqueWatchlist = dedupeMedia(watchlist);
+    const uniqueRated = dedupeMedia(ratedMovies);
+    const uniqueTrackedShows = [];
+    const trackedKeys = new Set();
+    for (const show of Array.isArray(trackedTvShows) ? trackedTvShows : []) {
+        const id = normalizeTmdbId(show?.id);
+        const key = id ? `tv:${id}` : null;
+        if (!key || trackedKeys.has(key)) continue;
+        trackedKeys.add(key);
+        uniqueTrackedShows.push(show);
+    }
+    const ratingFor = item => {
+        const id = normalizeTmdbId(item?.id);
+        if (!id) return null;
+        const mediaType = resolveProfileItemMediaType(item, null);
+        return typeof getUserRatingForMedia === 'function'
+            ? getUserRatingForMedia(savedRatings, id, mediaType)
+            : normalizeUserRating(savedRatings?.[`${mediaType}:${id}`] ?? savedRatings?.[id]);
+    };
+    const rawScores = uniqueRated.length > 0
+        ? uniqueRated.map(ratingFor).filter(score => score !== null)
+        : Object.values(savedRatings && typeof savedRatings === 'object' ? savedRatings : {})
+            .map(value => normalizeUserRating(value))
+            .filter(score => score !== null);
+    const histogramCounts = Array(10).fill(0);
+    rawScores.forEach(score => {
+        histogramCounts[Math.min(10, Math.max(1, Math.round(score))) - 1]++;
+    });
+    const scoredCount = rawScores.length;
+    const maxBucketCount = Math.max(0, ...histogramCounts);
+    const sortedScores = [...rawScores].sort((a, b) => a - b);
+    const middle = Math.floor(sortedScores.length / 2);
+    const median = scoredCount === 0
+        ? null
+        : scoredCount % 2
+            ? sortedScores[middle]
+            : Number(((sortedScores[middle - 1] + sortedScores[middle]) / 2).toFixed(1));
+    const modeRating = scoredCount > 0
+        ? histogramCounts.reduce((best, count, index) =>
+            count >= histogramCounts[best - 1] ? index + 1 : best, 1)
+        : null;
+    const ratingHistogram = {
+        scoredCount,
+        averageRating: scoredCount
+            ? (rawScores.reduce((sum, score) => sum + score, 0) / scoredCount).toFixed(1)
+            : null,
+        medianRating: median,
+        modeRating,
+        highRatingPercent: scoredCount
+            ? Math.round((rawScores.filter(score => score >= 8).length / scoredCount) * 100)
+            : 0,
+        maxBucketCount,
+        histogram: histogramCounts.map((count, index) => ({
+            score: index + 1,
+            count,
+            percent: scoredCount ? Math.round((count / scoredCount) * 100) : 0,
+            barPercent: maxBucketCount ? Math.round((count / maxBucketCount) * 100) : 0
+        }))
+    };
+
+    const extractGenreIds = item => {
+        const values = [
+            ...(Array.isArray(item?.genre_ids) ? item.genre_ids : []),
+            ...(Array.isArray(item?.genres) ? item.genres.map(genre => genre?.id) : [])
+        ];
+        return [...new Set(values.map(normalizeTmdbId).filter(Boolean))];
+    };
+    const ratedGenreItems = uniqueRated.filter(item => extractGenreIds(item).length > 0);
+    const genreItems = ratedGenreItems.length > 0 ? uniqueRated : uniqueWatchlist;
+    const genreSource = ratedGenreItems.length > 0 ? 'rated' : 'watchlist';
+    const itemsWithGenres = genreItems.filter(item => extractGenreIds(item).length > 0);
+    const genreStats = new Map();
+    for (const item of itemsWithGenres) {
+        const itemRating = ratingFor(item);
+        for (const id of extractGenreIds(item)) {
+            const stat = genreStats.get(id) || {
+                id,
+                name: resolveProfileGenreName(id, genreItems) || `Tür #${id}`,
+                count: 0,
+                ratingSum: 0,
+                ratingCount: 0
+            };
+            stat.count++;
+            if (itemRating !== null) {
+                stat.ratingSum += itemRating;
+                stat.ratingCount++;
+            }
+            genreStats.set(id, stat);
+        }
+    }
+    const allGenres = [...genreStats.values()].map(stat => ({
+        ...stat,
+        percent: itemsWithGenres.length ? Math.round((stat.count / itemsWithGenres.length) * 100) : 0,
+        avgRating: stat.ratingCount ? Number((stat.ratingSum / stat.ratingCount).toFixed(1)) : null
+    })).sort((a, b) =>
+        b.count - a.count ||
+        (b.avgRating ?? -1) - (a.avgRating ?? -1) ||
+        a.name.localeCompare(b.name, 'tr')
+    );
+    const topGenreCount = allGenres[0]?.count || 0;
+    allGenres.forEach(genre => {
+        genre.barPercent = topGenreCount ? Math.round((genre.count / topGenreCount) * 100) : 0;
+    });
+    const ratedGenresWithRatings = allGenres.filter(genre => genre.ratingCount > 0);
+    const highestRatedCandidates = ratedGenresWithRatings.some(genre => genre.ratingCount >= 2)
+        ? ratedGenresWithRatings.filter(genre => genre.ratingCount >= 2)
+        : ratedGenresWithRatings;
+    const highestRatedGenre = [...highestRatedCandidates].sort((a, b) =>
+        (b.avgRating ?? 0) - (a.avgRating ?? 0) ||
+        b.ratingCount - a.ratingCount ||
+        b.count - a.count
+    )[0] || null;
+
+    const ratedYearItems = uniqueRated.filter(item => {
+        const value = item?.release_date || item?.first_air_date;
+        const match = typeof value === 'string' ? value.match(/^(\d{4})(?:-|$)/) : null;
+        const year = match ? Number(match[1]) : null;
+        return year >= 1880 && year <= 2100;
+    });
+    const decadeItems = ratedYearItems.length > 0 ? uniqueRated : uniqueWatchlist;
+    const decadeSource = ratedYearItems.length > 0 ? 'rated' : 'watchlist';
+    const decadesByKey = new Map();
+    const yearEntries = [];
+    for (const item of decadeItems) {
+        const value = item?.release_date || item?.first_air_date;
+        const match = typeof value === 'string' ? value.match(/^(\d{4})(?:-|$)/) : null;
+        const year = match ? Number(match[1]) : null;
+        if (!(year >= 1880 && year <= 2100)) continue;
+        const id = normalizeTmdbId(item?.id);
+        const mediaType = resolveProfileItemMediaType(item, null);
+        const title = String(item?.title || item?.name || item?.original_title || item?.original_name || '').trim() || 'İsimsiz yapım';
+        const decade = year < 1970 ? null : Math.floor(year / 10) * 10;
+        const key = decade === null ? 'pre-1970' : String(decade);
+        const decadeSuffix = {
+            0: 'ler',
+            10: 'lar',
+            20: 'ler',
+            30: 'lar',
+            40: 'lar',
+            50: 'ler',
+            60: 'lar',
+            70: 'ler',
+            80: 'ler',
+            90: 'lar'
+        };
+        const label = decade === null
+            ? '1970 Öncesi'
+            : `${decade}'${decadeSuffix[decade % 100] || 'ler'}`;
+        const stat = decadesByKey.get(key) || {
+            key,
+            label,
+            order: decade === null ? 1960 : decade,
+            count: 0,
+            ratingSum: 0,
+            ratingCount: 0
+        };
+        stat.count++;
+        const rating = id ? ratingFor({ ...item, id, media_type: mediaType }) : null;
+        if (rating !== null) {
+            stat.ratingSum += rating;
+            stat.ratingCount++;
+        }
+        decadesByKey.set(key, stat);
+        yearEntries.push({ title, year });
+    }
+    const decades = [...decadesByKey.values()].sort((a, b) => a.order - b.order);
+    const maxDecadeCount = Math.max(0, ...decades.map(decade => decade.count));
+    decades.forEach(decade => {
+        decade.percent = yearEntries.length ? Math.round((decade.count / yearEntries.length) * 100) : 0;
+        decade.barPercent = maxDecadeCount ? Math.round((decade.count / maxDecadeCount) * 100) : 0;
+        decade.avgRating = decade.ratingCount
+            ? Number((decade.ratingSum / decade.ratingCount).toFixed(1))
+            : null;
+        delete decade.order;
+        delete decade.ratingSum;
+        delete decade.ratingCount;
+    });
+    const topDecade = [...decades].sort((a, b) =>
+        b.count - a.count ||
+        (b.avgRating ?? -1) - (a.avgRating ?? -1) ||
+        Number(b.key === 'pre-1970' ? 1960 : b.key) - Number(a.key === 'pre-1970' ? 1960 : a.key)
+    )[0] || null;
+    const yearRange = yearEntries.length > 0
+        ? {
+            oldest: yearEntries.reduce((oldest, entry) => entry.year < oldest.year ? entry : oldest),
+            newest: yearEntries.reduce((newest, entry) => entry.year > newest.year ? entry : newest)
+        }
+        : { oldest: null, newest: null };
+
+    const mediaKeyFor = item => {
+        const id = normalizeTmdbId(item?.id);
+        return id ? `${resolveProfileItemMediaType(item, null)}:${id}` : null;
+    };
+    const libraryKeys = new Set();
+    const movieKeys = new Set();
+    const tvKeys = new Set();
+    for (const item of [...uniqueWatchlist, ...uniqueRated]) {
+        const key = mediaKeyFor(item);
+        if (!key) continue;
+        libraryKeys.add(key);
+        (key.startsWith('tv:') ? tvKeys : movieKeys).add(key);
+    }
+    for (const show of uniqueTrackedShows) {
+        const key = `tv:${normalizeTmdbId(show?.id)}`;
+        libraryKeys.add(key);
+        tvKeys.add(key);
+    }
+    const library = {
+        totalUnique: libraryKeys.size,
+        movieCount: movieKeys.size,
+        tvCount: tvKeys.size,
+        ratedCount: uniqueRated.length,
+        watchlistCount: uniqueWatchlist.length,
+        trackedShowCount: uniqueTrackedShows.length,
+        trackedEpisodeCount: uniqueTrackedShows.reduce(
+            (total, show) => total + (Array.isArray(show?.watched) ? show.watched.length : 0),
+            0
+        )
+    };
+
+    return {
+        ratingHistogram,
+        topGenres: allGenres.slice(0, 6),
+        highestRatedGenre,
+        genreSource,
+        decades,
+        topDecade,
+        yearRange,
+        decadeSource,
+        library,
+        hasData: Boolean(
+            library.ratedCount > 0 ||
+            library.watchlistCount > 0 ||
+            library.trackedShowCount > 0 ||
+            ratingHistogram.scoredCount > 0
+        )
+    };
+}
+
+let cinemaReportExpanded = false;
+
+function syncCinemaReportToggleUi() {
+    const button = document.getElementById('cinema-report-toggle-btn');
+    const body = document.getElementById('cinema-report-body');
+    if (!button || !body) return;
+    const hasReport = button.dataset.hasReport === 'true';
+    const isExpanded = cinemaReportExpanded && hasReport;
+    button.hidden = !hasReport;
+    body.hidden = !isExpanded;
+    button.setAttribute('aria-expanded', String(isExpanded));
+    button.classList.toggle('is-open', isExpanded);
+    const labelEl = typeof button.querySelector === 'function' ? button.querySelector('span') : null;
+    if (labelEl) {
+        labelEl.textContent = isExpanded ? 'Detayları Gizle' : 'Detayları Göster';
+    }
+}
+
+function bindCinemaReportToggle() {
+    const button = document.getElementById('cinema-report-toggle-btn');
+    if (!button || button.dataset.bound === '1') return;
+    button.dataset.bound = '1';
+    button.addEventListener('click', () => {
+        cinemaReportExpanded = !cinemaReportExpanded;
+        syncCinemaReportToggleUi();
+    });
+}
+
+function renderProfileCinemaReport({ watchlist, ratedMovies, savedRatings, trackedTvShows }) {
+    const summary = document.getElementById('cinema-report-summary');
+    const button = document.getElementById('cinema-report-toggle-btn');
+    const body = document.getElementById('cinema-report-body');
+    if (!summary || !button || !body) return;
+    bindCinemaReportToggle();
+    const report = buildProfileCinemaReport({ watchlist, ratedMovies, savedRatings, trackedTvShows });
+    button.dataset.hasReport = String(report.hasData);
+
+    if (!report.hasData) {
+        summary.textContent = 'Henüz puanladığın veya listene eklediğin bir yapım yok. Yapım puanladıkça kişisel sinema karnen burada oluşur.';
+        body.replaceChildren();
+        cinemaReportExpanded = false;
+        syncCinemaReportToggleUi();
+        return;
+    }
+
+    const summaryParts = [];
+    if (report.ratingHistogram.scoredCount) {
+        summaryParts.push(`${report.ratingHistogram.scoredCount} puanlı yapım`);
+    }
+    if (report.topDecade) summaryParts.push(`En baskın dönem: ${report.topDecade.label}`);
+    if (report.highestRatedGenre) {
+        summaryParts.push(`En yüksek ort.: ${report.highestRatedGenre.name} (${report.highestRatedGenre.avgRating})`);
+    }
+    if (!summaryParts.length) summaryParts.push(`${report.library.movieCount} film · ${report.library.tvCount} dizi`);
+    summary.textContent = summaryParts.join(' · ');
+
+    const histogramHtml = report.ratingHistogram.scoredCount
+        ? `<div class="cinema-histogram" role="list">${report.ratingHistogram.histogram.map(item => `
+            <div class="cinema-hist-col" role="listitem" aria-label="${escapeAttr(`${item.score} puan: ${item.count} yapım`)}">
+                <span class="cinema-hist-count${item.count ? '' : ' is-zero'}">${escapeHtml(item.count)}</span>
+                <div class="cinema-hist-track"><span class="cinema-hist-bar${item.count ? ' has-value' : ''}" style="--bar-pct:${escapeAttr(item.barPercent)}%"></span></div>
+                <span class="cinema-hist-score">${escapeHtml(item.score)}</span>
+            </div>`).join('')}</div>
+            <div class="cinema-pill-row">
+                <span class="cinema-pill">Mod: ${escapeHtml(report.ratingHistogram.modeRating)}</span>
+                <span class="cinema-pill">Medyan: ${escapeHtml(report.ratingHistogram.medianRating)}</span>
+                <span class="cinema-pill">8+ Puan: %${escapeHtml(report.ratingHistogram.highRatingPercent)}</span>
+            </div>`
+        : '<p class="cinema-empty-message">Henüz puanlı yapım yok.</p>';
+    const genreHtml = report.topGenres.length
+        ? `<div class="cinema-bar-list">${report.topGenres.map(genre => `
+            <div class="cinema-bar-item">
+                <div class="cinema-bar-label-row"><span>${escapeHtml(genre.name)}</span><span>${escapeHtml(genre.count)}${genre.avgRating !== null ? ` · ★ ${escapeHtml(genre.avgRating)}` : ''}</span></div>
+                <div class="cinema-bar-track"><span class="cinema-bar-fill" style="--bar-pct:${escapeAttr(genre.barPercent)}%"></span></div>
+            </div>`).join('')}</div>`
+        : '<p class="cinema-empty-message">Tür bilgisi bulunan yapım yok.</p>';
+    const decadeRows = [...report.decades].slice(-6);
+    const decadeHtml = decadeRows.length
+        ? `<div class="cinema-bar-list">${decadeRows.map(decade => `
+            <div class="cinema-bar-item">
+                <div class="cinema-bar-label-row"><span>${escapeHtml(decade.label)}</span><span>${escapeHtml(decade.count)}${decade.avgRating !== null ? ` · ★ ${escapeHtml(decade.avgRating)}` : ''}</span></div>
+                <div class="cinema-bar-track"><span class="cinema-bar-fill" style="--bar-pct:${escapeAttr(decade.barPercent)}%"></span></div>
+            </div>`).join('')}</div>`
+        : '<p class="cinema-empty-message">Yıl bilgisi bulunan yapım yok.</p>';
+    const libraryPills = [
+        `${report.library.movieCount} Film`,
+        `${report.library.tvCount} Dizi`
+    ];
+    if (report.library.trackedEpisodeCount > 0) {
+        libraryPills.push(`${report.library.trackedEpisodeCount} İzlenen Bölüm`);
+    }
+    if (report.yearRange.oldest) {
+        libraryPills.push(`En Eski: ${report.yearRange.oldest.title} (${report.yearRange.oldest.year})`);
+    }
+    if (report.yearRange.newest) {
+        libraryPills.push(`En Yeni: ${report.yearRange.newest.title} (${report.yearRange.newest.year})`);
+    }
+    body.innerHTML = `
+        <div class="cinema-report-grid">
+            <article class="cinema-report-card">
+                <h4>Puan Dağılımı (1–10)</h4>
+                ${histogramHtml}
+            </article>
+            <article class="cinema-report-card">
+                <h4>Tür Analizi</h4>
+                ${genreHtml}
+                ${report.highestRatedGenre ? `<p class="cinema-highlight-pill">En Yüksek Puanlı Tür: ${escapeHtml(report.highestRatedGenre.name)} (★ ${escapeHtml(report.highestRatedGenre.avgRating)})</p>` : ''}
+            </article>
+            <article class="cinema-report-card">
+                <h4>Dönemler &amp; Kütüphane</h4>
+                ${decadeHtml}
+                <div class="cinema-pill-row">${libraryPills.map(pill => `<span class="cinema-pill">${escapeHtml(pill)}</span>`).join('')}</div>
+            </article>
+        </div>`;
+    syncCinemaReportToggleUi();
+}
+
 function resolveProfileItemMediaType(item, explicitMediaType = null) {
     const explicit = normalizeMediaType(explicitMediaType);
     if (explicit) return explicit;
@@ -920,6 +1351,9 @@ if (typeof document !== 'undefined' && typeof document.addEventListener === 'fun
 function switchProfileTab(tabId, btnElem) {
     if (typeof document === 'undefined' || typeof document.querySelectorAll !== 'function' ||
         typeof document.getElementById !== 'function') return;
+    if (tabId !== 'profile-watchlist') {
+        cancelWatchlistProviderScan();
+    }
     document.querySelectorAll('.profile-tab-content').forEach(el => {
         el.classList.remove('active-tab');
         el.hidden = true;
@@ -1094,6 +1528,7 @@ function refreshProfileWatchStats(routeContext = null, persistTrackedTvRuntime =
         ? safeReadStorage('movieRatings', {})
         : {};
     const trackedTvShows = typeof getAllTrackedTvShows === 'function' ? getAllTrackedTvShows() : [];
+    renderProfileCinemaReport({ watchlist, ratedMovies, savedRatings, trackedTvShows });
     const trackedTvIds = new Set(trackedTvShows.map(show => `tv:${show.id}`));
 
     let totalWatchTimeMinutes = 0;
@@ -1126,28 +1561,10 @@ function refreshProfileWatchStats(routeContext = null, persistTrackedTvRuntime =
         });
     });
 
-    let favoriteGenre = "Belirsiz";
+    let favoriteGenre = 'Belirsiz';
     if (Object.keys(genreCounts).length > 0) {
         const topGenreId = Object.keys(genreCounts).reduce((a, b) => genreCounts[a] > genreCounts[b] ? a : b);
-        const allGenres = Object.values(window.genresCache || {}).flat();
-        const genreObj = allGenres.find(g => String(g.id) === String(topGenreId));
-        if (genreObj) {
-            favoriteGenre = genreObj.name;
-        } else if (typeof genreMap === 'object' && genreMap && genreMap[topGenreId]) {
-            favoriteGenre = genreMap[topGenreId];
-        } else if (typeof window !== 'undefined' && window.genreMap && window.genreMap[topGenreId]) {
-            favoriteGenre = window.genreMap[topGenreId];
-        } else {
-            for (const m of ratedMovies) {
-                const matched = Array.isArray(m?.genres)
-                    ? m.genres.find(g => String(g?.id) === String(topGenreId) && g?.name)
-                    : null;
-                if (matched) {
-                    favoriteGenre = String(matched.name);
-                    break;
-                }
-            }
-        }
+        favoriteGenre = resolveProfileGenreName(topGenreId, ratedMovies) || favoriteGenre;
     }
 
     const ratingValues = [];
@@ -1218,10 +1635,77 @@ function refreshProfileWatchStats(routeContext = null, persistTrackedTvRuntime =
 
 const PROFILE_PAGE_SIZE = 28;
 let lastProfileRouteContext = null;
+let watchlistProviderScanController = null;
+let watchlistProviderScanGeneration = 0;
+let watchlistProviderScanProgress = null;
+let lastWatchlistRandomKey = null;
 const profileListState = {
-    watchlist: { query: '', media: 'all', sort: 'recent', limit: PROFILE_PAGE_SIZE, lastRenderedEntries: [] },
+    watchlist: { query: '', media: 'all', sort: 'recent', provider: 'all', limit: PROFILE_PAGE_SIZE, lastRenderedEntries: [] },
     rated: { query: '', media: 'all', sort: 'rating-desc', limit: PROFILE_PAGE_SIZE, lastRenderedEntries: [] }
 };
+
+function cancelWatchlistProviderScan() {
+    watchlistProviderScanGeneration += 1;
+    if (watchlistProviderScanController) {
+        watchlistProviderScanController.abort();
+        watchlistProviderScanController = null;
+    }
+    watchlistProviderScanProgress = null;
+}
+
+function getWatchlistSubscribedProviderIds() {
+    const stored = typeof safeReadStorage === 'function'
+        ? safeReadStorage('userSubscribedProviders', [])
+        : [];
+    let ids = stored;
+    if (typeof getSubscribedProviderIds === 'function') {
+        try {
+            const subscribed = getSubscribedProviderIds();
+            if (Array.isArray(subscribed)) ids = subscribed;
+        } catch (error) {
+            console.warn('Abonelik platformları okunamadı:', error);
+        }
+    }
+    return Array.isArray(ids)
+        ? ids.map(id => typeof normalizeTmdbId === 'function' ? normalizeTmdbId(id) : Number(id))
+            .filter(id => Number.isInteger(id) && id > 0)
+        : [];
+}
+
+function syncWatchlistProviderScanBar({
+    scanning = false,
+    uncachedCount = 0,
+    fetchedCount = 0,
+    remainingUncached = 0,
+    missingSubscriptions = false,
+    targetCount = 0
+} = {}) {
+    const bar = document.getElementById('watchlist-provider-scan-bar');
+    const status = document.getElementById('watchlist-provider-scan-status');
+    const moreBtn = document.getElementById('watchlist-provider-scan-more-btn');
+    if (!bar || !status || !moreBtn) return;
+    if (profileListState.watchlist.provider === 'all') {
+        bar.hidden = true;
+        moreBtn.hidden = true;
+        return;
+    }
+
+    bar.hidden = false;
+    if (missingSubscriptions) {
+        status.textContent = 'Abonelik seçilmedi. Nerede İzlerim? sekmesinden platformlarını seçebilirsin.';
+        moreBtn.hidden = true;
+    } else if (scanning) {
+        status.textContent = `Platform bilgileri taranıyor… (${Math.min(fetchedCount, targetCount)}/${targetCount})`;
+        moreBtn.hidden = true;
+    } else if (remainingUncached > 0 || uncachedCount > 0) {
+        status.textContent = `Önbellekteki yapımlar gösteriliyor (${remainingUncached} yapım henüz taranmadı).`;
+        moreBtn.textContent = `Kalanları Tara (${Math.min(40, remainingUncached || uncachedCount)})`;
+        moreBtn.hidden = false;
+    } else {
+        status.textContent = 'Tüm listedeki platformlar tarandı.';
+        moreBtn.hidden = true;
+    }
+}
 
 function getProfileItemYearNumber(item) {
     const raw = String(item?.release_date || item?.first_air_date || '').trim();
@@ -1343,7 +1827,30 @@ function filterAndSortProfileItems(rawItems, section, savedRatings) {
         ? queried
         : queried.filter(entry => entry.mediaType === state.media);
 
-    filtered.sort((a, b) => {
+    let uncachedCount = 0;
+    let missingSubscriptions = false;
+    let providerFiltered = filtered;
+    if (section === 'watchlist' && state.provider && state.provider !== 'all') {
+        const subscribedIds = state.provider === 'subscribed'
+            ? getWatchlistSubscribedProviderIds()
+            : [];
+        missingSubscriptions = state.provider === 'subscribed' && subscribedIds.length === 0;
+        const subscribedSet = new Set(subscribedIds);
+        const providerId = /^\d+$/.test(state.provider) ? Number(state.provider) : null;
+        providerFiltered = filtered.filter(({ item, mediaType }) => {
+            const info = typeof getCachedTrProviderIds === 'function'
+                ? getCachedTrProviderIds(item?.id, mediaType)
+                : { cached: false, streamIds: new Set(), allIds: new Set() };
+            if (!info.cached) uncachedCount += 1;
+            if (state.provider === 'subscribed') {
+                return !missingSubscriptions && [...subscribedSet].some(id => info.allIds.has(id));
+            }
+            if (state.provider === 'available') return info.streamIds.size > 0;
+            return providerId !== null && info.allIds.has(providerId);
+        });
+    }
+
+    providerFiltered.sort((a, b) => {
         if (state.sort === 'rating-desc') {
             const ra = getProfileItemRatingValue(a.item, a.mediaType, savedRatings);
             const rb = getProfileItemRatingValue(b.item, b.mediaType, savedRatings);
@@ -1380,12 +1887,144 @@ function filterAndSortProfileItems(rawItems, section, savedRatings) {
     });
 
     return {
-        entries: filtered,
+        entries: providerFiltered,
         totalCount: indexed.length,
         queryMatchedCount: queried.length,
         movieCount,
-        tvCount
+        tvCount,
+        uncachedCount,
+        missingSubscriptions
     };
+}
+
+function triggerWatchlistProviderScan({ batchLimit = 40 } = {}) {
+    cancelWatchlistProviderScan();
+    const state = profileListState.watchlist;
+    if (state.provider === 'all') {
+        syncWatchlistProviderScanBar();
+        return Promise.resolve(null);
+    }
+    if (state.provider === 'subscribed' && getWatchlistSubscribedProviderIds().length === 0) {
+        syncWatchlistProviderScanBar({ missingSubscriptions: true });
+        return Promise.resolve(null);
+    }
+    if (typeof ensureProvidersCachedForItems !== 'function') {
+        syncWatchlistProviderScanBar();
+        return Promise.resolve(null);
+    }
+
+    const controller = new AbortController();
+    watchlistProviderScanController = controller;
+    const generation = ++watchlistProviderScanGeneration;
+    const parentSignal = lastProfileRouteContext?.signal;
+    const abortForRoute = () => controller.abort();
+    if (parentSignal?.aborted) controller.abort();
+    else parentSignal?.addEventListener('abort', abortForRoute, { once: true });
+
+    const rawItems = typeof safeReadStorage === 'function'
+        ? safeReadStorage('watchlist', [])
+        : [];
+    const queryNorm = String(state.query || '').trim().toLocaleLowerCase('tr-TR');
+    const entries = (Array.isArray(rawItems) ? rawItems : [])
+        .map(item => ({ item, mediaType: resolveProfileItemMediaType(item, null) }))
+        .filter(({ item, mediaType }) => {
+            if (!item || (state.media !== 'all' && mediaType !== state.media)) return false;
+            if (!queryNorm) return true;
+            const haystack = [
+                item?.title, item?.name, item?.original_title, item?.original_name,
+                item?.release_date, item?.first_air_date
+            ].filter(Boolean).join(' ').toLocaleLowerCase('tr-TR');
+            return haystack.includes(queryNorm);
+        });
+
+    watchlistProviderScanProgress = {
+        scanning: true,
+        fetchedCount: 0,
+        targetCount: 0,
+        uncachedCount: entries.length,
+        remainingUncached: entries.length,
+        missingSubscriptions: state.provider === 'subscribed' &&
+            getWatchlistSubscribedProviderIds().length === 0
+    };
+    const isCurrentScan = () => generation === watchlistProviderScanGeneration &&
+        watchlistProviderScanController === controller &&
+        !controller.signal.aborted;
+    const canRender = () => {
+        if (generation !== watchlistProviderScanGeneration || controller.signal.aborted) return false;
+        const profile = document.getElementById('profile');
+        const panel = document.getElementById('profile-watchlist');
+        return Boolean(profile?.classList.contains('active-tab') &&
+            panel?.classList.contains('active-tab') && !panel.hidden &&
+            (!lastProfileRouteContext || typeof isRouteContextCurrent !== 'function' ||
+                isRouteContextCurrent(lastProfileRouteContext, 'profile')));
+    };
+
+    if (canRender()) renderProfileCollectionSection('watchlist', lastProfileRouteContext);
+    return ensureProvidersCachedForItems(entries, { signal: controller.signal }, {
+        maxFetch: batchLimit,
+        onProgress: progress => {
+            if (!isCurrentScan()) return;
+            watchlistProviderScanProgress = {
+                ...progress,
+                scanning: true,
+                uncachedCount: Math.max(0, entries.length - progress.cachedCount),
+                missingSubscriptions: state.provider === 'subscribed' &&
+                    getWatchlistSubscribedProviderIds().length === 0
+            };
+            if (canRender()) syncWatchlistProviderScanBar(watchlistProviderScanProgress);
+        }
+    }).catch(error => {
+        if (error?.name !== 'AbortError') {
+            console.warn('İzleme listesi platform taraması tamamlanamadı:', error);
+        }
+        return null;
+    }).finally(() => {
+        parentSignal?.removeEventListener('abort', abortForRoute);
+        if (generation !== watchlistProviderScanGeneration ||
+            watchlistProviderScanController !== controller) return;
+        const shouldRender = canRender();
+        watchlistProviderScanController = null;
+        watchlistProviderScanProgress = null;
+        if (shouldRender) renderProfileCollectionSection('watchlist', lastProfileRouteContext);
+    });
+}
+
+function pickRandomFromWatchlist({ excludeLast = true } = {}) {
+    const storedItems = typeof safeReadStorage === 'function'
+        ? safeReadStorage('watchlist', [])
+        : [];
+    const rawItems = Array.isArray(storedItems) ? storedItems : [];
+    const result = filterAndSortProfileItems(rawItems, 'watchlist', {});
+    const status = document.getElementById('watchlist-share-status');
+    const announce = message => {
+        if (status) status.textContent = message;
+        if (typeof announceA11y === 'function') announceA11y(message);
+    };
+    if (result.entries.length === 0) {
+        const message = rawItems.length === 0
+            ? 'İzleme listende seçilebilecek yapım yok.'
+            : 'Mevcut filtreye uygun seçilebilecek yapım yok.';
+        announce(message);
+        return null;
+    }
+
+    const candidatePool = excludeLast && lastWatchlistRandomKey && result.entries.length > 1
+        ? result.entries.filter(({ item, mediaType }) =>
+            `${mediaType}:${item.id}` !== lastWatchlistRandomKey
+        )
+        : result.entries;
+    const picked = candidatePool[Math.floor(Math.random() * candidatePool.length)];
+    const key = `${picked.mediaType}:${picked.item.id}`;
+    lastWatchlistRandomKey = key;
+    if (typeof setCachedMedia === 'function') setCachedMedia(picked.item, picked.mediaType);
+    window.isRandomMode = true;
+    window.randomModeSource = 'watchlist';
+    const title = picked.item?.title || picked.item?.name || 'Seçilen yapım';
+    announce(`Seçilen yapım: ${title}`);
+    if (typeof openDetails === 'function') openDetails(picked.item.id, picked.mediaType);
+    const nextContainer = document.getElementById('random-next-container');
+    if (nextContainer) nextContainer.style.display = 'block';
+    return picked;
 }
 
 function triggerProfileSliceProviders(entries, routeContext) {
@@ -1436,8 +2075,15 @@ function updateProfileToolbarUi(section, { totalCount, queryMatchedCount, movieC
 
     const resetBtn = document.getElementById(`${section}-filter-reset-btn`);
     if (resetBtn) {
-        const isFiltered = Boolean(String(state.query || '').trim()) || state.media !== 'all';
+        const isFiltered = Boolean(String(state.query || '').trim()) ||
+            state.media !== 'all' || (section === 'watchlist' && state.provider !== 'all');
         resetBtn.hidden = !isFiltered;
+    }
+    if (section === 'watchlist') {
+        const providerSelect = document.getElementById('watchlist-provider-select');
+        if (providerSelect && providerSelect.value !== state.provider) {
+            providerSelect.value = state.provider;
+        }
     }
 }
 
@@ -1468,6 +2114,16 @@ function renderProfileCollectionSection(section, routeContext = lastProfileRoute
         filteredCount: result.entries.length,
         shownCount: visibleEntries.length
     });
+    if (isWatchlist) {
+        const progress = watchlistProviderScanProgress;
+        syncWatchlistProviderScanBar(progress?.scanning
+            ? { ...progress, missingSubscriptions: result.missingSubscriptions }
+            : {
+                uncachedCount: result.uncachedCount,
+                remainingUncached: result.uncachedCount,
+                missingSubscriptions: result.missingSubscriptions
+            });
+    }
 
     const loadMoreBtn = document.getElementById(`${section}-load-more-btn`);
     const tabPanel = document.getElementById(isWatchlist ? 'profile-watchlist' : 'profile-rated');
@@ -1476,9 +2132,18 @@ function renderProfileCollectionSection(section, routeContext = lastProfileRoute
     if (result.entries.length === 0) {
         state.lastRenderedEntries = [];
         const hasFilter = Boolean(String(state.query || '').trim()) || state.media !== 'all';
-        const emptyMessage = hasFilter
-            ? 'Arama veya filtreye uygun yapım bulunamadı.'
-            : (isWatchlist ? 'İzleme listeniz boş.' : 'Henüz puanladığınız veya izlediğiniz bir yapım yok.');
+        let emptyMessage;
+        if (result.missingSubscriptions) {
+            emptyMessage = 'Abonelik seçilmedi. Nerede İzlerim? sekmesinden platformlarını seçebilirsin.';
+        } else if (isWatchlist && state.provider !== 'all') {
+            emptyMessage = 'Seçili platform filtresine uygun yapım bulunamadı.';
+        } else if (hasFilter) {
+            emptyMessage = 'Arama veya filtreye uygun yapım bulunamadı.';
+        } else {
+            emptyMessage = isWatchlist
+                ? 'İzleme listeniz boş.'
+                : 'Henüz puanladığınız veya izlediğiniz bir yapım yok.';
+        }
         grid.innerHTML = `<div class='no-provider profile-grid-empty'>${emptyMessage}</div>`;
         if (loadMoreBtn) loadMoreBtn.hidden = true;
         return;
@@ -1531,11 +2196,15 @@ function bindProfileListControls() {
         if (searchInput) {
             let timer = null;
             searchInput.addEventListener('input', () => {
+                if (section === 'watchlist') cancelWatchlistProviderScan();
                 clearTimeout(timer);
                 timer = setTimeout(() => {
                     profileListState[section].query = searchInput.value;
                     profileListState[section].limit = PROFILE_PAGE_SIZE;
                     renderProfileCollectionSection(section, lastProfileRouteContext);
+                    if (section === 'watchlist' && profileListState.watchlist.provider !== 'all') {
+                        triggerWatchlistProviderScan();
+                    }
                 }, 120);
             });
         }
@@ -1552,7 +2221,11 @@ function bindProfileListControls() {
             btn.addEventListener('click', () => {
                 profileListState[section].media = btn.dataset.profileMedia || 'all';
                 profileListState[section].limit = PROFILE_PAGE_SIZE;
+                if (section === 'watchlist') cancelWatchlistProviderScan();
                 renderProfileCollectionSection(section, lastProfileRouteContext);
+                if (section === 'watchlist' && profileListState.watchlist.provider !== 'all') {
+                    triggerWatchlistProviderScan();
+                }
             });
         });
 
@@ -1562,6 +2235,14 @@ function bindProfileListControls() {
                 profileListState[section].media = 'all';
                 profileListState[section].limit = PROFILE_PAGE_SIZE;
                 if (searchInput) searchInput.value = '';
+                if (section === 'watchlist') {
+                    profileListState.watchlist.provider = 'all';
+                    const providerSelect = document.getElementById('watchlist-provider-select');
+                    if (providerSelect) providerSelect.value = 'all';
+                    cancelWatchlistProviderScan();
+                    const scanBar = document.getElementById('watchlist-provider-scan-bar');
+                    if (scanBar) scanBar.hidden = true;
+                }
                 renderProfileCollectionSection(section, lastProfileRouteContext);
             });
         }
@@ -1574,6 +2255,20 @@ function bindProfileListControls() {
             });
         }
     });
+
+    const providerSelect = document.getElementById('watchlist-provider-select');
+    if (providerSelect) {
+        providerSelect.addEventListener('change', () => {
+            profileListState.watchlist.provider = providerSelect.value || 'all';
+            profileListState.watchlist.limit = PROFILE_PAGE_SIZE;
+            cancelWatchlistProviderScan();
+            renderProfileCollectionSection('watchlist', lastProfileRouteContext);
+            if (profileListState.watchlist.provider !== 'all') triggerWatchlistProviderScan();
+        });
+    }
+    document.getElementById('watchlist-provider-scan-more-btn')?.addEventListener('click', () => {
+        triggerWatchlistProviderScan({ batchLimit: 40 });
+    });
 }
 
 if (typeof document !== 'undefined' && typeof document.addEventListener === 'function') {
@@ -1582,7 +2277,14 @@ if (typeof document !== 'undefined' && typeof document.addEventListener === 'fun
 
 function loadProfile(routeContext = null, { refreshCollectionSections = true, persistTrackedTvRuntime = true } = {}) {
     if (typeof document === 'undefined' || typeof document.getElementById !== 'function') return;
-    lastProfileRouteContext = routeContext;
+    if (routeContext) {
+        lastProfileRouteContext = routeContext;
+    } else if (!lastProfileRouteContext ||
+        lastProfileRouteContext.signal?.aborted ||
+        (typeof isRouteContextCurrent === 'function' &&
+            !isRouteContextCurrent(lastProfileRouteContext, 'profile'))) {
+        lastProfileRouteContext = null;
+    }
     if (refreshCollectionSections) {
         renderTvTrackerSection();
         renderSavedSharedListsSection();

@@ -205,6 +205,116 @@ function getCachedProviderData(cacheKey) {
     return value;
 }
 
+function getCachedTrProviderIds(itemId, mediaType) {
+    const safeItemId = typeof normalizeTmdbId === 'function'
+        ? normalizeTmdbId(itemId)
+        : (Number(itemId) || null);
+    const safeMediaType = typeof normalizeMediaType === 'function'
+        ? normalizeMediaType(mediaType)
+        : (mediaType === 'movie' || mediaType === 'tv' ? mediaType : null);
+    const result = { cached: false, streamIds: new Set(), allIds: new Set() };
+    if (!safeItemId || !safeMediaType) return result;
+
+    const data = getCachedProviderData(`${safeMediaType}:${safeItemId}`);
+    if (data === null) return result;
+    result.cached = true;
+
+    const tr = data?.results?.TR;
+    if (!tr || typeof tr !== 'object') return result;
+    ['flatrate', 'free', 'ads'].forEach(bucket => {
+        (Array.isArray(tr[bucket]) ? tr[bucket] : []).forEach(provider => {
+            const providerId = typeof normalizeTmdbId === 'function'
+                ? normalizeTmdbId(provider?.provider_id)
+                : (Number(provider?.provider_id) || null);
+            if (providerId) result.streamIds.add(providerId);
+        });
+    });
+    result.streamIds.forEach(providerId => result.allIds.add(providerId));
+    ['rent', 'buy'].forEach(bucket => {
+        (Array.isArray(tr[bucket]) ? tr[bucket] : []).forEach(provider => {
+            const providerId = typeof normalizeTmdbId === 'function'
+                ? normalizeTmdbId(provider?.provider_id)
+                : (Number(provider?.provider_id) || null);
+            if (providerId) result.allIds.add(providerId);
+        });
+    });
+    return result;
+}
+
+async function ensureProvidersCachedForItems(entries, routeContext, { maxFetch = 40, onProgress } = {}) {
+    const normalized = [];
+    const seen = new Set();
+    (Array.isArray(entries) ? entries : []).forEach(entry => {
+        const item = entry?.item;
+        if (!item || typeof item !== 'object') return;
+        const safeType = (typeof normalizeMediaType === 'function'
+            ? normalizeMediaType(entry.mediaType)
+            : null) || (typeof inferItemMediaType === 'function'
+            ? inferItemMediaType(item, 'movie')
+            : (item.media_type === 'tv' ? 'tv' : 'movie'));
+        const safeId = typeof normalizeTmdbId === 'function'
+            ? normalizeTmdbId(item.id)
+            : (Number(item.id) || null);
+        if (!safeId || !safeType) return;
+        const cacheKey = `${safeType}:${safeId}`;
+        if (seen.has(cacheKey)) return;
+        seen.add(cacheKey);
+        normalized.push({ item, mediaType: safeType, id: safeId, cacheKey });
+    });
+
+    const uncached = normalized.filter(entry => getCachedProviderData(entry.cacheKey) === null);
+    const safeMaxFetch = Number.isFinite(Number(maxFetch))
+        ? Math.max(0, Math.floor(Number(maxFetch)))
+        : 40;
+    const targets = uncached.slice(0, safeMaxFetch);
+    let fetchedCount = 0;
+    const getCachedCount = () => normalized.reduce(
+        (count, entry) => count + (getCachedProviderData(entry.cacheKey) !== null ? 1 : 0),
+        0
+    );
+    const getRemaining = () => Math.max(0, uncached.length - fetchedCount);
+    const reportProgress = () => {
+        if (typeof onProgress === 'function') {
+            onProgress({
+                totalCount: normalized.length,
+                cachedCount: getCachedCount(),
+                fetchedCount,
+                targetCount: targets.length,
+                remainingUncached: getRemaining()
+            });
+        }
+    };
+
+    reportProgress();
+    for (let start = 0; start < targets.length; start += 6) {
+        if (routeContext?.signal?.aborted) break;
+        const chunk = targets.slice(start, start + 6);
+        const results = await Promise.allSettled(chunk.map(entry =>
+            enqueueProviderFetch(
+                entry.cacheKey,
+                `${BASE_URL}/${entry.mediaType}/${entry.id}/watch/providers`,
+                [],
+                routeContext
+            )
+        ));
+        results.forEach((result, index) => {
+            if (result.status === 'fulfilled' &&
+                getCachedProviderData(chunk[index].cacheKey) !== null) {
+                fetchedCount += 1;
+            }
+        });
+        reportProgress();
+    }
+
+    return {
+        totalCount: normalized.length,
+        cachedCount: getCachedCount(),
+        fetchedCount,
+        remainingUncached: getRemaining(),
+        aborted: Boolean(routeContext?.signal?.aborted)
+    };
+}
+
 function setCachedProviderData(cacheKey, data) {
     hydratePersistedProviderCache();
     if (providerDataCache.has(cacheKey)) {

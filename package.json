@@ -9,7 +9,7 @@
     "zod": "^4.6.6"
   },
   "scripts": {
-    "test": "npm run test:static && npm run test:browser && npm run test:xss && npm run test:home-performance && npm run test:omdb-proxy && npm run test:tmdb-proxy && npm run test:watch-time && npm run test:profile-backup && npm run test:url-filter-state && npm run test:accessibility && npm run test:pwa && npm run test:release-stabilization && npm run test:post-release-stability && npm run test:e2e && npm run test:tv-tracking && npm run test:shared-list && npm run test:csp && npm run test:shortlink && npm run test:import && npm run test:seo-routing",
+    "test": "npm run test:static && npm run test:browser && npm run test:xss && npm run test:home-performance && npm run test:omdb-proxy && npm run test:tmdb-proxy && npm run test:watch-time && npm run test:profile-backup && npm run test:url-filter-state && npm run test:accessibility && npm run test:pwa && npm run test:release-stabilization && npm run test:post-release-stability && npm run test:e2e && npm run test:tv-tracking && npm run test:shared-list && npm run test:csp && npm run test:shortlink && npm run test:import && npm run test:seo-routing && npm run test:watchlist-tools && npm run test:cinema-report",
     "test:static": "node tests/static-smoke.js",
     "test:browser": "node tests/browser-smoke.js",
     "test:xss": "node tests/xss-regression.js",
@@ -30,6 +30,8 @@
     "test:csp": "node tests/csp-regression.js",
     "test:shortlink": "node tests/shortlink-regression.js",
     "test:import": "node tests/import-regression.js",
+    "test:watchlist-tools": "node tests/watchlist-tools-regression.js",
+    "test:cinema-report": "node tests/cinema-report-regression.js",
     "test:seo-routing": "node tests/seo-routing-regression.js"
   },
   "dependencies": {

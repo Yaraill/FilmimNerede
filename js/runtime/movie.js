@@ -305,6 +305,11 @@ async function fetchCollectionDetail(collectionId, signal) {
 
 
 function openDetails(movieId, mediaType = null) {
+    if (!window.isRandomMode) {
+        const nextContainer = document.getElementById('random-next-container');
+        if (nextContainer) nextContainer.style.display = 'none';
+    }
+
     const safeMovieId =
         normalizeTmdbId(movieId);
 
@@ -2785,18 +2790,38 @@ function closeDetails(event, force = false) {
     const isBackdropClick = Boolean(event && event.target === modal);
     if (force || isBackdropClick) {
         if (window.isNavigatingBack) return;
+        if (window.isRandomMode === true) {
+            window.isRandomMode = false;
+            window.randomModeSource = 'discover';
+        }
+        if (window.isRandomMode === false) {
+            const nextContainer = document.getElementById('random-next-container');
+            if (nextContainer) nextContainer.style.display = 'none';
+        }
 
         const currentPath = (window.location?.pathname || '/').replace(/\/+$/, '') || '/';
         if (currentPath.startsWith('/film/') || currentPath.startsWith('/dizi/') || currentPath.startsWith('/movie/')) {
             const state = history.state;
-            if (state && state.filmRehberiRouter && state.filmRehberiRouter.index > 0) {
+            const currentIndex = state?.filmRehberiRouter?.index;
+            if (Number.isInteger(currentIndex) && currentIndex > 0) {
+                const originIndex = Number.isInteger(window.detailsModalOriginIndex)
+                    ? window.detailsModalOriginIndex
+                    : null;
+                const delta = (originIndex !== null && originIndex >= 0 && originIndex < currentIndex)
+                    ? (originIndex - currentIndex)
+                    : -1;
+                window.detailsModalOriginIndex = null;
                 window.isNavigatingBack = true;
 
                 const navigatingFromUrl = typeof getCurrentAppUrl === 'function'
                     ? getCurrentAppUrl()
                     : currentPath;
 
-                history.back();
+                if (delta < -1 && typeof history.go === 'function') {
+                    history.go(delta);
+                } else {
+                    history.back();
+                }
 
                 setTimeout(() => {
                     const activeUrl = typeof getCurrentAppUrl === 'function'

@@ -330,6 +330,17 @@ function navigate(route, options = {}) {
 
     const currentState = (typeof history !== 'undefined' && history.state) || {};
 
+    if (!replace) {
+        const currentRoute = parseCleanUrl(getCurrentAppUrl(), { readOnly: true });
+        const targetRoute = parseCleanUrl(url, { readOnly: true });
+        if (currentRoute.page !== 'movie' && targetRoute.page === 'movie') {
+            const prevIndex = Number.isInteger(currentState?.filmRehberiRouter?.index)
+                ? currentState.filmRehberiRouter.index
+                : 0;
+            window.detailsModalOriginIndex = prevIndex;
+        }
+    }
+
     let currentIndex = currentState.filmRehberiRouter
         ? currentState.filmRehberiRouter.index
         : 0;
@@ -563,6 +574,12 @@ function handleRoute({ searchFilterChange = false } = {}) {
 
     const route = parseRoute();
     const currentUrl = getCurrentAppUrl();
+
+    if (route.page !== 'movie') {
+        window.detailsModalOriginIndex = null;
+        window.isRandomMode = false;
+        window.randomModeSource = 'discover';
+    }
 
     if (lastRenderedRoute === currentUrl && !searchFilterChange) {
         return;

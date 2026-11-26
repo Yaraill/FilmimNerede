@@ -10,7 +10,7 @@ function assert(condition, message) {
     }
 }
 
-async function checkServiceWorker(swContent, swPath) {
+async function checkServiceWorker(swContent, swPath, expectedCacheName) {
     const origin = 'https://filmimnerede.netlify.app';
     const listeners = new Map();
 
@@ -39,7 +39,7 @@ async function checkServiceWorker(swContent, swPath) {
         caches: {
             match: async key => cachedResponses.get(key),
             open: async name => {
-                assert(name === 'filmimnerede-v133', 'Service worker cache name must be filmimnerede-v133');
+                assert(name === expectedCacheName && /^filmimnerede-v\d+$/.test(name), `Service worker cache name must match ${expectedCacheName}`);
                 return {
                     addAll: async assets => { precachedAssets = assets; }
                 };
@@ -154,7 +154,7 @@ async function runTest() {
         assert(swContent.includes(`/${icon.src}`), `Service worker must precache /${icon.src}`);
     }
 
-    await checkServiceWorker(swContent, swPath);
+    await checkServiceWorker(swContent, swPath, swVersionMatch[0]);
 
     console.log('[PASS] PWA regression tests passed.');
 }

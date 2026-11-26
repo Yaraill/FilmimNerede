@@ -92,6 +92,13 @@ function closeActor(event, force = false) {
 
 window.lastRandomGenre = null;
 async function fetchRandomMovie(isNext = false) {
+    if (!isNext) window.randomModeSource = 'discover';
+    if (isNext && window.randomModeSource === 'watchlist' &&
+        typeof pickRandomFromWatchlist === 'function') {
+        pickRandomFromWatchlist({ excludeLast: true });
+        return;
+    }
+
     let genre = "";
     if (isNext) {
         genre = window.lastRandomGenre;
