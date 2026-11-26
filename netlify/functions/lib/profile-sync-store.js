@@ -142,8 +142,12 @@ async function redeemOneTimeSyncRecord(store, rawCode, nowFn = Date.now) {
         return { ok: false, statusCode: 404, error: 'Kod geçersiz, kullanılmış veya süresi dolmuş.' };
     }
 
-    await store.delete(code);
     const now = nowFn();
+    const claim = await store.setIfAbsent(`redeemed:${code}`, { redeemedAt: now });
+    if (!claim?.modified) {
+        return { ok: false, statusCode: 404, error: 'Kod geçersiz, kullanılmış veya süresi dolmuş.' };
+    }
+    await store.delete(code);
     if (record.v !== 1 || typeof record.expiresAt !== 'number' ||
         record.expiresAt <= now || !record.backup) {
         return { ok: false, statusCode: 404, error: 'Kod geçersiz, kullanılmış veya süresi dolmuş.' };

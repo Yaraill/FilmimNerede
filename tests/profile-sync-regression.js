@@ -65,6 +65,27 @@ test('one-time create/redeem round-trips backup v2 and consumes its code', async
         'Kod geçersiz, kullanılmış veya süresi dolmuş.');
 });
 
+test('one-time redemption atomically allows only one concurrent claimant', async () => {
+    const memoryStore = storeModule.createMemoryProfileSyncStore();
+    const created = await storeModule.saveOneTimeSyncRecord(memoryStore, backup);
+    const racyStore = {
+        async get(code) {
+            await Promise.resolve();
+            return memoryStore.get(code);
+        },
+        setIfAbsent: memoryStore.setIfAbsent,
+        delete: memoryStore.delete
+    };
+
+    const results = await Promise.all([
+        storeModule.redeemOneTimeSyncRecord(racyStore, created.formattedCode),
+        storeModule.redeemOneTimeSyncRecord(racyStore, created.formattedCode)
+    ]);
+
+    assert.equal(results.filter(result => result.ok).length, 1);
+    assert.equal(results.filter(result => !result.ok && result.statusCode === 404).length, 1);
+});
+
 test('sync code normalization and format validation reject ambiguous characters', async () => {
     assert.equal(storeModule.normalizeSyncCode(' k7m 4px '), 'K7M4PX');
     assert.equal(storeModule.formatSyncCode('K7M4PX'), 'K7M-4PX');

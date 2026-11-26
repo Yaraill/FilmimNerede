@@ -2047,7 +2047,7 @@ function filterAndSortProfileItems(rawItems, section, savedRatings) {
     let missingSubscriptions = false;
     let providerMatched = queried;
     const providerFilteringActive = section === 'watchlist' && state.provider && state.provider !== 'all';
-    if (section === 'watchlist' && state.provider && state.provider !== 'all') {
+    if (providerFilteringActive) {
         const subscribedIds = state.provider === 'subscribed'
             ? getWatchlistSubscribedProviderIds()
             : [];
@@ -2059,7 +2059,7 @@ function filterAndSortProfileItems(rawItems, section, savedRatings) {
                 ? getCachedTrProviderIds(item?.id, mediaType)
                 : { cached: false, streamIds: new Set(), allIds: new Set() };
             if (state.provider === 'subscribed') {
-                return !missingSubscriptions && [...subscribedSet].some(id => info.allIds.has(id));
+                return !missingSubscriptions && [...subscribedSet].some(id => info.streamIds.has(id));
             }
             if (state.provider === 'available') return info.streamIds.size > 0;
             return providerId !== null && info.allIds.has(providerId);

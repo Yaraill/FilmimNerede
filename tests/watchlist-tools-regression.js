@@ -282,9 +282,10 @@ async function runBrowserTests() {
         await page.evaluate(() => localStorage.setItem('userSubscribedProviders', JSON.stringify([8])));
         await page.select('#watchlist-provider-select', 'all');
         await page.select('#watchlist-provider-select', 'subscribed');
-        await page.waitForFunction(() => document.querySelectorAll('#watchlist-grid .movie-card').length === 2, {
+        await page.waitForFunction(() => document.querySelectorAll('#watchlist-grid .movie-card').length === 1, {
             timeout: 8000
         });
+        assert.equal(await page.$eval('#watchlist-grid .movie-card', card => card.dataset.mediaId), '1101');
 
         await page.select('#watchlist-provider-select', 'available');
         await page.waitForFunction(() => document.querySelectorAll('#watchlist-grid .movie-card').length === 2);
