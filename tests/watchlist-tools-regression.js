@@ -239,10 +239,19 @@ async function runBrowserTests() {
     let browser;
     try {
         await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+        const origin = `http://127.0.0.1:${server.address().port}`;
         browser = await puppeteer.launch({ headless: true, args: ['--no-sandbox', '--disable-setuid-sandbox'] });
         const page = await browser.newPage();
         await page.setViewport({ width: 1280, height: 900 });
         await page.setBypassServiceWorker(true);
+        await page.setRequestInterception(true);
+        page.on('request', request => {
+            const requestUrl = new URL(request.url());
+            if (requestUrl.origin === origin || requestUrl.protocol === 'data:' || requestUrl.protocol === 'blob:') {
+                return request.continue();
+            }
+            return request.abort();
+        });
         const pageErrors = [];
         page.on('pageerror', error => pageErrors.push(error.message));
         await page.evaluateOnNewDocument(() => {
@@ -257,8 +266,8 @@ async function runBrowserTests() {
             ]));
             localStorage.setItem('userSubscribedProviders', JSON.stringify([]));
         });
-        await page.goto(`http://127.0.0.1:${server.address().port}/#profile`, {
-            waitUntil: 'domcontentloaded',
+        await page.goto(`${origin}/#profile`, {
+            waitUntil: 'load',
             timeout: 30000
         });
         await page.waitForSelector('#watchlist-provider-select', { visible: true, timeout: 15000 });

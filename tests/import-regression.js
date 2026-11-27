@@ -583,9 +583,18 @@ async function runBrowserTests() {
             headless: true,
             args: ['--no-sandbox', '--disable-setuid-sandbox']
         });
+        const origin = `http://127.0.0.1:${port}`;
         const page = await browser.newPage();
         await page.setViewport({ width: 1280, height: 900 });
         await page.setBypassServiceWorker(true);
+        await page.setRequestInterception(true);
+        page.on('request', request => {
+            const requestUrl = new URL(request.url());
+            if (requestUrl.origin === origin || requestUrl.protocol === 'data:' || requestUrl.protocol === 'blob:') {
+                return request.continue();
+            }
+            return request.abort();
+        });
 
         const pageErrors = [];
         const cspViolations = [];
@@ -595,7 +604,7 @@ async function runBrowserTests() {
             document.addEventListener('securitypolicyviolation', e => window.__cspViolations.push(e.violatedDirective));
         });
 
-        await page.goto(`http://127.0.0.1:${port}/#profile`, { waitUntil: 'domcontentloaded', timeout: 30000 });
+        await page.goto(`${origin}/#profile`, { waitUntil: 'load', timeout: 30000 });
         await page.waitForSelector('#external-import-btn', { visible: true, timeout: 10000 });
 
         // 1) IMDb CSV import (with movie, tvSeries, tvEpisode skipped, and fallback-by-title)

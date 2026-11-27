@@ -2,6 +2,8 @@
   publish = "."
   functions = "netlify/functions"
   command = "node scripts/update-imdb-ratings.js --allow-stale"
+  # Otomatik Git deploy'larını durdurur (exit 0 = build atlanır). Tekrar açmak için bu satırı kaldırın.
+  ignore = "exit 0"
 
 [functions."omdb"]
   included_files = ["data/imdb-ratings.bin.gz"]

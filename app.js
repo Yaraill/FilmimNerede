@@ -13,15 +13,9 @@
 
 
 document.addEventListener('DOMContentLoaded', () => {
-    setTimeout(() => {
+    if (window.scrollY > 0) {
         window.scrollTo({ top: 0, behavior: 'auto' });
-    }, 10);
-});
-
-window.addEventListener('load', () => {
-    setTimeout(() => {
-        window.scrollTo(0, 0);
-    }, 100);
+    }
 });
 
 
